@@ -1,0 +1,46 @@
+[project]
+name = "openquad"
+dynamic = ["version"]
+description = "Open-source monochrome and multi-layer colour inkjet printing (QuadToneRIP-style)"
+readme = "README.md"
+license = "GPL-2.0-or-later"
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.0",
+    "tifffile>=2024.1",
+]
+
+[project.scripts]
+openquad = "openquad.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "hypothesis>=6.100",
+    "ruff>=0.6",
+    "mypy>=1.11",
+    "pre-commit>=3.7",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/openquad/__init__.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --cov=openquad --cov-report=term-missing --cov-fail-under=90"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF"]
+
+[tool.mypy]
+strict = true
+files = ["src"]
