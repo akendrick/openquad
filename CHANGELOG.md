@@ -7,3 +7,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 - Project foundation: package layout, CLI stub, smoke tests, ruff, mypy, pre-commit, CI on macOS and Ubuntu.
+- `quadfile`: read and write `.quad` curve files, round-trip safe, with line-numbered errors.
+- `curves`: 256 → 65,536-entry lookup tables, ink limits, parametric multi-ink curve generation.
+- `separate`: 16-bit greyscale → per-ink channels in row bands, with a total-ink warning.
+- `imageio`: 8/16-bit greyscale TIFF load/save keeping DPI and ICC profile; per-ink previews.
+- `targets`: step-wedge generation.
+- Golden-file test of a known image + curve (`scripts/update_golden.py` regenerates fixtures).
