@@ -24,6 +24,7 @@ from openquad.greybalance import (
     save_calibration,
 )
 from openquad.imageio import GreyImage, load_grey, read_dpi, save_grey, save_rgb, srgb_profile
+from openquad.linearize import linearize, tone_report
 from openquad.measure import Measurement, load_scan, measure_pair, measure_scan
 from openquad.printing import PrintError, PrintJob, Runner, list_printers, run_command, send
 from openquad.targets import framed_target, step_wedge, wedge_levels
@@ -119,6 +120,13 @@ def build_parser() -> argparse.ArgumentParser:
     gb.add_argument("--printer", default="", help="printer it was made for")
     gb.add_argument("--paper", default="", help="paper it was made for")
     gb.add_argument("--settings", default="", help="driver settings it was made with")
+
+    lin = commands.add_parser(
+        "linearize", help="even out tone: fold a tone curve into a calibration"
+    )
+    lin.add_argument("measurement", type=Path, help="measurement of a target printed with CAL")
+    lin.add_argument("--calibration", type=Path, required=True, help="CAL the target used")
+    lin.add_argument("-o", "--output", type=Path, help="linearized calibration to write")
     return parser
 
 
@@ -269,6 +277,24 @@ def _greybalance(args: argparse.Namespace) -> None:
     print(f"wrote {args.output} (from a wedge with worst cast {measurement.worst_cast():.1f})")
 
 
+def _linearize(args: argparse.Namespace) -> None:
+    measurement = Measurement.from_json(args.measurement.read_text(encoding="utf-8"))
+    report = tone_report(measurement)
+    print("step   level   measured L*   target L*   error")
+    for step, (level, measured, target) in enumerate(
+        zip(report.levels[::-1], report.measured[::-1], report.target[::-1], strict=True), start=1
+    ):
+        print(
+            f"{step:>4} {int(level):>7}   {measured:10.1f}   {target:9.1f}"
+            f"   {measured - target:+5.1f}"
+        )
+    print(f"worst tone error: {report.worst():.1f} L*")
+    if args.output:
+        calibration = linearize(load_calibration(args.calibration), measurement)
+        save_calibration(calibration, args.output)
+        print(f"wrote {args.output}")
+
+
 def main(
     argv: Sequence[str] | None = None, runner: Runner = run_command, fetch: Fetch = http_fetch
 ) -> int:
@@ -292,6 +318,8 @@ def main(
             _measure(args)
         elif args.command == "greybalance":
             _greybalance(args)
+        elif args.command == "linearize":
+            _linearize(args)
         else:
             parser.print_help()
     except (OSError, ValueError, PrintError, ScanError) as exc:

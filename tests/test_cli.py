@@ -295,3 +295,19 @@ def test_greybalance_damping_options(tmp_path: Path) -> None:
     full, damped = load_calibration(out_full), load_calibration(out_damped)
     assert not np.array_equal(full.curves, damped.curves)
     assert main(["greybalance", source, "-o", str(out_damped), "--damping", "2"]) == 1
+
+
+def test_linearize_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from openquad.greybalance import load_calibration
+
+    argv = ["linearize", str(REAL / "m6-corrected.json")]
+    argv += ["--calibration", str(REAL / "canon-plain-v3.oqcal")]
+    assert main(argv) == 0  # report only
+    report = capsys.readouterr().out
+    assert "worst tone error" in report
+    assert report.count("\n") > 21
+    out = tmp_path / "lin.oqcal"
+    assert main([*argv, "-o", str(out)]) == 0
+    assert len(load_calibration(out).levels) == 257
+    wrong = ["linearize", str(REAL / "m6-corrected.json"), "--calibration"]
+    assert main([*wrong, str(REAL / "canon-plain.oqcal"), "-o", str(out)]) == 1  # v1, not v3

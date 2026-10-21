@@ -39,6 +39,13 @@ openquad target --kind comparison --calibration canon-plain.oqcal -o compare.tif
 openquad measure scan2.jpg --pair --calibration canon-plain.oqcal -o m2.json
 openquad greybalance m2-corrected.json -o canon-plain-v2.oqcal --shadow-damping 0.5
 ```
+
+Once grey balance is good, even out the tone from the same kind of measurement:
+
+```bash
+openquad linearize m3-corrected.json --calibration canon-plain-v3.oqcal          # report only
+openquad linearize m3-corrected.json --calibration canon-plain-v3.oqcal -o canon-plain-v4.oqcal
+```
 A calibration is only valid for the printer, paper and driver settings it was made with.
 
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
