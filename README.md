@@ -25,7 +25,7 @@ Grey balance for a colour inkjet (example: Canon MG3600 on plain paper):
 ```bash
 openquad target --kind grey-balance -o gb.tif
 openquad print gb.tif --printer Canon_MG3600_series
-openquad scan --host 876298000000.local -o scan.jpg       # target face down on the platen
+openquad scan --host 876298000000.local -o scan.jpg       # face down; Document mode by default
 openquad measure scan.jpg -o m1.json
 openquad greybalance m1.json -o canon-plain.oqcal --printer Canon_MG3600_series --paper "Letter plain"
 openquad print photo.tif --printer Canon_MG3600_series --preset black-red --calibration canon-plain.oqcal

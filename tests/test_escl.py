@@ -12,6 +12,7 @@ JPEG = b"\xff\xd8\xff\xe0fake-jpeg"
 class FakeScanner:
     def __init__(self, busy: int = 0, job_status: int = 201, doc_status: int = 200) -> None:
         self.busy, self.job_status, self.doc_status = busy, job_status, doc_status
+        self.delete_fails = False
         self.calls: list[tuple[str, str, bytes | None]] = []
 
     def __call__(self, method: str, url: str, body: bytes | None) -> tuple[int, str, bytes]:
@@ -21,6 +22,10 @@ class FakeScanner:
             return 503, "", b""
         if method == "POST":
             return self.job_status, "http://scanner.local/eSCL/ScanJobs/42", b""
+        if method == "DELETE":
+            if self.delete_fails:
+                raise ScanError("gone")
+            return 200, "", b""
         return self.doc_status, "", JPEG
 
 
@@ -28,11 +33,25 @@ def test_scan_posts_settings_and_saves_the_jpeg(tmp_path: Path) -> None:
     fake = FakeScanner()
     out = scan("scanner.local", tmp_path / "scan.jpg", fetch=fake)
     assert out.read_bytes() == JPEG
-    (method, url, body), (method2, url2, _) = fake.calls
+    (method, url, body), (method2, url2, _), (method3, url3, _) = fake.calls
     assert (method, url) == ("POST", "http://scanner.local/eSCL/ScanJobs")
     assert body is not None and b"<scan:ColorMode>RGB24</scan:ColorMode>" in body
     assert b"<scan:XResolution>300</scan:XResolution>" in body
     assert (method2, url2) == ("GET", "http://scanner.local/eSCL/ScanJobs/42/NextDocument")
+    assert (method3, url3) == ("DELETE", "http://scanner.local/eSCL/ScanJobs/42")  # job closed
+
+
+def test_job_is_closed_even_when_the_download_fails(tmp_path: Path) -> None:
+    fake = FakeScanner(doc_status=404)
+    with pytest.raises(ScanError, match="no image"):
+        scan("scanner.local", tmp_path / "s.jpg", fetch=fake)
+    assert fake.calls[-1][0] == "DELETE"
+
+
+def test_a_failed_close_is_ignored(tmp_path: Path) -> None:
+    fake = FakeScanner()
+    fake.delete_fails = True
+    assert scan("scanner.local", tmp_path / "s.jpg", fetch=fake).read_bytes() == JPEG
 
 
 def test_scan_waits_while_the_scanner_is_busy(tmp_path: Path) -> None:
@@ -61,3 +80,10 @@ def test_settings_resolution_is_checked() -> None:
 def test_unreachable_scanner() -> None:
     with pytest.raises(ScanError, match="can't reach"):
         http_fetch("GET", "http://127.0.0.1:9/eSCL/ScannerCapabilities", None)
+
+
+def test_intent_is_sent_and_checked() -> None:
+    assert b"<scan:Intent>Document</scan:Intent>" in ScanSettings().xml()  # the default
+    assert b"<scan:Intent>Photo</scan:Intent>" in ScanSettings(intent="Photo").xml()
+    with pytest.raises(ValueError, match="intent"):
+        ScanSettings(intent="Magic")

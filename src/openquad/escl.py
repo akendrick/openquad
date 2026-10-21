@@ -6,6 +6,7 @@ no automatic adjustments), so measurements from different days compare.
 
 from __future__ import annotations
 
+import contextlib
 import time
 import urllib.error
 import urllib.request
@@ -38,22 +39,35 @@ def http_fetch(method: str, url: str, body: bytes | None) -> tuple[int, str, byt
         raise ScanError(f"can't reach the scanner at {url}: {exc}") from None
 
 
+INTENTS = ("Photo", "Document", "TextAndGraphic", "Preview")
+
+
 @dataclass(frozen=True)
 class ScanSettings:
+    """eSCL scan settings. `intent` changes how the scanner processes the image.
+
+    Document is the default for measuring: on the Canon MG3600, Photo auto-crops
+    to one detected "photo" and alters its colour and levels (it read a target's
+    deepest black as L* 19 where Document reads L* 27, and its cast as 6.7 vs 5.4).
+    """
+
     dpi: int = 300
     width: int = LETTER_300THS[0]
     height: int = LETTER_300THS[1]
+    intent: str = "Document"
 
     def __post_init__(self) -> None:
         if self.dpi not in (75, 100, 150, 200, 300, 600, 1200):
             raise ValueError(f"unsupported scan resolution {self.dpi}")
+        if self.intent not in INTENTS:
+            raise ValueError(f"intent must be one of {INTENTS}, got {self.intent!r}")
 
     def xml(self) -> bytes:
         return f"""<?xml version="1.0" encoding="UTF-8"?>
 <scan:ScanSettings xmlns:scan="http://schemas.hp.com/imaging/escl/2011/05/03" \
 xmlns:pwg="http://www.pwg.org/schemas/2010/12/sm">
   <pwg:Version>2.5</pwg:Version>
-  <scan:Intent>Photo</scan:Intent>
+  <scan:Intent>{self.intent}</scan:Intent>
   <pwg:ScanRegions>
     <pwg:ScanRegion>
       <pwg:Height>{self.height}</pwg:Height>
@@ -94,12 +108,17 @@ def scan(
     if status != 201 or not location:
         raise ScanError(f"scanner refused the job (HTTP {status}): {body[:200]!r}")
 
-    document_url = urljoin(jobs_url, location.rstrip("/") + "/NextDocument")
-    for _ in range(BUSY_RETRIES):
-        status, _, image = fetch("GET", document_url, None)
-        if status != 503:
-            break
-        sleep(2.0)
+    job_url = urljoin(jobs_url, location.rstrip("/"))
+    try:
+        for _ in range(BUSY_RETRIES):
+            status, _, image = fetch("GET", job_url + "/NextDocument", None)
+            if status != 503:
+                break
+            sleep(2.0)
+    finally:
+        # Close the job, or the scanner keeps it open and refuses the next one (503).
+        with contextlib.suppress(ScanError):
+            fetch("DELETE", job_url, None)
     if status != 200 or not image.startswith(b"\xff\xd8"):
         raise ScanError(f"no image from the scanner (HTTP {status})")
     path = Path(output)

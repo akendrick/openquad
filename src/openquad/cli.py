@@ -15,7 +15,7 @@ from numpy.typing import NDArray
 
 from openquad import __version__
 from openquad.composite import PRESETS, composite
-from openquad.escl import Fetch, ScanError, ScanSettings, http_fetch, scan
+from openquad.escl import INTENTS, Fetch, ScanError, ScanSettings, http_fetch, scan
 from openquad.greybalance import (
     Calibration,
     build_calibration,
@@ -91,6 +91,9 @@ def build_parser() -> argparse.ArgumentParser:
     scn.add_argument("--host", required=True, help="scanner host, e.g. 876298000000.local")
     scn.add_argument("-o", "--output", type=Path, required=True, help="JPEG to write")
     scn.add_argument("--dpi", type=int, default=300, help="scan resolution (default 300)")
+    scn.add_argument(
+        "--intent", choices=INTENTS, default="Document", help="scanner mode (default Document)"
+    )
 
     msr = commands.add_parser("measure", help="measure a scanned grey-balance target")
     msr.add_argument("scan", type=Path, help="scan of the printed target (JPEG, PNG or TIFF)")
@@ -189,8 +192,8 @@ def _print(args: argparse.Namespace, runner: Runner) -> None:
 
 
 def _scan(args: argparse.Namespace, fetch: Fetch) -> None:
-    path = scan(args.host, args.output, ScanSettings(dpi=args.dpi), fetch=fetch)
-    print(f"wrote {path} ({args.dpi} dpi)")
+    path = scan(args.host, args.output, ScanSettings(dpi=args.dpi, intent=args.intent), fetch=fetch)
+    print(f"wrote {path} ({args.dpi} dpi, {args.intent})")
 
 
 def _measure(args: argparse.Namespace) -> None:
