@@ -154,3 +154,54 @@ def test_custom_channel_list() -> None:
 def test_build_curve_rejects_bad_input(inks: list[InkSpec], gamma: float, message: str) -> None:
     with pytest.raises(ValueError, match=message):
         build_curve(inks, gamma=gamma)
+
+
+# --- smooth ramps --------------------------------------------------------------------
+
+
+def smooth_ink() -> InkSpec:
+    return InkSpec("LK", limit=40.0, start=0.2, peak=0.5, end=0.8, shape="smooth")
+
+
+def test_smooth_ramp_matches_linear_at_start_peak_and_end() -> None:
+    linear = InkSpec("LK", limit=40.0, start=0.2, peak=0.5, end=0.8)
+    points = np.array([0.0, 0.2, 0.5, 0.8, 1.0])
+    assert np.allclose(smooth_ink().ramp(points), linear.ramp(points))
+
+
+def test_smooth_ramp_halfway_point_is_half() -> None:
+    assert smooth_ink().ramp(np.array([0.35]))[0] == pytest.approx(0.2)
+
+
+def test_smooth_ramp_has_no_corner_at_the_peak() -> None:
+    x = np.linspace(0.0, 1.0, 100_001)
+    step = x[1] - x[0]
+    slope = np.diff(smooth_ink().ramp(x)) / step
+    linear_slope = np.diff(InkSpec("LK", 40.0, 0.2, 0.5, 0.8).ramp(x)) / step
+    # The linear ramp's slope jumps by 2.67 per unit at the peak; the smooth one is continuous.
+    assert np.abs(np.diff(linear_slope)).max() > 2.0
+    assert np.abs(np.diff(slope)).max() < 0.01
+
+
+@given(st.floats(0.0, 1.0), st.floats(0.0, 1.0))
+def test_smooth_ramp_rises_monotonically_before_the_peak(a: float, b: float) -> None:
+    low, high = sorted((a * 0.5, b * 0.5))
+    values = smooth_ink().ramp(np.array([low, high]))
+    assert values[0] <= values[1] + 1e-12
+
+
+def test_unknown_shape_is_rejected() -> None:
+    with pytest.raises(ValueError, match="shape"):
+        InkSpec("K", 50.0, 0.0, 1.0, shape="cubic")  # type: ignore[arg-type]
+
+
+def test_smooth_darkest_ink_eases_in_but_keeps_rising_in_the_shadows() -> None:
+    ink = InkSpec("K", limit=100.0, start=0.4, peak=1.0, shape="smooth")
+    x = np.array([0.4, 0.4001, 0.9999, 1.0])
+    values = ink.ramp(x)
+    start_slope = (values[1] - values[0]) / 0.0001
+    end_slope = (values[3] - values[2]) / 0.0001
+    assert values[0] == 0.0
+    assert values[3] == pytest.approx(1.0)
+    assert start_slope < 0.01
+    assert end_slope > 2.0  # 1.5 per unit of ramp, over a 0.6-wide ramp

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from openquad.curves import InkSpec
+from openquad.curves import InkSpec, RampShape
 from openquad.quadfile import MAX_VALUE
 
 
@@ -66,13 +66,19 @@ class ColourLayer:
         return 1.0 - srgb_to_linear(1.0 - perceptual)
 
 
-def _layer(name: str, colour: tuple[float, float, float], **tone: float) -> ColourLayer:
-    return ColourLayer(name, colour, InkSpec(name, **tone))
+def _layer(
+    name: str,
+    colour: tuple[float, float, float],
+    *,
+    shape: RampShape = "smooth",
+    **tone: float,
+) -> ColourLayer:
+    return ColourLayer(name, colour, InkSpec(name, shape=shape, **tone))
 
 
 BLACK = (0.0, 0.0, 0.0)
 PRESETS: dict[str, tuple[ColourLayer, ...]] = {
-    "neutral": (_layer("black", BLACK, limit=100.0, start=0.0, peak=1.0),),
+    "neutral": (_layer("black", BLACK, shape="linear", limit=100.0, start=0.0, peak=1.0),),
     "black-red": (
         _layer("black", BLACK, limit=100.0, start=0.35, peak=1.0),
         _layer("red", (0.78, 0.12, 0.12), limit=75.0, start=0.0, peak=0.55, end=1.0),

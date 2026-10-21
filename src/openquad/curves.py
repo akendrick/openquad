@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 import numpy as np
 from numpy.typing import ArrayLike, NDArray
@@ -44,13 +45,26 @@ def scale_limit(values: ArrayLike, limit_percent: float) -> NDArray[np.uint16]:
     return np.rint(scaled).astype(np.uint16)
 
 
+RampShape = Literal["linear", "smooth"]
+
+
+def _smoothstep(t: NDArray[np.float64]) -> NDArray[np.float64]:
+    result: NDArray[np.float64] = t * t * (3.0 - 2.0 * t)
+    return result
+
+
 @dataclass(frozen=True)
 class InkSpec:
     """How one ink contributes across the tonal range.
 
-    The ink is absent below `start`, rises linearly to `limit` percent at `peak`,
-    then fades linearly to nothing at `end`. Use `peak == end == 1.0` for the
-    darkest ink, which keeps rising to maximum density.
+    The ink is absent below `start`, rises to `limit` percent at `peak`, then
+    fades to nothing at `end`. Use `peak == end == 1.0` for the darkest ink,
+    which keeps rising to maximum density.
+
+    `shape="linear"` uses straight ramps. `shape="smooth"` uses smoothstep ramps
+    with zero slope at start, peak and end, so smooth gradients show no visible
+    line where an ink peaks or stops. A smooth darkest ink eases in at `start`
+    but still rises steadily at full density.
     """
 
     channel: str
@@ -58,8 +72,11 @@ class InkSpec:
     start: float
     peak: float
     end: float = 1.0
+    shape: RampShape = "linear"
 
     def __post_init__(self) -> None:
+        if self.shape not in ("linear", "smooth"):
+            raise ValueError(f"{self.channel}: shape must be 'linear' or 'smooth'")
         if not 0.0 <= self.limit <= 100.0:
             raise ValueError(f"{self.channel}: limit must be 0-100%, got {self.limit}")
         if not 0.0 <= self.start < self.peak <= self.end <= 1.0:
@@ -75,8 +92,15 @@ class InkSpec:
             fall = (self.end - positions) / (self.end - self.peak)
         else:
             fall = np.ones_like(positions)
-        shape = np.clip(np.minimum(rise, fall), 0.0, 1.0)
-        result: NDArray[np.float64] = shape * (self.limit / 100.0)
+        amount = np.clip(np.minimum(rise, fall), 0.0, 1.0)
+        if self.shape == "smooth":
+            if self.end > self.peak:
+                amount = _smoothstep(amount)
+            else:
+                # Darkest ink: ease in from `start` but keep rising into the deepest
+                # shadows (slope 1.5 at full density) so shadow detail isn't flattened.
+                amount = 2.0 * _smoothstep(amount / 2.0)
+        result: NDArray[np.float64] = amount * (self.limit / 100.0)
         return result
 
 
