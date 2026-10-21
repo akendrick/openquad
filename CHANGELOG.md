@@ -18,3 +18,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 - Smooth ramp shape (`InkSpec(shape="smooth")`); colour presets use it, removing the visible line where a layer peaks.
 - CLI: `openquad target`, `composite`, `presets`, `print` (with `--preset`, `--dry-run`, `--option`) and `printers`.
 - `printing`: CUPS `lp` wrapper that prints at real size and returns the job id.
+- Grey balance (Phase 3, composite path): framed grey-balance target (`target --kind grey-balance`),
+  eSCL/AirScan scanning (`scan`), scan measurement to L\*a\*b\* (`measure`), per-channel RGB
+  correction (`greybalance`, `.oqcal` files) and `--calibration` on `target`, `composite` and `print`.
+- `colour`: sRGB transfer functions, luminance and CIE L\*a\*b\* (D65).
+- Pillow dependency for reading JPEG scans.
