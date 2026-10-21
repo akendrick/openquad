@@ -89,11 +89,17 @@ def load_scan(path: str | Path) -> NDArray[np.float64]:
     return pixels[..., :3].astype(np.float64) / scale
 
 
-def find_frame(scan: NDArray[np.float64]) -> tuple[int, int, int, int]:
-    """(left, top, right, bottom) pixel edges of the target's outer frame."""
+def find_frame(
+    scan: NDArray[np.float64], edge_ignore: float = EDGE_IGNORE
+) -> tuple[int, int, int, int]:
+    """(left, top, right, bottom) pixel edges of the target's outer frame.
+
+    `edge_ignore` is the fraction of the scan at each border that is skipped, so
+    lid shadows along the edges aren't mistaken for the frame.
+    """
     height, width = scan.shape[:2]
     dark = scan.mean(axis=-1) < DARK
-    ey, ex = round(height * EDGE_IGNORE), round(width * EDGE_IGNORE)
+    ey, ex = round(height * edge_ignore), round(width * edge_ignore)
     dark[:ey], dark[height - ey :], dark[:, :ex], dark[:, width - ex :] = False, False, False, False
 
     def span(counts: NDArray[np.int_]) -> tuple[int, int]:
@@ -131,15 +137,20 @@ def measure_scan(
     when printing; by default each level was sent as R = G = B = level.
     """
     layout = layout or FramedLayout()
-    left, top, right, bottom = find_frame(scan)
-    sx, sy = (right - left) / layout.width, (bottom - top) / layout.height
     expected = layout.width / layout.height
-    found = (right - left) / (bottom - top)
-    if abs(found / expected - 1) > 0.04:
+    # Skip the scan's borders first (lid shadows); if the scanner cropped tight to
+    # the target, the frame sits in those borders, so try again without skipping.
+    for edge_ignore in (EDGE_IGNORE, 0.0):
+        left, top, right, bottom = find_frame(scan, edge_ignore)
+        found = (right - left) / max(bottom - top, 1)
+        if abs(found / expected - 1) <= 0.04:
+            break
+    else:
         raise MeasureError(
             f"frame shape {found:.2f}:1 doesn't match the target ({expected:.2f}:1); "
             "check the whole target is on the scan and placed square"
         )
+    sx, sy = (right - left) / layout.width, (bottom - top) / layout.height
 
     def to_pixels(box: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
         x0, y0, x1, y1 = box

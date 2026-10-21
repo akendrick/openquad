@@ -149,3 +149,10 @@ def test_framed_target_layout() -> None:
     boxes = layout.patch_boxes()
     assert len(boxes) == 42
     assert sorted(level for level, *_ in boxes) == sorted(list(range(21)) * 2)
+
+
+def test_scan_cropped_tight_to_the_frame() -> None:
+    """The MG3600 auto-crops to the target, putting the frame at the image edges."""
+    tight = neutral_scan()[40:-40, 50:-40]
+    assert find_frame(tight, edge_ignore=0.0)[:2] == (0, 0)
+    assert measure_scan(tight).worst_cast() < 0.5
