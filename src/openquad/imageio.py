@@ -14,6 +14,7 @@ from openquad.quadfile import MAX_VALUE
 
 _ICC_TAG = 34675
 _CM_PER_INCH = 2.54
+SRGB_PROFILE_PATH = Path("/System/Library/ColorSync/Profiles/sRGB Profile.icc")
 
 
 class ImageFormatError(ValueError):
@@ -44,6 +45,22 @@ def _dpi(page: tifffile.TiffPage) -> tuple[float, float] | None:
     elif unit != 2:  # no absolute unit
         return None
     return (float(x), float(y))
+
+
+def read_dpi(path: str | Path) -> tuple[float, float] | None:
+    """The resolution of any TIFF (greyscale or colour), or None if it has none."""
+    with tifffile.TiffFile(path) as tif:
+        page = tif.pages.first
+        if not isinstance(page, tifffile.TiffPage):  # pragma: no cover - defensive
+            raise ImageFormatError(f"{path}: no readable image page")
+        return _dpi(page)
+
+
+def srgb_profile() -> bytes | None:
+    """The system's sRGB ICC profile (macOS ColorSync), or None if not found."""
+    if SRGB_PROFILE_PATH.is_file():
+        return SRGB_PROFILE_PATH.read_bytes()
+    return None
 
 
 def load_grey(path: str | Path) -> GreyImage:

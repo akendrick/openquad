@@ -15,3 +15,6 @@ versions follow [Semantic Versioning](https://semver.org/).
 - Golden-file test of a known image + curve (`scripts/update_golden.py` regenerates fixtures).
 - `composite`: multi-layer colour toning (subtractive, linear-light mixing) with presets `neutral`, `black-red`, `red-only`, `warm-split`; `imageio.save_rgb` for 16-bit RGB TIFFs.
 - `scripts/make_composite_test.py`: composite-path test sheet (neutral and black + red wedges).
+- Smooth ramp shape (`InkSpec(shape="smooth")`); colour presets use it, removing the visible line where a layer peaks.
+- CLI: `openquad target`, `composite`, `presets`, `print` (with `--preset`, `--dry-run`, `--option`) and `printers`.
+- `printing`: CUPS `lp` wrapper that prints at real size and returns the job id.
