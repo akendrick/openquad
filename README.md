@@ -31,7 +31,14 @@ openquad greybalance m1.json -o canon-plain.oqcal --printer Canon_MG3600_series 
 openquad print photo.tif --printer Canon_MG3600_series --preset black-red --calibration canon-plain.oqcal
 ```
 
-Repeat with `target --calibration canon-plain.oqcal` and `measure --calibration ...` to refine.
+To check and refine, print a comparison page (uncorrected and corrected targets on one sheet), scan it
+once, and measure both:
+
+```bash
+openquad target --kind comparison --calibration canon-plain.oqcal -o compare.tif
+openquad measure scan2.jpg --pair --calibration canon-plain.oqcal -o m2.json
+openquad greybalance m2-corrected.json -o canon-plain-v2.oqcal --shadow-damping 0.5
+```
 A calibration is only valid for the printer, paper and driver settings it was made with.
 
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,

@@ -19,11 +19,12 @@ from openquad.escl import INTENTS, Fetch, ScanError, ScanSettings, http_fetch, s
 from openquad.greybalance import (
     Calibration,
     build_calibration,
+    comparison_page,
     load_calibration,
     save_calibration,
 )
 from openquad.imageio import GreyImage, load_grey, read_dpi, save_grey, save_rgb, srgb_profile
-from openquad.measure import Measurement, load_scan, measure_scan
+from openquad.measure import Measurement, load_scan, measure_pair, measure_scan
 from openquad.printing import PrintError, PrintJob, Runner, list_printers, run_command, send
 from openquad.targets import framed_target, step_wedge, wedge_levels
 
@@ -46,9 +47,10 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("-o", "--output", type=Path, required=True, help="TIFF to write")
     target.add_argument(
         "--kind",
-        choices=["wedge", "grey-balance"],
+        choices=["wedge", "grey-balance", "comparison"],
         default="wedge",
-        help="wedge: plain greyscale step wedge; grey-balance: framed RGB target to scan",
+        help="wedge: greyscale step wedge; grey-balance: framed RGB target to scan; "
+        "comparison: uncorrected + corrected targets on one page (needs --calibration)",
     )
     target.add_argument("--steps", type=int, default=21, help="wedge patches (default 21)")
     target.add_argument("--patch-width", type=int, default=100, help="wedge pixels (default 100)")
@@ -99,10 +101,21 @@ def build_parser() -> argparse.ArgumentParser:
     msr.add_argument("scan", type=Path, help="scan of the printed target (JPEG, PNG or TIFF)")
     msr.add_argument("-o", "--output", type=Path, required=True, help="measurement JSON")
     msr.add_argument("--calibration", type=Path, help="calibration used when printing it")
+    msr.add_argument(
+        "--pair",
+        action="store_true",
+        help="scan of a comparison page: writes OUTPUT-uncorrected.json and -corrected.json",
+    )
 
     gb = commands.add_parser("greybalance", help="build a grey-balance calibration")
     gb.add_argument("measurement", type=Path, help="measurement JSON from 'measure'")
     gb.add_argument("-o", "--output", type=Path, required=True, help="calibration to write")
+    gb.add_argument(
+        "--damping", type=float, default=1.0, help="fraction of each correction to apply (0-1)"
+    )
+    gb.add_argument(
+        "--shadow-damping", type=float, help="damping for the darkest steps (17-21) instead"
+    )
     gb.add_argument("--printer", default="", help="printer it was made for")
     gb.add_argument("--paper", default="", help="paper it was made for")
     gb.add_argument("--settings", default="", help="driver settings it was made with")
@@ -115,6 +128,13 @@ def _calibration(path: Path | None) -> Calibration | None:
 
 def _target(args: argparse.Namespace) -> None:
     dpi = (args.dpi, args.dpi)
+    if args.kind == "comparison":
+        calibration = _calibration(args.calibration)
+        if not calibration:
+            raise ValueError("--kind comparison needs --calibration")
+        save_rgb(args.output, comparison_page(calibration, args.dpi), dpi, srgb_profile())
+        print(f"wrote {args.output} (comparison page: 1 mark uncorrected, 2 marks corrected)")
+        return
     if args.kind == "grey-balance":
         sheet = framed_target(dpi=args.dpi)
         calibration = _calibration(args.calibration)
@@ -196,8 +216,33 @@ def _scan(args: argparse.Namespace, fetch: Fetch) -> None:
     print(f"wrote {path} ({args.dpi} dpi, {args.intent})")
 
 
+def _measure_pair(args: argparse.Namespace, calibration: Calibration | None) -> None:
+    if not calibration:
+        raise ValueError("--pair needs the --calibration used for the corrected target")
+    plain, corrected = measure_pair(load_scan(args.scan), calibration.sent_for(wedge_levels(21)))
+    stem = args.output.with_suffix("")
+    for name, measurement in (("uncorrected", plain), ("corrected", corrected)):
+        path = stem.with_name(f"{stem.name}-{name}.json")
+        path.write_text(measurement.to_json() + "\n", encoding="utf-8")
+        print(f"wrote {path}")
+    print("step   level    uncorrected L* a* b*     corrected L* a* b*")
+    for step, (level, a, b) in enumerate(
+        zip(plain.levels, plain.lab, corrected.lab, strict=True), start=1
+    ):
+        print(
+            f"{step:>4} {int(level):>7}   {a[0]:6.1f} {a[1]:5.1f} {a[2]:5.1f}"
+            f"      {b[0]:6.1f} {b[1]:5.1f} {b[2]:5.1f}"
+        )
+    print(
+        f"worst cast: uncorrected {plain.worst_cast():.1f}, corrected {corrected.worst_cast():.1f}"
+    )
+
+
 def _measure(args: argparse.Namespace) -> None:
     calibration = _calibration(args.calibration)
+    if args.pair:
+        _measure_pair(args, calibration)
+        return
     sent = calibration.sent_for(wedge_levels(21)) if calibration else None
     measurement = measure_scan(load_scan(args.scan), sent=sent)
     args.output.write_text(measurement.to_json() + "\n", encoding="utf-8")
@@ -213,7 +258,12 @@ def _measure(args: argparse.Namespace) -> None:
 def _greybalance(args: argparse.Namespace) -> None:
     measurement = Measurement.from_json(args.measurement.read_text(encoding="utf-8"))
     calibration = build_calibration(
-        measurement, printer=args.printer, paper=args.paper, settings=args.settings
+        measurement,
+        damping=args.damping,
+        shadow_damping=args.shadow_damping,
+        printer=args.printer,
+        paper=args.paper,
+        settings=args.settings,
     )
     save_calibration(calibration, args.output)
     print(f"wrote {args.output} (from a wedge with worst cast {measurement.worst_cast():.1f})")

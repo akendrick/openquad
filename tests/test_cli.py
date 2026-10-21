@@ -253,3 +253,45 @@ def test_scan_errors_return_1(tmp_path: Path) -> None:
 
     argv = ["scan", "--host", "s", "-o", str(tmp_path / "s.jpg")]
     assert main(argv, fetch=FakeScanner(job_status=500)) == 1
+
+
+# --- comparison pages, pair measurement, damping -------------------------------------
+
+REAL = (
+    Path(__file__).resolve().parents[1] / "calibration-data" / "canon-mg3600-plain" / "2026-10-20"
+)
+
+
+def test_target_comparison_page(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out = tmp_path / "page.tif"
+    argv = ["target", "--kind", "comparison", "-o", str(out), "--dpi", "100"]
+    assert main([*argv, "--calibration", str(REAL / "canon-plain.oqcal")]) == 0
+    assert tifffile.imread(out).shape[-1] == 3
+    assert "1 mark uncorrected" in capsys.readouterr().out
+    assert main(argv) == 1  # needs a calibration
+
+
+def test_measure_pair_on_a_real_canon_scan(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "m4.json"
+    argv = ["measure", str(REAL / "scan4-document.jpg"), "-o", str(out), "--pair"]
+    assert main([*argv, "--calibration", str(REAL / "canon-plain.oqcal")]) == 0
+    printed = capsys.readouterr().out
+    assert "worst cast: uncorrected 5.4, corrected 2.5" in printed
+    assert (tmp_path / "m4-uncorrected.json").exists()
+    assert (tmp_path / "m4-corrected.json").exists()
+    assert main(argv) == 1  # --pair needs the calibration
+
+
+def test_greybalance_damping_options(tmp_path: Path) -> None:
+    from openquad.greybalance import load_calibration
+
+    out_full, out_damped = tmp_path / "full.oqcal", tmp_path / "damped.oqcal"
+    source = str(REAL / "m5-corrected.json")
+    assert main(["greybalance", source, "-o", str(out_full)]) == 0
+    argv = ["greybalance", source, "-o", str(out_damped), "--damping", "0.5"]
+    assert main([*argv, "--shadow-damping", "0.25"]) == 0
+    full, damped = load_calibration(out_full), load_calibration(out_damped)
+    assert not np.array_equal(full.curves, damped.curves)
+    assert main(["greybalance", source, "-o", str(out_damped), "--damping", "2"]) == 1

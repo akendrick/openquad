@@ -23,7 +23,7 @@ from numpy.typing import NDArray
 from openquad.colour import luminance
 from openquad.measure import Measurement
 from openquad.quadfile import MAX_VALUE
-from openquad.targets import wedge_levels
+from openquad.targets import framed_target, wedge_levels
 
 CHANNELS = ("R", "G", "B")
 FORMAT = "openquad-calibration"
@@ -129,15 +129,32 @@ def save_calibration(calibration: Calibration, path: str | Path) -> None:
     Path(path).write_text(calibration.to_json() + "\n", encoding="utf-8")
 
 
+SHADOW_LEVEL = 13107  # step 17 of 21 and darker: where the Canon switches to pigment black
+
+
 def build_calibration(
-    measurement: Measurement, *, printer: str = "", paper: str = "", settings: str = ""
+    measurement: Measurement,
+    *,
+    damping: float = 1.0,
+    shadow_damping: float | None = None,
+    shadow_level: int = SHADOW_LEVEL,
+    printer: str = "",
+    paper: str = "",
+    settings: str = "",
 ) -> Calibration:
     """Per-channel curves that make each measured step neutral at its own lightness.
 
     Each channel's response (value sent -> linear light measured) is treated as
     monotonic and inverted at the target, which is the step's measured luminance
     on all three channels. Paper white and the deepest black are kept as sent.
+
+    `damping` (0-1) applies only that fraction of the proposed change to what was
+    sent, so a pass can't overshoot where the printer responds unevenly.
+    `shadow_damping`, if given, replaces it for levels at or below `shadow_level`.
     """
+    for name, value in (("damping", damping), ("shadow_damping", shadow_damping)):
+        if value is not None and not 0.0 <= value <= 1.0:
+            raise CalibrationError(f"{name} must be within 0-1, got {value}")
     order = np.argsort(measurement.levels)
     levels = measurement.levels[order]
     sent = measurement.sent[order].astype(np.float64)
@@ -151,6 +168,10 @@ def build_calibration(
         response = np.maximum.accumulate(measured[by_sent, c])
         response = response + np.arange(len(response)) * 1e-9  # strictly increasing
         curves[c] = np.interp(target, response, x)
+    strength = np.where(
+        levels <= shadow_level, damping if shadow_damping is None else shadow_damping, damping
+    )
+    curves = sent.T + strength * (curves - sent.T)
     curves[:, -1] = MAX_VALUE  # paper white stays paper
     curves[:, 0] = sent[0]  # deepest black stays as sent
     curves = np.maximum.accumulate(np.clip(curves, 0, MAX_VALUE), axis=1)
@@ -161,3 +182,23 @@ def build_calibration(
         paper=paper,
         settings=settings,
     )
+
+
+def comparison_page(calibration: Calibration, dpi: float = 300.0) -> NDArray[np.uint16]:
+    """One page: the uncorrected target above, the corrected one below.
+
+    Scanned together, both get identical scanner processing. The uncorrected
+    target is marked with one black square at its left, the corrected with two.
+    """
+    plain = framed_target(dpi=dpi)
+    corrected = calibration.apply(plain)
+    h, w = plain.shape[:2]
+    gap, mark, lead, pad = (round(inches * dpi) for inches in (1.0, 0.15, 0.4, 0.07))
+    page = np.full((2 * h + gap, w + lead, 3), MAX_VALUE, dtype=np.uint16)
+    page[:h, lead:] = plain
+    page[h + gap :, lead:] = corrected
+    for count, top in ((1, 0), (2, h + gap)):
+        for i in range(count):
+            y = top + pad + i * (mark + pad)
+            page[y : y + mark, pad : pad + mark] = 0
+    return page

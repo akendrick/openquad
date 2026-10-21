@@ -43,6 +43,9 @@ uncorrected target repeats its previous reading (worst cast 5.4), so Document-in
 measurements are repeatable across sheets. Steps 19–21 only reach L\* 26–29: plain-paper
 maximum density, a job for tone linearization.
 
+`canon-plain-v3.oqcal`: built from `m5-corrected.json` with `--shadow-damping 0.5` (half of
+each correction for steps 17–21). Not yet printed.
+
 ## Earlier open question (resolved above)
 
 The full-page scans read both sheets as nearly neutral and lift the deepest black from

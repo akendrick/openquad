@@ -23,3 +23,10 @@ versions follow [Semantic Versioning](https://semver.org/).
   correction (`greybalance`, `.oqcal` files) and `--calibration` on `target`, `composite` and `print`.
 - `colour`: sRGB transfer functions, luminance and CIE L\*a\*b\* (D65).
 - Pillow dependency for reading JPEG scans.
+- `target --kind comparison`: uncorrected and corrected targets on one page (marked with one and two
+  squares) so one scan compares them under identical scanner processing.
+- `measure --pair`: measures both targets of a comparison page, either way up.
+- `greybalance --damping` / `--shadow-damping`: apply only part of each correction (steps 17–21 for
+  the shadow option) so passes don't overshoot where the printer switches to pigment black.
+- Scanning: eSCL jobs are closed after download; Document is the default intent (Photo auto-crops).
+- Regression tests on real Canon MG3600 scans in `calibration-data/`.
