@@ -91,6 +91,26 @@ def save_grey(path: str | Path, image: GreyImage) -> None:
     )
 
 
+def save_rgb(
+    path: str | Path,
+    pixels: NDArray[np.uint16],
+    dpi: tuple[float, float] | None = None,
+    icc_profile: bytes | None = None,
+) -> None:
+    """Save a 16-bit RGB TIFF (zlib-compressed) with optional resolution and ICC profile."""
+    if pixels.dtype != np.uint16 or pixels.ndim != 3 or pixels.shape[-1] != 3:
+        raise ImageFormatError("pixels must be a (height, width, 3) uint16 array")
+    tifffile.imwrite(
+        path,
+        pixels,
+        photometric="rgb",
+        compression="zlib",
+        resolution=dpi,
+        resolutionunit="INCH" if dpi else None,
+        iccprofile=icc_profile,
+    )
+
+
 def save_channels(
     directory: str | Path,
     separation: NDArray[np.uint16],

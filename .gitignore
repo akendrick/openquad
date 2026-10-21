@@ -20,3 +20,6 @@ helper/build/
 # Print output from dry runs (golden files live in fixtures/)
 *.prn
 !fixtures/**/*.prn
+
+# Generated test prints
+test-prints/

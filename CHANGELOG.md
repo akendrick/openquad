@@ -13,3 +13,5 @@ versions follow [Semantic Versioning](https://semver.org/).
 - `imageio`: 8/16-bit greyscale TIFF load/save keeping DPI and ICC profile; per-ink previews.
 - `targets`: step-wedge generation.
 - Golden-file test of a known image + curve (`scripts/update_golden.py` regenerates fixtures).
+- `composite`: multi-layer colour toning (subtractive, linear-light mixing) with presets `neutral`, `black-red`, `red-only`, `warm-split`; `imageio.save_rgb` for 16-bit RGB TIFFs.
+- `scripts/make_composite_test.py`: composite-path test sheet (neutral and black + red wedges).
