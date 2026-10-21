@@ -9,6 +9,20 @@ inkjet.
 
 **Status:** Phase 0 (project foundation). Not usable yet.
 
+## Usage
+
+```bash
+openquad target -o wedge.tif                       # 21-step greyscale wedge, 300 dpi
+openquad presets                                   # list colour-layer presets
+openquad composite photo.tif -o toned.tif --preset black-red
+openquad printers                                  # CUPS printer names
+openquad print toned.tif --printer Canon_MG3600_series --dry-run
+openquad print photo.tif --printer Canon_MG3600_series --preset black-red
+```
+
+`print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
+`--ppi`, `--copies` and `--option NAME=VALUE` (driver options) to change that.
+
 ## Development
 
 ```bash

@@ -21,10 +21,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from openquad.composite import PRESETS, composite
-from openquad.imageio import save_rgb
+from openquad.imageio import save_rgb, srgb_profile
 from openquad.targets import step_wedge
 
-SRGB_PROFILE = Path("/System/Library/ColorSync/Profiles/sRGB Profile.icc")
 ROWS = (
     ("Neutral 21-step wedge", "neutral", "wedge"),
     ("Black + red 21-step wedge", "black-red", "wedge"),
@@ -60,7 +59,7 @@ def main(argv: list[str]) -> None:
     out_dir = Path(argv[1]) if len(argv) > 1 else Path("test-prints")
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "composite-test-sheet.tif"
-    icc = SRGB_PROFILE.read_bytes() if SRGB_PROFILE.exists() else None
+    icc = srgb_profile()
     save_rgb(path, build_sheet(), dpi=(300.0, 300.0), icc_profile=icc)
     print(f"wrote {path} ({WIDTH_IN} x {HEIGHT_IN} in, 300 dpi, sRGB profile: {bool(icc)})")
     for number, (label, _, _) in enumerate(ROWS, start=1):
