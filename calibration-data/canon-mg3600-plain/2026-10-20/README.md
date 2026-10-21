@@ -27,6 +27,22 @@ the L\* 19.4 of `scan1.jpg` came from Photo-intent processing, which also exagge
 blue (6.7 vs 5.4), so the first calibration over-corrects the light tones slightly warm
 (b\* +1.5 to +2.5). Document is now the default scan intent.
 
+## Pass with `canon-plain-v2.oqcal` (job 3149, Document intent)
+
+Files: `scan5-v2.jpg`, `m5-uncorrected.json`, `m5-corrected.json`.
+
+| | Uncorrected | v1 | v2 |
+| --- | --- | --- | --- |
+| Worst cast | 5.4 | 2.5 | 2.9 |
+| Mean \|b\*\| steps 2–17 | 2.88 | 1.32 | 0.45 |
+| Steps 19–20 | a\* +1.7, b\* +2.1 | b\* 0.0 / −2.4 | a\* +2.9, b\* +2.8 |
+
+v2 makes the light and mid-tones neutral (steps 7–18 within ±0.5) but overshoots near
+black, where the driver switches to pigment black: damped updates are needed there. The
+uncorrected target repeats its previous reading (worst cast 5.4), so Document-intent
+measurements are repeatable across sheets. Steps 19–21 only reach L\* 26–29: plain-paper
+maximum density, a job for tone linearization.
+
 ## Earlier open question (resolved above)
 
 The full-page scans read both sheets as nearly neutral and lift the deepest black from
