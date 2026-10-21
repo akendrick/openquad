@@ -43,6 +43,23 @@ uncorrected target repeats its previous reading (worst cast 5.4), so Document-in
 measurements are repeatable across sheets. Steps 19–21 only reach L\* 26–29: plain-paper
 maximum density, a job for tone linearization.
 
+`canon-plain-v3.oqcal`: built from `m5-corrected.json` with `--shadow-damping 0.5` (half of
+each correction for steps 17–21).
+
+## Pass with `canon-plain-v3.oqcal` (job 3150, Document intent)
+
+Files: `scan6-v3.jpg`, `m6-uncorrected.json`, `m6-corrected.json`.
+
+| | Worst cast | Mean \|a\*\|, \|b\*\| | Steps 1–18 | Steps 19–21 |
+| --- | --- | --- | --- | --- |
+| Uncorrected | 5.1 | 1.86 | blue-violet | b\* ≈ +2 |
+| v1 | 2.5 | 0.80 | slightly warm | neutral to cool |
+| v2 | 2.9 | 0.65 | neutral | a\* +2.9, b\* +2.8 |
+| v3 | 2.3 | 0.42 | within ±0.7 | b\* +1.4 to +2.3 |
+
+v3 is the working calibration (copied to `../canon-plain.oqcal`). The deepest three steps keep
+the warmth of the pigment black itself; RGB can't move it without lightening the black.
+
 ## Earlier open question (resolved above)
 
 The full-page scans read both sheets as nearly neutral and lift the deepest black from

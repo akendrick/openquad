@@ -113,6 +113,27 @@ def find_frame(
     return left, top, right, bottom
 
 
+def locate_frame(
+    scan: NDArray[np.float64], layout: FramedLayout | None = None
+) -> tuple[int, int, int, int]:
+    """Find the frame and check its shape matches the layout."""
+    layout = layout or FramedLayout()
+    expected = layout.width / layout.height
+    # Skip the scan's borders first (lid shadows); if the scanner cropped tight to
+    # the target, the frame sits in those borders, so try again without skipping.
+    for edge_ignore in (EDGE_IGNORE, 0.0):
+        left, top, right, bottom = find_frame(scan, edge_ignore)
+        found = (right - left) / max(bottom - top, 1)
+        if abs(found / expected - 1) <= 0.04:
+            break
+    else:
+        raise MeasureError(
+            f"frame shape {found:.2f}:1 doesn't match the target ({expected:.2f}:1); "
+            "check the whole target is on the scan and placed square"
+        )
+    return left, top, right, bottom
+
+
 def _median(
     scan: NDArray[np.float64], box: tuple[float, float, float, float]
 ) -> NDArray[np.float64]:
@@ -137,19 +158,7 @@ def measure_scan(
     when printing; by default each level was sent as R = G = B = level.
     """
     layout = layout or FramedLayout()
-    expected = layout.width / layout.height
-    # Skip the scan's borders first (lid shadows); if the scanner cropped tight to
-    # the target, the frame sits in those borders, so try again without skipping.
-    for edge_ignore in (EDGE_IGNORE, 0.0):
-        left, top, right, bottom = find_frame(scan, edge_ignore)
-        found = (right - left) / max(bottom - top, 1)
-        if abs(found / expected - 1) <= 0.04:
-            break
-    else:
-        raise MeasureError(
-            f"frame shape {found:.2f}:1 doesn't match the target ({expected:.2f}:1); "
-            "check the whole target is on the scan and placed square"
-        )
+    left, top, right, bottom = locate_frame(scan, layout)
     sx, sy = (right - left) / layout.width, (bottom - top) / layout.height
 
     def to_pixels(box: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
@@ -172,3 +181,67 @@ def measure_scan(
     return Measurement(
         levels=levels, sent=sent.astype(np.uint16), rgb=rgb, lab=linear_rgb_to_lab(rgb)
     )
+
+
+def count_marks(scan: NDArray[np.float64], frame: tuple[int, int, int, int]) -> int:
+    """Black squares beside a frame: 1 = uncorrected, 2 = corrected target.
+
+    Looks in strips just left and right of the frame, since full-page scans may
+    come back rotated 180 degrees.
+    """
+    left, top, right, bottom = frame
+    width = scan.shape[1]
+    reach = max(round((bottom - top) * 0.2), 4)
+    dark = scan.mean(axis=-1) < DARK
+    counts = []
+    for x0, x1 in (
+        (max(left - reach, 0), max(left - 2, 0)),
+        (right + 2, min(right + reach, width)),
+    ):
+        if x1 <= x0:
+            continue
+        rows = dark[top:bottom, x0:x1].any(axis=1).astype(int)
+        counts.append(int(np.count_nonzero(np.diff(np.r_[0, rows]) == 1)))
+    return max(counts, default=0)
+
+
+def split_pair(scan: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+    """Split a scan of a two-target page at the widest ink-free band between them.
+
+    A row counts as ink-free only with (almost) no dark pixels: the frame's side
+    lines run through the gap between a target's own two rows, but nothing runs
+    through the gap between the two targets.
+    """
+    height = scan.shape[0]
+    margin = round(height * EDGE_IGNORE)
+    dark = scan[margin : height - margin].mean(axis=-1) < DARK
+    rows = np.flatnonzero(dark.sum(axis=1) > 0.005 * scan.shape[1]) + margin
+    if len(rows) < 2:
+        raise MeasureError("no targets found in the scan")
+    gaps = np.diff(rows)
+    widest = int(np.argmax(gaps))
+    if gaps[widest] < 0.05 * height:
+        raise MeasureError("expected two targets one above the other; found one")
+    split = int(rows[widest] + rows[widest + 1]) // 2
+    return scan[:split], scan[split:]
+
+
+def measure_pair(
+    scan: NDArray[np.float64],
+    sent: NDArray[np.uint16],
+    layout: FramedLayout | None = None,
+) -> tuple[Measurement, Measurement]:
+    """Measure a comparison page: returns (uncorrected, corrected).
+
+    The targets are told apart by their marks (one square vs two), so the page
+    may be scanned either way up. `sent` is what the calibration sent for the
+    corrected target.
+    """
+    found: dict[int, Measurement] = {}
+    for part in split_pair(scan):
+        frame = locate_frame(part, layout)
+        marks = count_marks(part, frame)
+        if marks not in (1, 2) or marks in found:
+            raise MeasureError(f"couldn't identify a target by its marks (found {marks})")
+        found[marks] = measure_scan(part, layout, sent=sent if marks == 2 else None)
+    return found[1], found[2]
