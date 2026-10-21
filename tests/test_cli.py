@@ -144,3 +144,112 @@ def test_bad_option_format_is_a_usage_error() -> None:
 def test_no_command_prints_help(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([]) == 0
     assert "COMMAND" in capsys.readouterr().out
+
+
+# --- grey balance workflow -----------------------------------------------------------
+
+
+def test_grey_balance_workflow_end_to_end(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """target -> (simulated print + scan) -> measure -> greybalance -> corrected target."""
+    from PIL import Image
+
+    from openquad.greybalance import load_calibration
+    from tests.simulation import print_sheet, scan_sheet
+
+    target = tmp_path / "gb.tif"
+    assert main(["target", "--kind", "grey-balance", "-o", str(target), "--dpi", "150"]) == 0
+    sheet = tifffile.imread(target)
+    assert sheet.shape[-1] == 3
+
+    scan = tmp_path / "scan.jpg"
+    pixels = np.round(scan_sheet(print_sheet(sheet)) * 255).astype(np.uint8)
+    Image.fromarray(pixels).save(scan, quality=92)
+
+    measurement = tmp_path / "m.json"
+    assert main(["measure", str(scan), "-o", str(measurement)]) == 0
+    out = capsys.readouterr().out
+    assert "worst cast" in out
+    assert out.count("\n") > 21
+
+    cal = tmp_path / "canon.oqcal"
+    args = ["greybalance", str(measurement), "-o", str(cal), "--printer", "Canon"]
+    assert main([*args, "--paper", "plain", "--settings", "default"]) == 0
+    assert load_calibration(cal).printer == "Canon"
+
+    corrected = tmp_path / "gb2.tif"
+    argv = ["target", "--kind", "grey-balance", "-o", str(corrected), "--dpi", "150"]
+    assert main([*argv, "--calibration", str(cal)]) == 0
+    assert not np.array_equal(tifffile.imread(corrected), sheet)
+
+    rescan = tmp_path / "scan2.jpg"
+    pixels = np.round(scan_sheet(print_sheet(tifffile.imread(corrected))) * 255)
+    Image.fromarray(pixels.astype(np.uint8)).save(rescan, quality=92)
+    measurement2 = tmp_path / "m2.json"
+    assert main(["measure", str(rescan), "-o", str(measurement2), "--calibration", str(cal)]) == 0
+    from openquad.measure import Measurement
+
+    before = Measurement.from_json(measurement.read_text()).worst_cast()
+    after = Measurement.from_json(measurement2.read_text()).worst_cast()
+    assert after < 3 < before
+
+
+def test_composite_and_print_apply_a_calibration(tmp_path: Path) -> None:
+    from openquad.greybalance import Calibration, save_calibration
+
+    levels = np.array([0, 65535])
+    darker_blue = Calibration(levels=levels, curves=np.array([[0, 65535], [0, 65535], [0, 30000]]))
+    cal = tmp_path / "c.oqcal"
+    save_calibration(darker_blue, cal)
+
+    plain, calibrated = tmp_path / "plain.tif", tmp_path / "cal.tif"
+    source = grey_file(tmp_path)
+    assert main(["composite", str(source), "-o", str(plain), "--preset", "neutral"]) == 0
+    argv = ["composite", str(source), "-o", str(calibrated), "--preset", "neutral"]
+    assert main([*argv, "--calibration", str(cal)]) == 0
+    assert tifffile.imread(calibrated)[..., 2].sum() < tifffile.imread(plain)[..., 2].sum()
+
+    seen: list[np.ndarray] = []
+
+    class InspectingRunner(FakeRunner):
+        def __call__(self, command):  # type: ignore[no-untyped-def]
+            seen.append(tifffile.imread(command[-1]))
+            return super().__call__(command)
+
+    for path in (plain, source):  # an RGB file and a greyscale file
+        assert main(["print", str(path), "--printer", "P", "--calibration", str(cal)],
+                    InspectingRunner(JOB_REPLY)) == 0  # fmt: skip
+    assert all(image.shape[-1] == 3 for image in seen)
+    assert seen[0][..., 2].sum() < tifffile.imread(plain)[..., 2].sum()
+
+
+def test_print_calibration_rejects_odd_tiffs(tmp_path: Path) -> None:
+    from openquad.greybalance import Calibration, save_calibration
+
+    cal = tmp_path / "c.oqcal"
+    save_calibration(Calibration.identity(), cal)
+    odd = tmp_path / "odd.tif"
+    tifffile.imwrite(odd, np.zeros((4, 4, 4), dtype=np.uint16), photometric="rgb", extrasamples=[2])
+    assert main(["print", str(odd), "--printer", "P", "--calibration", str(cal)],
+                FakeRunner(JOB_REPLY)) == 1  # fmt: skip
+
+
+def test_scan_command_uses_escl(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from tests.test_escl import JPEG, FakeScanner
+
+    fake = FakeScanner()
+    out = tmp_path / "s.jpg"
+    assert (
+        main(["scan", "--host", "scanner.local", "-o", str(out), "--dpi", "600"], fetch=fake) == 0
+    )
+    assert out.read_bytes() == JPEG
+    assert b"<scan:XResolution>600" in (fake.calls[0][2] or b"")
+    assert "600 dpi" in capsys.readouterr().out
+
+
+def test_scan_errors_return_1(tmp_path: Path) -> None:
+    from tests.test_escl import FakeScanner
+
+    argv = ["scan", "--host", "s", "-o", str(tmp_path / "s.jpg")]
+    assert main(argv, fetch=FakeScanner(job_status=500)) == 1

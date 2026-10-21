@@ -22,25 +22,9 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
+from openquad.colour import linear_to_srgb, srgb_to_linear
 from openquad.curves import InkSpec, RampShape
 from openquad.quadfile import MAX_VALUE
-
-
-def srgb_to_linear(values: NDArray[np.float64]) -> NDArray[np.float64]:
-    """sRGB-encoded 0-1 values to linear light."""
-    result: NDArray[np.float64] = np.where(
-        values <= 0.04045, values / 12.92, ((values + 0.055) / 1.055) ** 2.4
-    )
-    return result
-
-
-def linear_to_srgb(values: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Linear light 0-1 values to sRGB encoding."""
-    clipped = np.clip(values, 0.0, 1.0)
-    result: NDArray[np.float64] = np.where(
-        clipped <= 0.0031308, clipped * 12.92, 1.055 * clipped ** (1 / 2.4) - 0.055
-    )
-    return result
 
 
 @dataclass(frozen=True)

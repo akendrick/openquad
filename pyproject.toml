@@ -7,6 +7,7 @@ license = "GPL-2.0-or-later"
 requires-python = ">=3.12"
 dependencies = [
     "numpy>=2.0",
+    "pillow>=10",
     "tifffile>=2024.1",
 ]
 
