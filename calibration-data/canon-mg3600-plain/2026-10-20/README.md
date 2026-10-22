@@ -60,6 +60,13 @@ Files: `scan6-v3.jpg`, `m6-uncorrected.json`, `m6-corrected.json`.
 v3 is the working calibration (copied to `../canon-plain.oqcal`). The deepest three steps keep
 the warmth of the pigment black itself; RGB can't move it without lightening the black.
 
+## Tone (from the v3 print, `m6-corrected.json`)
+
+Neutral but unevenly spaced: steps 3–8 print up to 3.8 L\* too light, steps 12–19 up to 6.6 L\*
+too dark (ink spread on plain paper), and steps 19–21 all reach only L\* 27. Worst tone error
+6.6 L\*. `canon-plain-v4-linear.oqcal` folds a tone curve into v3 (`openquad linearize`); it
+lifts the near-black steps (input 3277 now uses 7847). Not yet printed.
+
 ## Earlier open question (resolved above)
 
 The full-page scans read both sheets as nearly neutral and lift the deepest black from

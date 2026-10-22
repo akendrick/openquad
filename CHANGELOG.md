@@ -30,3 +30,6 @@ versions follow [Semantic Versioning](https://semver.org/).
   the shadow option) so passes don't overshoot where the printer switches to pigment black.
 - Scanning: eSCL jobs are closed after download; Document is the default intent (Photo auto-crops).
 - Regression tests on real Canon MG3600 scans in `calibration-data/`.
+- Tone linearization (`linearize` module, `openquad linearize`): measured vs target L\* report and a
+  tone curve folded into the calibration, targeting sRGB lightness scaled between paper black and
+  paper white (black-point compensation).
