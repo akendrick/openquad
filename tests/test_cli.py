@@ -311,3 +311,36 @@ def test_linearize_command(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
     assert len(load_calibration(out).levels) == 257
     wrong = ["linearize", str(REAL / "m6-corrected.json"), "--calibration"]
     assert main([*wrong, str(REAL / "canon-plain.oqcal"), "-o", str(out)]) == 1  # v1, not v3
+
+
+# --- black + red is opt-in -----------------------------------------------------------
+
+
+def test_composite_defaults_to_neutral(tmp_path: Path) -> None:
+    out = tmp_path / "default.tif"
+    assert main(["composite", str(grey_file(tmp_path)), "-o", str(out)]) == 0
+    rgb = tifffile.imread(out).astype(int)
+    assert np.array_equal(rgb[..., 0], rgb[..., 1])  # no colour toning
+    assert np.array_equal(rgb[..., 1], rgb[..., 2])
+
+
+def test_print_without_preset_sends_the_file_untoned(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = grey_file(tmp_path)
+    assert main(["print", str(source), "--printer", "P", "--dry-run"]) == 0
+    assert shlex.split(capsys.readouterr().out)[-1] == str(source)
+
+
+def test_black_red_only_when_asked(tmp_path: Path) -> None:
+    out = tmp_path / "red.tif"
+    argv = ["composite", str(grey_file(tmp_path)), "-o", str(out), "--preset", "black-red"]
+    assert main(argv) == 0
+    rgb = tifffile.imread(out).astype(int)
+    assert (rgb[..., 0] - rgb[..., 1]).max() > 1000  # red where asked
+
+
+def test_default_preset_constant() -> None:
+    from openquad.composite import DEFAULT_PRESET
+
+    assert DEFAULT_PRESET == "neutral"

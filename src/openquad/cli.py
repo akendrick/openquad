@@ -14,7 +14,7 @@ import tifffile
 from numpy.typing import NDArray
 
 from openquad import __version__
-from openquad.composite import PRESETS, composite
+from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.escl import INTENTS, Fetch, ScanError, ScanSettings, http_fetch, scan
 from openquad.greybalance import (
     Calibration,
@@ -63,7 +63,12 @@ def build_parser() -> argparse.ArgumentParser:
     comp = commands.add_parser("composite", help="tone a greyscale TIFF with colour layers")
     comp.add_argument("input", type=Path, help="16-bit (or 8-bit) greyscale TIFF")
     comp.add_argument("-o", "--output", type=Path, required=True, help="sRGB TIFF to write")
-    comp.add_argument("--preset", choices=sorted(PRESETS), default="black-red")
+    comp.add_argument(
+        "--preset",
+        choices=sorted(PRESETS),
+        default=DEFAULT_PRESET,
+        help=f"colour layers (default {DEFAULT_PRESET}: no toning)",
+    )
     comp.add_argument("--dpi", type=float, help="override the input's resolution")
     comp.add_argument("--calibration", type=Path, help="grey-balance calibration to apply")
 
@@ -75,7 +80,11 @@ def build_parser() -> argparse.ArgumentParser:
     prt.add_argument("--paper", default="Letter", help="page size (default Letter)")
     prt.add_argument("--copies", type=int, default=1)
     prt.add_argument("--ppi", type=float, help="print resolution; default: the file's own DPI")
-    prt.add_argument("--preset", choices=sorted(PRESETS), help="tone a greyscale input first")
+    prt.add_argument(
+        "--preset",
+        choices=sorted(PRESETS),
+        help="tone a greyscale input first (default: print the file as it is)",
+    )
     prt.add_argument("--calibration", type=Path, help="grey-balance calibration to apply")
     prt.add_argument("--title", help="job title shown in the print queue")
     prt.add_argument(

@@ -5,6 +5,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Colour toning is opt-in: `composite` now defaults to the `neutral` preset (was `black-red`);
+  `print` tones only with `--preset`.
+
 ### Added
 - Project foundation: package layout, CLI stub, smoke tests, ruff, mypy, pre-commit, CI on macOS and Ubuntu.
 - `quadfile`: read and write `.quad` curve files, round-trip safe, with line-numbered errors.
