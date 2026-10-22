@@ -344,3 +344,42 @@ def test_default_preset_constant() -> None:
     from openquad.composite import DEFAULT_PRESET
 
     assert DEFAULT_PRESET == "neutral"
+
+
+# --- any greyscale photo, fit to page ------------------------------------------------
+
+
+def rgba_grey_photo(tmp_path: Path) -> Path:
+    """Like the 22 Oct portrait: grey stored as RGBA, transparent band at the bottom."""
+    rgba = np.zeros((50, 30, 4), dtype=np.uint8)
+    rgba[:40, :, :3] = np.linspace(0, 255, 30).astype(np.uint8)[np.newaxis, :, np.newaxis]
+    rgba[:40, :, 3] = 255
+    path = tmp_path / "portrait.tif"
+    tifffile.imwrite(path, rgba, photometric="rgb", extrasamples=["assocalpha"],
+                     resolution=(72, 72), resolutionunit="INCH")  # fmt: skip
+    return path
+
+
+def test_composite_accepts_rgba_greyscale(tmp_path: Path) -> None:
+    out = tmp_path / "toned.tif"
+    assert main(["composite", str(rgba_grey_photo(tmp_path)), "-o", str(out)]) == 0
+    assert tifffile.imread(out).shape == (40, 30, 3)  # transparent band cropped
+
+
+def test_print_fit_scales_to_the_page(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    source = rgba_grey_photo(tmp_path)
+    argv = ["print", str(source), "--printer", "P", "--preset", "black-red", "--fit", "--dry-run"]
+    assert main(argv) == 0
+    command = shlex.split(capsys.readouterr().out)
+    assert "ppi=4" in command  # 40 px tall into 10 in of Letter -> 4 ppi
+    jpeg = tmp_path / "p.jpg"
+    from PIL import Image
+
+    Image.new("L", (850, 1100), 128).save(jpeg)
+    assert main(["print", str(jpeg), "--printer", "P", "--fit", "--dry-run"]) == 0
+    assert "ppi=113" in shlex.split(capsys.readouterr().out)  # width limits: 850 px / 7.5 in
+
+
+def test_fit_and_ppi_cannot_be_combined(tmp_path: Path) -> None:
+    with pytest.raises(SystemExit):
+        main(["print", "x.tif", "--printer", "P", "--fit", "--ppi", "300"])

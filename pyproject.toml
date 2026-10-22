@@ -13,6 +13,12 @@ dependencies = [
 
 [project.scripts]
 openquad = "openquad.cli:main"
+openquad-app = "openquad.ui.app:main"
+
+[project.optional-dependencies]
+ui = [
+    "pyside6>=6.8",
+]
 
 [dependency-groups]
 dev = [
@@ -22,6 +28,8 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "pre-commit>=3.7",
+    "pytest-qt>=4.4",
+    "pyside6>=6.8",
 ]
 
 [build-system]
@@ -41,6 +49,7 @@ target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "N", "SIM", "RUF"]
+allowed-confusables = ["×"]  # used on purpose in print sizes
 
 [tool.mypy]
 strict = true

@@ -9,6 +9,16 @@ inkjet.
 
 **Status:** Phase 0 (project foundation). Not usable yet.
 
+## Desktop app
+
+```bash
+uv sync --extra ui
+uv run openquad-app
+```
+
+Open a photo, pick toning (neutral unless you choose otherwise), calibration, printer and paper; the
+preview shows the toned result; Print asks for confirmation first.
+
 ## Usage
 
 ```bash

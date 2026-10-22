@@ -5,6 +5,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (Phase 5: desktop app)
+- `openquad-app` (install with the `ui` extra): print window to open a photo, choose toning (neutral by
+  default), calibration, printer, paper and fit-to-page, with a live preview rendered off the UI thread,
+  a confirmation before printing, and saving the print file. Remembers printer, paper and calibration,
+  never the toning.
+- `photo.load_photo`: any greyscale photo (8/16-bit, grey stored as RGB/RGBA, transparency placed on
+  paper white, transparent edges cropped; colour converted by luminance with a note).
+- `paper`: paper sizes and fit-to-page; `openquad print --fit`.
+- `session.PrintSession`: the app's Qt-free model; `settings`: remembered settings.
+
 ### Changed
 - Colour toning is opt-in: `composite` now defaults to the `neutral` preset (was `black-red`);
   `print` tones only with `--preset`.
