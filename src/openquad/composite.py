@@ -61,6 +61,8 @@ def _layer(
 
 
 BLACK = (0.0, 0.0, 0.0)
+# Colour toning is always an explicit choice; without one, prints stay neutral.
+DEFAULT_PRESET = "neutral"
 PRESETS: dict[str, tuple[ColourLayer, ...]] = {
     "neutral": (_layer("black", BLACK, shape="linear", limit=100.0, start=0.0, peak=1.0),),
     "black-red": (
