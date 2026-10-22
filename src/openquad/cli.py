@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 import tifffile
 from numpy.typing import NDArray
+from PIL import Image
 
 from openquad import __version__
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
@@ -23,9 +24,11 @@ from openquad.greybalance import (
     load_calibration,
     save_calibration,
 )
-from openquad.imageio import GreyImage, load_grey, read_dpi, save_grey, save_rgb, srgb_profile
+from openquad.imageio import GreyImage, read_dpi, save_grey, save_rgb, srgb_profile
 from openquad.linearize import linearize, tone_report
 from openquad.measure import Measurement, load_scan, measure_pair, measure_scan
+from openquad.paper import fit_ppi
+from openquad.photo import load_photo
 from openquad.printing import PrintError, PrintJob, Runner, list_printers, run_command, send
 from openquad.targets import framed_target, step_wedge, wedge_levels
 
@@ -79,7 +82,11 @@ def build_parser() -> argparse.ArgumentParser:
     prt.add_argument("--printer", required=True, help="CUPS printer name (see 'printers')")
     prt.add_argument("--paper", default="Letter", help="page size (default Letter)")
     prt.add_argument("--copies", type=int, default=1)
-    prt.add_argument("--ppi", type=float, help="print resolution; default: the file's own DPI")
+    size = prt.add_mutually_exclusive_group()
+    size.add_argument("--ppi", type=float, help="print resolution; default: the file's own DPI")
+    size.add_argument(
+        "--fit", action="store_true", help="scale to fit the paper with 0.5 in margins"
+    )
     prt.add_argument(
         "--preset",
         choices=sorted(PRESETS),
@@ -169,7 +176,7 @@ def _target(args: argparse.Namespace) -> None:
 def _composite_file(
     source: Path, output: Path, preset: str, dpi: float | None, calibration: Calibration | None
 ) -> None:
-    image = load_grey(source)
+    image = load_photo(source)
     resolution = (dpi, dpi) if dpi else image.dpi or (DEFAULT_DPI, DEFAULT_DPI)
     rgb = composite(image.pixels, PRESETS[preset])
     if calibration:
@@ -186,6 +193,16 @@ def _calibrate_file(source: Path, output: Path, calibration: Calibration) -> Non
     if pixels.dtype != np.uint16 or pixels.ndim != 3 or pixels.shape[-1] != 3:
         raise ValueError(f"{source}: expected an 8/16-bit greyscale or RGB TIFF")
     save_rgb(output, calibration.apply(pixels), read_dpi(source), srgb_profile())
+
+
+def _pixel_size(path: Path) -> tuple[int, int]:
+    """(width, height) in pixels, without decoding the image."""
+    if path.suffix.lower() in (".tif", ".tiff"):
+        with tifffile.TiffFile(path) as tif:
+            shape = tif.pages.first.shape
+        return (int(shape[1]), int(shape[0]))
+    with Image.open(path) as image:
+        return image.size
 
 
 def _composite(args: argparse.Namespace) -> None:
@@ -212,7 +229,10 @@ def _print(args: argparse.Namespace, runner: Runner) -> None:
         elif calibration:
             path = Path(scratch) / f"{args.input.stem}-calibrated.tif"
             _calibrate_file(args.input, path, calibration)
-        ppi = args.ppi or (read_dpi(path) or (DEFAULT_DPI, DEFAULT_DPI))[0]
+        if args.fit:
+            ppi = fit_ppi(*_pixel_size(path), args.paper)
+        else:
+            ppi = args.ppi or (read_dpi(path) or (DEFAULT_DPI, DEFAULT_DPI))[0]
         job = PrintJob(
             path=path,
             printer=args.printer,
