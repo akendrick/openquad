@@ -6,6 +6,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added (Phase 5: desktop app)
+- Calibration wizard ("Calibrate…" in the print window): print a comparison page, scan it over eSCL,
+  measure, see colour cast and tone per step on a chart, and improve grey balance or even out tone
+  until both goals are met; then use the result for printing. Every print and scan asks first. Runs
+  are kept with all files and a `run.json` log (`calibrate.CalibrationRun`, Qt-free).
+- Scanner discovery on the network (`escl.discover`, via dns-sd or avahi); the scanner is remembered.
 - `openquad-app` (install with the `ui` extra): print window to open a photo, choose toning (neutral by
   default), calibration, printer, paper and fit-to-page, with a live preview rendered off the UI thread,
   a confirmation before printing, and saving the print file. Remembers printer, paper and calibration,

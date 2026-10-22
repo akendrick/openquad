@@ -7,7 +7,11 @@ and prints through libgutenprint's raw ink mode. It can also layer colour tones 
 black + red duotone) to emulate printing from several stacked negatives on an ordinary colour
 inkjet.
 
-**Status:** Phase 0 (project foundation). Not usable yet.
+**Status (Oct 2026):** usable for colour-inkjet printing. Toning (neutral by default; black + red and
+other presets on request), scan-based grey balance and tone linearization work end to end on a Canon
+PIXMA MG3600, from the command line or the desktop app's print window. The raw-ink (QuadToneRIP-style)
+path needs a Gutenprint-supported printer and isn't built yet. Hardware results:
+[docs/hardware-tests.md](docs/hardware-tests.md).
 
 ## Desktop app
 
@@ -18,6 +22,10 @@ uv run openquad-app
 
 Open a photo, pick toning (neutral unless you choose otherwise), calibration, printer and paper; the
 preview shows the toned result; Print asks for confirmation first.
+
+**Calibrate…** opens the calibration wizard: print a comparison page, put it face down on the
+scanner, scan and measure, and follow the suggested step (improve grey balance, or even out tone)
+until both goals are met. Then **Use this calibration**.
 
 ## Usage
 
