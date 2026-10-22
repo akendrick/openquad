@@ -27,7 +27,14 @@ from openquad.greybalance import (
 from openquad.imageio import GreyImage, read_dpi, save_grey, save_rgb, srgb_profile
 from openquad.linearize import linearize, tone_report
 from openquad.measure import Measurement, load_scan, measure_pair, measure_scan
-from openquad.paper import fit_ppi
+from openquad.negative import (
+    DEFAULT_COLOUR,
+    NEGATIVE_COLOURS,
+    NegativeSettings,
+    make_negative,
+    negative_ppi,
+)
+from openquad.paper import DEFAULT_MARGIN, fit_ppi
 from openquad.photo import load_photo
 from openquad.printing import PrintError, PrintJob, Runner, list_printers, run_command, send
 from openquad.targets import framed_target, step_wedge, wedge_levels
@@ -76,6 +83,18 @@ def build_parser() -> argparse.ArgumentParser:
     comp.add_argument("--calibration", type=Path, help="grey-balance calibration to apply")
 
     commands.add_parser("presets", help="list the colour-layer presets")
+
+    neg = commands.add_parser("negative", help="make a digital negative for contact printing")
+    neg.add_argument("input", type=Path, help="greyscale photo (any bit depth; RGB/RGBA grey too)")
+    neg.add_argument("-o", "--output", type=Path, required=True, help="negative TIFF to write")
+    neg.add_argument("--colour", choices=sorted(NEGATIVE_COLOURS), default=DEFAULT_COLOUR,
+                     help="ink colour of the negative (default black)")  # fmt: skip
+    neg.add_argument("--mirror", action="store_true", help="flip left to right")
+    neg.add_argument("--safe-edge", type=float, default=0.25, help="opaque border, inches (0.25)")
+    neg.add_argument("--no-mark", action="store_true", help="leave the orientation F out")
+    size = neg.add_mutually_exclusive_group()
+    size.add_argument("--dpi", type=float, help="print resolution (default: the photo's own)")
+    size.add_argument("--fit", metavar="PAPER", help="size photo + safe edge to fit PAPER")
 
     prt = commands.add_parser("print", help="print a TIFF through the printer's normal driver")
     prt.add_argument("input", type=Path, help="TIFF to print")
@@ -203,6 +222,22 @@ def _pixel_size(path: Path) -> tuple[int, int]:
         return (int(shape[1]), int(shape[0]))
     with Image.open(path) as image:
         return image.size
+
+
+def _negative(args: argparse.Namespace) -> None:
+    photo = load_photo(args.input)
+    settings = NegativeSettings(
+        colour=args.colour, mirror=args.mirror, safe_edge=args.safe_edge, mark=not args.no_mark
+    )
+    if args.fit:
+        dpi = negative_ppi(*photo.size, args.fit, settings.safe_edge, DEFAULT_MARGIN)
+    else:
+        dpi = args.dpi or (photo.dpi[0] if photo.dpi else DEFAULT_DPI)
+    save_rgb(args.output, make_negative(photo.pixels, settings, dpi), (dpi, dpi), srgb_profile())
+    width, height = (n / dpi + 2 * settings.safe_edge for n in photo.size)
+    flip = ", mirrored" if settings.mirror else ""
+    size = f"{width:.2f} x {height:.2f} in at {dpi:.0f} dpi"
+    print(f"wrote {args.output} ({settings.colour}{flip}, {size})")
 
 
 def _composite(args: argparse.Namespace) -> None:
@@ -336,6 +371,8 @@ def main(
             _composite(args)
         elif args.command == "presets":
             _presets()
+        elif args.command == "negative":
+            _negative(args)
         elif args.command == "print":
             _print(args, runner)
         elif args.command == "printers":
