@@ -69,6 +69,22 @@ A calibration is only valid for the printer, paper and driver settings it was ma
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
 `--ppi`, `--copies` and `--option NAME=VALUE` (driver options) to change that.
 
+## Digital negatives (carbon printing)
+
+Print negatives on **inkjet-coated** transparency film (plain or laser film won't hold the ink):
+
+```bash
+openquad target --kind blocking -o blocking.tif      # 1. which ink colour blocks the UV?
+openquad print blocking.tif --printer Canon_MG3600_series
+#    expose it on carbon tissue at your usual time, make the print, scan it:
+openquad scan --host 876298000000.local -o carbon.jpg
+openquad blocking carbon.jpg                          #    -> which colours block, and their range
+openquad negative photo.tif -o neg.tif --colour green --fit Letter   # 2. a negative in that colour
+```
+
+The orientation **F** in the safe edge prints in the carbon print: if it reads backwards, flip
+`--mirror`. Process calibration (a ChartThrob-style chart read from the carbon print) comes next.
+
 ## Development
 
 ```bash

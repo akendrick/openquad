@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from openquad import __version__
+from openquad.blocking import analyse, blocking_sheet
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.escl import INTENTS, Fetch, ScanError, ScanSettings, http_fetch, scan
 from openquad.greybalance import (
@@ -58,10 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("-o", "--output", type=Path, required=True, help="TIFF to write")
     target.add_argument(
         "--kind",
-        choices=["wedge", "grey-balance", "comparison"],
+        choices=["wedge", "grey-balance", "comparison", "blocking"],
         default="wedge",
         help="wedge: greyscale step wedge; grey-balance: framed RGB target to scan; "
-        "comparison: uncorrected + corrected targets on one page (needs --calibration)",
+        "comparison: uncorrected + corrected targets on one page (needs --calibration); "
+        "blocking: digital-negative colour test sheet",
     )
     target.add_argument("--steps", type=int, default=21, help="wedge patches (default 21)")
     target.add_argument("--patch-width", type=int, default=100, help="wedge pixels (default 100)")
@@ -69,6 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--vertical", action="store_true", help="wedge: stack top to bottom")
     target.add_argument("--dpi", type=float, default=DEFAULT_DPI, help="resolution (default 300)")
     target.add_argument("--calibration", type=Path, help="grey-balance: apply this calibration")
+    target.add_argument("--mirror", action="store_true", help="blocking: mirror the sheet")
 
     comp = commands.add_parser("composite", help="tone a greyscale TIFF with colour layers")
     comp.add_argument("input", type=Path, help="16-bit (or 8-bit) greyscale TIFF")
@@ -83,6 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
     comp.add_argument("--calibration", type=Path, help="grey-balance calibration to apply")
 
     commands.add_parser("presets", help="list the colour-layer presets")
+
+    blk = commands.add_parser("blocking", help="read a scanned print of the blocking test")
+    blk.add_argument("scan", type=Path, help="scan of the exposed print (JPEG, PNG or TIFF)")
 
     neg = commands.add_parser("negative", help="make a digital negative for contact printing")
     neg.add_argument("input", type=Path, help="greyscale photo (any bit depth; RGB/RGBA grey too)")
@@ -171,6 +177,13 @@ def _calibration(path: Path | None) -> Calibration | None:
 
 def _target(args: argparse.Namespace) -> None:
     dpi = (args.dpi, args.dpi)
+    if args.kind == "blocking":
+        sheet = blocking_sheet(dpi=args.dpi, mirror=args.mirror)
+        save_rgb(args.output, sheet, dpi, srgb_profile())
+        width, height = sheet.shape[1] / args.dpi, sheet.shape[0] / args.dpi
+        print(f"wrote {args.output} (blocking test, {width:.2f} x {height:.2f} in): print it on")
+        print("film, expose it at your usual time, then scan the print: openquad blocking SCAN")
+        return
     if args.kind == "comparison":
         calibration = _calibration(args.calibration)
         if not calibration:
@@ -222,6 +235,13 @@ def _pixel_size(path: Path) -> tuple[int, int]:
         return (int(shape[1]), int(shape[0]))
     with Image.open(path) as image:
         return image.size
+
+
+def _blocking(args: argparse.Namespace) -> None:
+    report = analyse(load_scan(args.scan))
+    print(f"Read the print {report.orientation}.")
+    for line in report.lines():
+        print(line)
 
 
 def _negative(args: argparse.Namespace) -> None:
@@ -373,6 +393,8 @@ def main(
             _presets()
         elif args.command == "negative":
             _negative(args)
+        elif args.command == "blocking":
+            _blocking(args)
         elif args.command == "print":
             _print(args, runner)
         elif args.command == "printers":

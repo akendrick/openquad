@@ -5,6 +5,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (Phase 7: digital negatives for carbon printing)
+- `openquad negative`: a photo as a digital negative: inverted, black or a UV-blocking colour
+  (green, orange, yellow, red, olive), optional mirror, opaque safe edge (0.25 in) with an orientation
+  F that flips with the image; `--fit` sizes photo plus safe edge to the page.
+- Blocking-colour test: `openquad target --kind blocking` prints a sheet of candidate colours (full
+  patch + 11-step wedge each) to print on film and expose; `openquad blocking SCAN` reads the scanned
+  carbon print (any way up or mirrored) and reports which colours block fully, their tonal range and
+  usable steps, and the best one.
+
 ### Added (Phase 5: desktop app)
 - Calibration wizard ("Calibrate…" in the print window): print a comparison page, scan it over eSCL,
   measure, see colour cast and tone per step on a chart, and improve grey balance or even out tone
