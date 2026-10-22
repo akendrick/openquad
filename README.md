@@ -23,6 +23,10 @@ uv run openquad-app
 Open a photo, pick toning (neutral unless you choose otherwise), calibration, printer and paper; the
 preview shows the toned result; Print asks for confirmation first.
 
+**Calibrate…** opens the calibration wizard: print a comparison page, put it face down on the
+scanner, scan and measure, and follow the suggested step (improve grey balance, or even out tone)
+until both goals are met. Then **Use this calibration**.
+
 ## Usage
 
 ```bash

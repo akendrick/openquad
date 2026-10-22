@@ -32,10 +32,12 @@ from PySide6.QtWidgets import (
 )
 
 from openquad.composite import PRESETS
+from openquad.escl import Fetch, discover, http_fetch
 from openquad.paper import PAPER_SIZES
 from openquad.printing import PrintError, Runner, list_printers, run_command
 from openquad.session import PrintSession
-from openquad.settings import Settings
+from openquad.settings import Settings, data_dir
+from openquad.ui.calibration_dialog import CalibrationDialog
 
 PRESET_LABELS = {
     "neutral": "Neutral (no toning)",
@@ -76,6 +78,9 @@ class MainWindow(QMainWindow):
         settings_path: Path | None = None,
         printers: Callable[[], list[str]] = list_printers,
         runner: Runner = run_command,
+        fetch: Fetch = http_fetch,
+        find_scanners: Callable[[], list[tuple[str, str]]] = discover,
+        calibrations_folder: Path | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle("OpenQuad")
@@ -83,6 +88,9 @@ class MainWindow(QMainWindow):
         self.settings = settings or Settings.load(settings_path)
         self.settings_path = settings_path
         self.runner = runner
+        self.fetch, self.find_scanners = fetch, find_scanners
+        self.calibrations_folder = calibrations_folder or data_dir() / "calibrations"
+        self.calibration_dialog: CalibrationDialog | None = None
         self.pool = QThreadPool.globalInstance()
         self.signals = _Signals()
         self.signals.preview_ready.connect(self._show_preview)
@@ -123,10 +131,13 @@ class MainWindow(QMainWindow):
         self.calibration_button.clicked.connect(self.choose_calibration)
         self.clear_calibration_button = QPushButton("Clear")
         self.clear_calibration_button.clicked.connect(lambda: self.set_calibration(None))
+        self.calibrate_button = QPushButton("Calibrate…")
+        self.calibrate_button.clicked.connect(self.open_calibration)
         self.calibration_label.setWordWrap(True)
         calibration_row = QHBoxLayout()
         calibration_row.addWidget(self.calibration_button)
         calibration_row.addWidget(self.clear_calibration_button)
+        calibration_row.addWidget(self.calibrate_button)
 
         self.printer_box = QComboBox()
         try:
@@ -249,6 +260,40 @@ class MainWindow(QMainWindow):
             return
         self._remember()
         self._refresh()
+
+    def open_calibration(self, show: bool = True) -> CalibrationDialog:
+        printers = [
+            self.printer_box.itemData(i)
+            for i in range(self.printer_box.count())
+            if self.printer_box.itemData(i)
+        ]
+        dialog = CalibrationDialog(
+            self.calibrations_folder,
+            printers,
+            printer=self.session.printer,
+            paper=self.session.paper,
+            scanner_host=self.settings.scanner_host,
+            starting=self.session.calibration,
+            starting_name=self.session.calibration_path.name
+            if self.session.calibration_path
+            else None,
+            runner=self.runner,
+            fetch=self.fetch,
+            find_scanners=self.find_scanners,
+            parent=self,
+        )
+        dialog.calibration_chosen.connect(self._calibration_made)
+        self.calibration_dialog = dialog
+        if show:
+            dialog.open()
+        return dialog
+
+    def _calibration_made(self, path: str) -> None:
+        dialog = self.calibration_dialog
+        if dialog is not None and dialog.run is not None:
+            self.settings.scanner_host = dialog.run.scanner_host or self.settings.scanner_host
+        self.set_calibration(path)
+        self.statusBar().showMessage(f"Using calibration {Path(path).name}")
 
     def save_print_file(self) -> None:
         if self.session.photo is None:
