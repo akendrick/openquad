@@ -5,7 +5,8 @@ Linearization check. Same printer queue and settings as `../2026-10-20/`.
 | File | What it is |
 | --- | --- |
 | `scan7-v4.jpg`, `m7-*.json` | Comparison page with `canon-plain-v4-linear.oqcal` (job 3151), Document intent |
-| `canon-plain-v5-linear.oqcal` | Second linearization pass, built from `m7-corrected.json`; not yet printed |
+| `canon-plain-v5-linear.oqcal` | Second linearization pass, built from `m7-corrected.json` |
+| `scan8-v5.jpg`, `m8-*.json` | Comparison page with v5 (job 3152), Document intent |
 
 ## Result
 
@@ -20,3 +21,14 @@ Highlights and mid-tones are on target and the shadows now separate. Steps 15–
 light by 2.5–3.6 L\*, partly because this sheet's deepest black measured L\* 23.7 (27.0 on
 20 Oct), which lowers the shadow targets: print-to-print variation in the deep black is a few L\*.
 The uncorrected target read worst cast 5.5 (5.1–5.4 before), so measurements stay consistent.
+
+## v5 result: both Phase 3 goals met
+
+| | Worst tone error | Mean tone error | Worst / mean cast | Deepest black |
+| --- | --- | --- | --- | --- |
+| v3 | 6.6 L\* | 3.27 | 2.3 / 0.42 | 27.0 |
+| v4 | 3.6 L\* | 1.22 | 2.4 / 0.43 | 23.7 |
+| v5 | 1.4 L\* | 0.48 | 2.0 / 0.62 | 23.5 |
+
+Every step is within 1.4 L\* of its target (goal: 2) and every cast is under 2.0 (goal: 3).
+v5 is the working calibration (`../canon-plain.oqcal`).
