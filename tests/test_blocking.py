@@ -134,14 +134,15 @@ def test_a_colour_that_lets_uv_through_is_flagged(monkeypatch: pytest.MonkeyPatc
 def test_over_exposure_means_nothing_blocks() -> None:
     report = analyse(carbon_scan(blocking_sheet(dpi=DPI), exposure=40.0))
     assert report.best() is None
-    assert "No colour blocked fully" in report.lines()[-1]
+    assert report.edge_leaks
+    assert "Even the best-blocking ink let light through" in report.lines()[-1]
 
 
 def test_blank_and_cropped_scans_are_refused() -> None:
     with pytest.raises(BlockingError, match="no exposed area"):
         analyse(np.ones((200, 300, 3)))
     scan = carbon_scan(blocking_sheet(dpi=DPI))
-    with pytest.raises(BlockingError, match="shape doesn't match"):
+    with pytest.raises(BlockingError):  # half a sheet: refused, with a message
         analyse(scan[:, : scan.shape[1] // 2])
 
 
@@ -155,7 +156,7 @@ def test_missing_marker_is_reported() -> None:
 
 def test_tiny_scan_is_refused() -> None:
     sheet = blocking_sheet(dpi=8, safe_edge=0.0)
-    with pytest.raises(BlockingError, match="too small"):
+    with pytest.raises(BlockingError):
         analyse(scanned(contact_print(sheet)))
 
 
@@ -177,3 +178,85 @@ def test_blocking_commands(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
     Image.fromarray(np.full((50, 50, 3), 255, dtype=np.uint8)).save(blank)
     assert main(["blocking", str(blank)]) == 1
     assert load_scan(scan_path).shape[-1] == 3
+
+
+# --- lessons from the first real carbon print (23 Oct 2026) --------------------------
+
+
+def on_tissue(print_rgb: np.ndarray, drip: bool = True) -> np.ndarray:
+    """The print inside a larger exposed field of tissue, with tape strips and an ink drip.
+
+    Like the real print: the tissue extends past the negative and is exposed (dark)
+    there, tape covers parts of it (light), and a dark drip crosses the safe edge.
+    """
+    h, w = print_rgb.shape[:2]
+    dark = float(print_rgb.min())
+    field = np.full((h + 160, w + 160, 3), dark)
+    field[80 : 80 + h, 80 : 80 + w] = print_rgb
+    light = float(print_rgb.max())
+    field[20:60, 100 : w // 2] = light  # tape strip above the sheet
+    field[100 : h + 60, 30:60] = light  # tape strip at the side
+    if drip:
+        field[40:120, w // 3 : w // 3 + 3] = dark  # thin drip across the top safe edge
+    paper = float(linear_to_srgb(np.array(0.88)))
+    canvas = np.full((field.shape[0] + 60, field.shape[1] + 60, 3), paper)
+    canvas[30:-30, 30:-30] = field
+    return canvas
+
+
+def test_sheet_inside_a_larger_exposed_tissue_with_tape_and_a_drip() -> None:
+    sheet = blocking_sheet(dpi=DPI)
+    report = analyse(scanned(on_tissue(contact_print(sheet))))
+    plain = analyse(carbon_scan(sheet))
+    for a, b in zip(plain.results, report.results, strict=True):
+        assert abs(a.full - b.full) < 1.5
+        assert a.blocks_fully == b.blocks_fully
+
+
+def test_sideways_scan() -> None:
+    sheet = blocking_sheet(dpi=DPI)
+    sideways = np.ascontiguousarray(np.rot90(contact_print(sheet)))
+    report = analyse(scanned(sideways))
+    assert report.orientation == "sideways"
+    assert report.best() is not None
+    mirrored = analyse(scanned(np.ascontiguousarray(sideways[:, ::-1])))
+    assert mirrored.orientation == "sideways, mirrored"
+
+
+def test_black_that_leaks_more_than_colours() -> None:
+    """The real finding: on coated office film, coloured inks blocked more UV than black."""
+    report = analyse(carbon_scan_with(blocking_sheet(dpi=DPI), black_leak=0.05))
+    by_name = {r.name: r for r in report.results}
+    assert not by_name["black"].blocks_fully
+    assert any(r.blocks_fully for r in report.results)  # some colour beats black
+    assert report.white > by_name["black"].full + 3
+    assert report.safe_edge_leaks  # the black safe edge leaked too
+    assert not report.edge_leaks  # but the exposure itself was fine
+    lines = report.lines()
+    assert any("print safe edges in the best blocking colour" in line for line in lines)
+    assert lines[-1].startswith("Best:")
+    assert report.best() is not None and report.best().name != "black"  # type: ignore[union-attr]
+
+
+def carbon_scan_with(sheet: np.ndarray, **kwargs: float) -> np.ndarray:
+    return scanned(contact_print(sheet, **kwargs))
+
+
+def test_real_carbon_print_from_23_oct() -> None:
+    """The first real test: coated office film, Canon MG3600, carbon tissue, usual exposure."""
+    scan = Path(__file__).resolve().parents[1] / "calibration-data" / "carbon-ohp" / "2026-10-23"
+    report = analyse(load_scan(scan / "blocking-carbon-print-scan.jpg"))
+    by_name = {r.name: r for r in report.results}
+    assert report.orientation == "sideways"
+    assert not report.edge_leaks  # exposure was fine
+    assert report.safe_edge_leaks  # the black safe edge leaked
+    assert not by_name["black"].blocks_fully  # black blocks least
+    assert by_name["orange"].full == pytest.approx(94.0, abs=0.3)  # the strongest blocker
+    assert {r.name for r in report.results if r.blocks_fully} == {
+        "green",
+        "orange",
+        "yellow",
+        "olive",
+    }
+    best = report.best()
+    assert best is not None and best.name == "green" and best.usable_steps == 9

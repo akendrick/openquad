@@ -1,0 +1,11 @@
+Read the print sideways.
+colour    full L*  blocks  range  steps
+black        82.8      no   55.8    8/11
+green        92.4     yes   65.3    9/11
+orange       94.0     yes   64.7    9/11
+yellow       93.1     yes   64.5    8/11
+red          90.2      no   65.4    9/11
+olive        92.1     yes   67.9    7/11
+Process white (best blocker) L* 94.0; bare paper L* 98.8 (difference 4.8; tissue stain is normally a few L*)
+The black safe edge leaked (L* 87.9): print safe edges in the best blocking colour.
+Best: green (9 usable steps, 65.3 L*)

@@ -138,3 +138,9 @@ def test_negative_command_fit_and_dpi(tmp_path: Path) -> None:
     assert main([*argv, "--safe-edge", "0", "--no-mark"]) == 0
     assert tifffile.imread(out).shape == (30, 40, 3)
     assert main(["negative", str(photo(tmp_path)), "-o", str(out), "--fit", "Tabloid"]) == 1
+
+
+def test_safe_edge_is_printed_in_the_negative_colour() -> None:
+    neg = make_negative(RAMP, NegativeSettings(colour="green", safe_edge=0.5, mark=False), dpi=100)
+    edge = neg[:50].reshape(-1, 3) / 65535
+    assert np.abs(edge - np.array(NEGATIVE_COLOURS["green"])).max() < 0.01

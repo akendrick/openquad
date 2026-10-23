@@ -31,6 +31,8 @@ FULL_BLOCK_DELTA = 3.0  # within this many L* of paper white = blocks fully
 DISTINCT_STEP = 1.5  # wedge steps at least this far apart in L* count as usable
 MIN_STEP_PIXELS = 12  # a wedge patch must be at least this wide in the scan
 MARKER_CONTRAST = 10.0  # L* by which the marker must outshine the other candidate spots
+ERODE = 3  # px (on a ~500 px working copy) of shrinking before finding the sheet
+EDGE_LEAK = 10.0  # safe edge this much darker than bare paper = even opaque ink let light through
 
 
 class BlockingError(ValueError):
@@ -155,9 +157,24 @@ class ColourResult:
 class BlockingReport:
     results: tuple[ColourResult, ...]
     orientation: str  # how the scan was turned to read it
+    paper: float = 100.0  # L* of bare paper on the scan
+    edge: float = 100.0  # L* of the safe edge
+    white: float = 100.0  # L* of the best-blocked area: the process's own white
+
+    @property
+    def edge_leaks(self) -> bool:
+        """Even the best blocker printed well below paper white: the exposure was too long."""
+        return self.paper - self.white > EDGE_LEAK
+
+    @property
+    def safe_edge_leaks(self) -> bool:
+        """The (black) safe edge let noticeably more light through than the best blocker."""
+        return self.white - self.edge > FULL_BLOCK_DELTA
 
     def best(self) -> ColourResult | None:
         """The fully blocking colour with the most usable steps (longest range on ties)."""
+        if self.edge_leaks:
+            return None
         blocking = [r for r in self.results if r.blocks_fully]
         if not blocking:
             return None
@@ -170,8 +187,22 @@ class BlockingReport:
                 f"{r.name:<8} {r.full:8.1f} {'yes' if r.blocks_fully else 'no':>7} "
                 f"{r.tonal_range:6.1f} {r.usable_steps:>4}/{STEPS}"
             )
+        out.append(
+            f"Process white (best blocker) L* {self.white:.1f}; bare paper L* {self.paper:.1f} "
+            f"(difference {self.paper - self.white:.1f}; tissue stain is normally a few L*)"
+        )
+        if self.safe_edge_leaks and not self.edge_leaks:
+            out.append(
+                f"The black safe edge leaked (L* {self.edge:.1f}): print safe edges in the best "
+                "blocking colour."
+            )
         best = self.best()
-        if best:
+        if self.edge_leaks:
+            out.append(
+                "Even the best-blocking ink let light through: the exposure was too long for this "
+                "film and ink. Try a shorter exposure, then repeat the test."
+            )
+        elif best:
             out.append(
                 f"Best: {best.name} ({best.usable_steps} usable steps, {best.tonal_range:.1f} L*)"
             )
@@ -197,24 +228,105 @@ def _lightness(scan: NDArray[np.float64]) -> NDArray[np.float64]:
     return result
 
 
+def _dark_regions(dark: NDArray[np.bool_]) -> list[tuple[int, int, int, int, int, bool]]:
+    """Connected dark regions as (pixels, top, left, bottom, right, touches the border)."""
+    from collections import deque
+
+    height, width = dark.shape
+    seen = np.zeros_like(dark)
+    regions = []
+    for start in zip(*np.nonzero(dark), strict=True):
+        if seen[start]:
+            continue
+        seen[start] = True
+        queue = deque([start])
+        count, top, left, bottom, right = 0, start[0], start[1], start[0], start[1]
+        while queue:
+            y, x = queue.popleft()
+            count += 1
+            top, bottom, left, right = min(top, y), max(bottom, y), min(left, x), max(right, x)
+            for ny, nx in ((y - 1, x), (y + 1, x), (y, x - 1), (y, x + 1)):
+                if 0 <= ny < height and 0 <= nx < width and dark[ny, nx] and not seen[ny, nx]:
+                    seen[ny, nx] = True
+                    queue.append((ny, nx))
+        touches = top == 0 or left == 0 or bottom == height - 1 or right == width - 1
+        regions.append((count, top, left, bottom, right, touches))
+    return regions
+
+
+def _find_sheet(lightness: NDArray[np.float64], aspect: float = 0.0) -> tuple[int, int, int, int]:
+    """(top, left, bottom, right) of the sheet's exposed inner area.
+
+    That area is clear film, so it prints dark, and the light safe edge encloses it.
+    Of the dark regions that don't reach the scan's border, it is the one shaped like
+    the sheet (`aspect` = width / height, either way round); an exposed field of tissue
+    around the negative is a different shape.
+    """
+    light, deep = np.percentile(lightness, [98, 2])
+    if light - deep < 20:
+        raise BlockingError("no exposed area found; is this a scan of the exposed print?")
+    step = max(1, round(max(lightness.shape) / 500))
+    small = lightness[::step, ::step] < (light + deep) / 2
+    # Shrink the dark areas first, so thin dark lines (ink drips, scratches, tape gaps)
+    # crossing the safe edge don't join the sheet to the exposed tissue around it.
+    shrunk = _erode(small, ERODE)
+    inside = [r for r in _dark_regions(shrunk) if not r[5] and r[0] >= 0.01 * small.size]
+    if not inside:
+        raise BlockingError(
+            "couldn't find the sheet inside a light safe edge; is the whole sheet on the scan?"
+        )
+
+    def shape_error(region: tuple[int, int, int, int, int, bool]) -> float:
+        if not aspect:
+            return 0.0
+        _, top, left, bottom, right, _ = region
+        found = (right - left + 1) / (bottom - top + 1)
+        return min(abs(found / aspect - 1), abs(found * aspect - 1))
+
+    _, top, left, bottom, right, _ = min(inside, key=lambda r: (round(shape_error(r), 2), -r[0]))
+    top, left = max(top - ERODE, 0), max(left - ERODE, 0)
+    bottom, right = min(bottom + ERODE, small.shape[0] - 1), min(right + ERODE, small.shape[1] - 1)
+    return top * step, left * step, (bottom + 1) * step, (right + 1) * step
+
+
+def _erode(mask: NDArray[np.bool_], radius: int) -> NDArray[np.bool_]:
+    """Keep only pixels whose whole (2r+1)-square neighbourhood is set."""
+    out = mask.copy()
+    padded = np.pad(mask, radius, constant_values=False)
+    h, w = mask.shape
+    for dy in range(2 * radius + 1):
+        for dx in range(2 * radius + 1):
+            out &= padded[dy : dy + h, dx : dx + w]
+    return out
+
+
 def analyse(scan: NDArray[np.float64], layout: BlockingLayout | None = None) -> BlockingReport:
-    """Read a scanned print of the blocking sheet (encoded sRGB floats, (H, W, 3))."""
+    """Read a scanned print of the blocking sheet (encoded sRGB floats, (H, W, 3)).
+
+    The print may be turned any way (including 90 degrees) or mirrored, and the
+    tissue may extend past the negative. Patches are judged against the safe edge,
+    the most-blocked area, since the process's white (stained tissue) is often not
+    the paper's white.
+    """
     layout = layout or BlockingLayout()
     lightness = _lightness(scan)
-    paper = float(np.percentile(lightness, 99))
-    dark = lightness < paper - 20
-    if dark.sum() < 0.01 * dark.size:
-        raise BlockingError("no exposed area found; is this a scan of the exposed print?")
-    rows, cols = dark.sum(axis=1), dark.sum(axis=0)
-    top, bottom = (int(i) for i in np.flatnonzero(rows >= 0.3 * rows.max())[[0, -1]])
-    left, right = (int(i) for i in np.flatnonzero(cols >= 0.3 * cols.max())[[0, -1]])
-    area = scan[top : bottom + 1, left : right + 1]
-    ratio = (area.shape[1] / area.shape[0]) / (layout.width / layout.height)
+    expected_aspect = layout.width / layout.height
+    top, left, bottom, right = _find_sheet(lightness, expected_aspect)
+    area = scan[top:bottom, left:right]
+    expected = layout.width / layout.height
+    turned = ""
+    if abs((area.shape[0] / area.shape[1]) / expected - 1) < abs(
+        (area.shape[1] / area.shape[0]) / expected - 1
+    ):
+        area, turned = np.rot90(area), "turned 90°, "
+    ratio = (area.shape[1] / area.shape[0]) / expected
     if abs(ratio - 1) > 0.06:
         raise BlockingError(
             f"the exposed area's shape doesn't match the sheet ({ratio:.2f}x); "
             "check the whole sheet is on the scan and placed square"
         )
+    per_inch = max(area.shape) / layout.width
+    paper = _safe_edge_lightness(lightness, (top, left, bottom, right), per_inch)
 
     if layout.step_width * area.shape[1] / layout.width < MIN_STEP_PIXELS:
         raise BlockingError("the patches are too small to read; scan at a higher resolution")
@@ -241,16 +353,48 @@ def analyse(scan: NDArray[np.float64], layout: BlockingLayout | None = None) -> 
     if lightest - runner_up < MARKER_CONTRAST:
         raise BlockingError("couldn't find the marker square; is the sheet fully on the scan?")
     region = area[::row_step, ::col_step]
+    if turned:
+        orientation = "sideways, mirrored" if "mirrored" in orientation else "sideways"
+    fulls = [sample(region, layout.full_box(row)) for row in range(len(layout.colours))]
+    process_white = max([paper, *fulls])  # the best blocker: the process's own white
     results = tuple(
         ColourResult(
             name=name,
-            full=sample(region, layout.full_box(row)),
+            full=fulls[row],
             wedge=tuple(sample(region, layout.step_box(row, s)) for s in reversed(range(STEPS))),
-            paper=paper,
+            paper=process_white,
         )
         for row, name in enumerate(layout.colours)
     )
-    return BlockingReport(results=results, orientation=orientation)
+    paper_white = float(np.percentile(lightness, 99))
+    return BlockingReport(
+        results=results,
+        orientation=orientation,
+        paper=paper_white,
+        edge=paper,
+        white=process_white,
+    )
+
+
+def _safe_edge_lightness(
+    lightness: NDArray[np.float64], box: tuple[int, int, int, int], per_inch: float
+) -> float:
+    """Median L* of the safe edge: thin bands just outside the inner area on all sides."""
+    top, left, bottom, right = box
+    near, far = round(0.06 * per_inch), round(0.14 * per_inch)
+    h, w = lightness.shape
+    cy0, cy1 = top + (bottom - top) // 4, bottom - (bottom - top) // 4
+    cx0, cx1 = left + (right - left) // 4, right - (right - left) // 4
+    bands = [
+        lightness[max(top - far, 0) : max(top - near, 0), cx0:cx1],
+        lightness[min(bottom + near, h) : min(bottom + far, h), cx0:cx1],
+        lightness[cy0:cy1, max(left - far, 0) : max(left - near, 0)],
+        lightness[cy0:cy1, min(right + near, w) : min(right + far, w)],
+    ]
+    values = np.concatenate([b.ravel() for b in bands if b.size])
+    if values.size == 0:
+        raise BlockingError("no safe edge around the sheet on the scan")
+    return float(np.median(values))
 
 
 def colours_from(names: Sequence[str] | None) -> tuple[str, ...]:

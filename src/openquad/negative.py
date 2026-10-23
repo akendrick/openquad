@@ -98,7 +98,11 @@ def add_safe_edge(
     edge = round(settings.safe_edge * dpi)
     if edge > 0:
         h, w = image.shape[:2]
-        framed = np.zeros((h + 2 * edge, w + 2 * edge, 3), dtype=np.uint16)  # opaque: all inks
+        # The safe edge uses the negative's own colour: on coated office film, black
+        # blocked less UV than the coloured inks (first carbon test, 23 Oct 2026).
+        ink = ink_to_rgb(np.ones(1), NEGATIVE_COLOURS[settings.colour])[0]
+        framed = np.empty((h + 2 * edge, w + 2 * edge, 3), dtype=np.uint16)
+        framed[:] = ink
         framed[edge : edge + h, edge : edge + w] = image
         if settings.mark:
             cell = max(1, edge * 6 // 10 // F_GLYPH.shape[0])
