@@ -1,5 +1,6 @@
 """The calibration loop, end to end against a simulated printer and scanner."""
 
+import time
 from pathlib import Path
 
 import numpy as np
@@ -180,5 +181,7 @@ def test_run_for_handles_missing_and_endless_commands() -> None:
     from openquad.escl import run_for
 
     assert run_for(["openquad-no-such-tool"], 0.1) == ""
-    assert run_for(["sh", "-c", "echo hi; sleep 5"], 0.5).strip() == "hi"
+    started = time.monotonic()
+    assert run_for(["sh", "-c", "echo hi; sleep 30"], 2.0).strip() == "hi"
+    assert time.monotonic() - started < 10  # stopped at the time limit, child included
     assert run_for(["echo", "done"], 2).strip() == "done"

@@ -247,7 +247,8 @@ def test_real_carbon_print_from_23_oct() -> None:
     scan = Path(__file__).resolve().parents[1] / "calibration-data" / "carbon-ohp" / "2026-10-23"
     report = analyse(load_scan(scan / "blocking-carbon-print-scan.jpg"))
     by_name = {r.name: r for r in report.results}
-    assert report.orientation == "sideways"
+    assert report.orientation.startswith("sideways")  # laid sideways, slightly tilted
+    assert "mirrored" not in report.orientation
     assert not report.edge_leaks  # exposure was fine
     assert report.safe_edge_leaks  # the black safe edge leaked
     assert not by_name["black"].blocks_fully  # black blocks least
@@ -258,5 +259,44 @@ def test_real_carbon_print_from_23_oct() -> None:
         "yellow",
         "olive",
     }
+    best = report.best()  # green, orange and yellow tie at 9 usable steps
+    assert best is not None and best.name in {"green", "orange", "yellow"}
+    assert best.usable_steps == 9
+
+
+def test_tilted_scan_is_squared_up() -> None:
+    """Prints are rarely laid exactly square: the 24 Oct print was 3.3° off."""
+    sheet = blocking_sheet(dpi=DPI)
+    printed = on_tissue(contact_print(sheet), drip=False)
+    paper = float(printed.max())
+    tilted = (
+        np.asarray(
+            Image.fromarray(np.round(printed * 255).astype(np.uint8)).rotate(
+                3.0,
+                resample=Image.Resampling.BILINEAR,
+                expand=True,
+                fillcolor=(round(paper * 255),) * 3,
+            ),
+            dtype=np.float64,
+        )
+        / 255
+    )
+    report = analyse(scanned(tilted))
+    assert "tilted" in report.orientation
+    plain = analyse(carbon_scan(sheet))
+    for a, b in zip(plain.results, report.results, strict=True):
+        assert abs(a.full - b.full) < 2.0
+
+
+def test_real_carbon_print_from_24_oct() -> None:
+    """The repeat: negative mirrored, print laid 3.3° off, more reticulation, tissue fade."""
+    scan = Path(__file__).resolve().parents[1] / "calibration-data" / "carbon-ohp" / "2026-10-24"
+    report = analyse(load_scan(scan / "blocking-carbon-print-2-scan.jpg"))
+    by_name = {r.name: r for r in report.results}
+    assert report.orientation.startswith("sideways, mirrored, tilted +3.")
+    assert not report.edge_leaks
+    assert not by_name["black"].blocks_fully
+    assert {r.name for r in report.results if r.blocks_fully} == {"green", "orange", "olive"}
+    assert by_name["orange"].full == pytest.approx(92.7, abs=0.5)
     best = report.best()
-    assert best is not None and best.name == "green" and best.usable_steps == 9
+    assert best is not None and best.name == "green"
