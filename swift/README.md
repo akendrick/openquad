@@ -4,7 +4,10 @@ The native Mac app is being built here, module by module, against the Python
 implementation in `src/openquad`, which stays the reference.
 
 - `OpenQuadCore/`: Swift package with the core (colour maths, `.quad` files, curves,
-  separation, ...). Open `OpenQuadCore/Package.swift` in Xcode, or run
+  separation, colour layers, digital negatives, paper fitting, `.oqcal` calibrations and
+  `.oqproc` process curves; still to port: building calibrations from scans, chart
+  reading, eSCL scanning and printing).
+  Open `OpenQuadCore/Package.swift` in Xcode, or run
   `swift test --package-path swift/OpenQuadCore`.
 - **Parity:** `scripts/export_swift_vectors.py` writes test vectors (inputs and the
   Python outputs) to `OpenQuadCore/Tests/OpenQuadCoreTests/Vectors/`. Each Swift module

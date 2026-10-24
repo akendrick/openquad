@@ -56,9 +56,13 @@ def test_committed_vectors_match_the_python_core(tmp_path: Path) -> None:
 def test_main_writes_all_files(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
     EXPORT.main(["export_swift_vectors.py", str(tmp_path)])
     assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "calibration.json",
         "colour.json",
+        "composite.json",
         "curves.json",
+        "negative.json",
+        "paper.json",
         "quadfile.json",
         "separate.json",
     ]
-    assert capsys.readouterr().out.count("wrote") == 4
+    assert capsys.readouterr().out.count("wrote") == 8
