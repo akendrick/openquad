@@ -2,7 +2,17 @@
 
 Canon PIXMA MG3600 printing on inkjet-coated office overhead film (no surfactant yet: Tween 20 not
 arrived, so ink beads/reticulates), carbon tissue at the usual exposure. Printed from GIMP as is.
-Print dialog media setting: not recorded yet.
+Print dialog settings (both prints, printed from GIMP):
+
+| Setting | Value |
+| --- | --- |
+| Paper / media type | Fine glossy paper |
+| Quality | Extra detail |
+| Print pattern | Diffusion (error diffusion, not a halftone pattern) |
+| Resolution | 600 × 600 |
+
+Keep these identical for every negative and calibration on this film: a different media type
+changes how much ink goes down, which changes how much UV the negative blocks.
 
 | Date | File | What |
 | --- | --- | --- |
