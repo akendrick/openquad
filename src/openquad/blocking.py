@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from typing import Protocol
 
 import numpy as np
 from numpy.typing import NDArray
@@ -31,11 +32,27 @@ FULL_BLOCK_DELTA = 3.0  # within this many L* of paper white = blocks fully
 DISTINCT_STEP = 1.5  # wedge steps at least this far apart in L* count as usable
 MIN_STEP_PIXELS = 12  # a wedge patch must be at least this wide in the scan
 MARKER_CONTRAST = 10.0  # L* by which the marker must outshine the other candidate spots
+NEAR_SQUARE = 0.15  # sheets within this of square are tried in every orientation
 MAX_TILT = 6.0  # degrees of tilt on the scanner that are corrected
 MARKER_SLACK = 0.12  # inches the marker may sit off its nominal spot
 EDGE_REACH = 0.04  # fraction of the box size searched when pinning each edge
 ERODE = 3  # px (on a ~500 px working copy) of shrinking before finding the sheet
 EDGE_LEAK = 10.0  # safe edge this much darker than bare paper = even opaque ink let light through
+
+
+class SheetSpec(Protocol):
+    """What the print reader needs to know about a sheet (sizes in inches)."""
+
+    @property
+    def width(self) -> float: ...
+
+    @property
+    def height(self) -> float: ...
+
+    @property
+    def gap(self) -> float: ...
+
+    def marker_box(self) -> tuple[float, float, float, float]: ...
 
 
 class BlockingError(ValueError):
@@ -335,7 +352,7 @@ def _view(
     return view
 
 
-def _point(view: NDArray[np.float64], layout: BlockingLayout, x: float, y: float, r: int) -> float:
+def _point(view: NDArray[np.float64], layout: SheetSpec, x: float, y: float, r: int) -> float:
     """Median L* in a small square around a point given in sheet inches."""
     h, w = view.shape
     px, py = round(x / layout.width * w), round(y / layout.height * h)
@@ -374,7 +391,7 @@ def _light_points(layout: BlockingLayout) -> list[tuple[float, float]]:
     return points
 
 
-def _marker_lightness(view: NDArray[np.float64], layout: BlockingLayout) -> float:
+def _marker_lightness(view: NDArray[np.float64], layout: SheetSpec) -> float:
     """Median L* of the marker square, allowing it to sit up to MARKER_SLACK inches off
     its nominal spot (carbon tissue can stretch a little in processing)."""
     h, w = view.shape
@@ -396,7 +413,7 @@ def _marker_lightness(view: NDArray[np.float64], layout: BlockingLayout) -> floa
     return best
 
 
-def _marker_contrast(view: NDArray[np.float64], layout: BlockingLayout) -> float:
+def _marker_contrast(view: NDArray[np.float64], layout: SheetSpec) -> float:
     """Marker square L* minus the clear film around it (its label-column neighbourhood)."""
     h, w = view.shape
     l, t, r, b = layout.marker_box()  # noqa: E741
@@ -418,11 +435,12 @@ def _fit_score(
     lightness: NDArray[np.float64],
     box: tuple[int, int, int, int],
     fit: tuple[int, int, int],
-    layout: BlockingLayout,
+    layout: SheetSpec,
     dark: list[tuple[float, float]],
+    light: list[tuple[float, float]],
 ) -> float:
     """How well the layout fits: the inked spots and the marker should be light, the
-    clear-film spots dark. Returns (inked + marker) / 2 minus clear film, in L*."""
+    clear-film spots dark. Returns (inked - clear film) + (marker - clear film), in L*."""
     view = _view(lightness, box, fit)
     if view.shape[0] < 20 or view.shape[1] < 20:
         return -1e9
@@ -431,11 +449,8 @@ def _fit_score(
     # in the same corner of a wrongly turned sheet is mostly dark, so it can't pass for it.
     marker = _marker_lightness(view, layout)
     darks = float(np.mean([_point(view, layout, x, y, r) for x, y in dark]))
-    lights = float(np.mean([_point(view, layout, x, y, r) for x, y in _LIGHT_CACHE[id(layout)]]))
+    lights = float(np.mean([_point(view, layout, x, y, r) for x, y in light]))
     return (lights - darks) + (marker - darks)
-
-
-_LIGHT_CACHE: dict[int, list[tuple[float, float]]] = {}
 
 
 def _deskew(
@@ -513,22 +528,31 @@ def _refine_edges(
 
 
 def _fit_layout(
-    lightness: NDArray[np.float64], rough: tuple[int, int, int, int], layout: BlockingLayout
+    lightness: NDArray[np.float64],
+    rough: tuple[int, int, int, int],
+    layout: SheetSpec,
+    dark: list[tuple[float, float]] | None = None,
+    light: list[tuple[float, float]] | None = None,
 ) -> tuple[tuple[int, int, int, int], tuple[int, int, int], float]:
     """Pin the sheet's edges, then pick the orientation whose layout fits best there.
 
     The box is fixed before orientations are compared, so no orientation can drift
     to a position where its spots happen to land well.
     """
-    dark = _dark_points(layout)
-    _LIGHT_CACHE[id(layout)] = _light_points(layout)
+    if dark is None or light is None:
+        assert isinstance(layout, BlockingLayout)
+        dark, light = _dark_points(layout), _light_points(layout)
     box = _refine_edges(lightness, rough)
-    # The box's shape says whether the sheet lies sideways; only compare those layouts.
-    portrait = (box[2] - box[0]) > (box[3] - box[1])
-    sideways = portrait == (layout.width > layout.height)
-    candidates = [fit for fit in FITS if bool(fit[0]) == sideways]
+    # The box's shape says whether the sheet lies sideways; only compare those layouts
+    # (all eight when the sheet is nearly square and its shape can't tell).
+    candidates = list(FITS)
+    if abs(layout.width / layout.height - 1) > NEAR_SQUARE:
+        portrait = (box[2] - box[0]) > (box[3] - box[1])
+        sideways = portrait == (layout.width > layout.height)
+        candidates = [fit for fit in FITS if bool(fit[0]) == sideways]
     scored = sorted(
-        ((_fit_score(lightness, box, fit, layout, dark), fit) for fit in candidates), reverse=True
+        ((_fit_score(lightness, box, fit, layout, dark, light), fit) for fit in candidates),
+        reverse=True,
     )
     return box, scored[0][1], scored[0][0]
 

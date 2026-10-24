@@ -16,6 +16,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   ink drips allowed), any way up including sideways, and judges against the best-blocking area
   (the process's white), flagging a leaking safe edge or over-exposure.
 - Safe edges are printed in the negative's colour (black leaked more UV than colours on film).
+- Process calibration (Phase 7, step 3): `openquad target --kind chart` prints a ChartThrob-style chart
+  (101 patches in 1% steps, 21-step strip, gradient; after Kevin Bjorke's ChartThrob, chart design by
+  Thomas Howard) as a negative in the chosen colour; `openquad chart SCAN -o curve.oqproc` reads the
+  scanned contact print (any orientation, tilt, tissue field) and builds a process curve that puts
+  each tone at its target lightness; `--process` on `target --kind chart` (to check or refine) and on
+  `openquad negative` applies it.
 
 ### Added (Phase 5: desktop app)
 - Calibration wizard ("Calibrate…" in the print window): print a comparison page, scan it over eSCL,
