@@ -6,6 +6,8 @@ AirPrint queue, default quality, Letter plain paper) and its flatbed over eSCL.
 
 | Date | Job | What | Result |
 | --- | --- | --- | --- |
+| 2026-10-24 | (GIMP) | Repeat carbon print of the blocking test (negative mirrored) | Confirms black blocks least (80.5); green and orange block fully on both prints; yellow and red inconsistent (reticulation). Recommendation: green, orange as alternative |
+| 2026-10-23 | (GIMP) | Carbon print of the blocking-test negative on coated office film | Black blocks least (L\* 82.8); green best (9 steps, 65 L\*), orange strongest blocker (L\* 94.0); black safe edge leaked. See `calibration-data/carbon-ohp/` |
 | 2026-10-22 | 3153 | Portrait, black + red preset, v5 calibration, 7.4 × 10 in | Print matches the on-screen preview (by eye) |
 | 2026-10-22 | 3152 | Comparison page, v5 (second linearization) | Tone within 1.4 L\* (mean 0.48); worst cast 2.0. Phase 3 goals met |
 | 2026-10-22 | 3151 | Comparison page, v4 (first linearization) | Tone error 6.6 → 3.6 L\*; shadows separate |

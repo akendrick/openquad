@@ -5,6 +5,35 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added (Phase 7: digital negatives for carbon printing)
+- `openquad negative`: a photo as a digital negative: inverted, black or a UV-blocking colour
+  (green, orange, yellow, red, olive), optional mirror, opaque safe edge (0.25 in) with an orientation
+  F that flips with the image; `--fit` sizes photo plus safe edge to the page.
+- Blocking-colour test: `openquad target --kind blocking` prints a sheet of candidate colours (full
+  patch + 11-step wedge each) to print on film and expose; `openquad blocking SCAN` reads the scanned
+  carbon print (any way up or mirrored) and reports which colours block fully, their tonal range and
+  usable steps, and the best one. Finds the sheet inside a larger exposed tissue field (tape and
+  ink drips allowed), any way up including sideways, and judges against the best-blocking area
+  (the process's white), flagging a leaking safe edge or over-exposure.
+- Safe edges are printed in the negative's colour (black leaked more UV than colours on film).
+- Process calibration (Phase 7, step 3): `openquad target --kind chart` prints a ChartThrob-style chart
+  (101 patches in 1% steps, 21-step strip, gradient; after Kevin Bjorke's ChartThrob, chart design by
+  Thomas Howard) as a negative in the chosen colour; `openquad chart SCAN -o curve.oqproc` reads the
+  scanned contact print (any orientation, tilt, tissue field) and builds a process curve that puts
+  each tone at its target lightness; `--process` on `target --kind chart` (to check or refine) and on
+  `openquad negative` applies it.
+- App (Phase 7, step 4): a **Digital negative** output mode in the print window (ink colour, process
+  curve, mirror, safe edge; the preview shows the negative as on film; **Save negative** for printing
+  from GIMP), and a **process calibration wizard** (chart page per colour, print here or from GIMP,
+  scan here or read a scan file, measured-vs-target chart, refine, use a colour's curve). Runs are kept
+  with every file and a `run.json` log (`process_run.ProcessRun`, Qt-free).
+- App stability: background work runs on Python's thread pool and Python's garbage collector runs
+  only on the main thread (automatic collection on a worker thread freed Qt objects there and crashed
+  the app intermittently); window signal hubs are owned by their windows.
+- Several colours on one page: `--colour green,orange` stacks compact charts (identification squares
+  tell them apart); `openquad chart SCAN --colours green,orange -o x.oqproc` reads both and writes
+  one curve per colour.
+
 ### Added (Phase 5: desktop app)
 - Calibration wizard ("Calibrate…" in the print window): print a comparison page, scan it over eSCL,
   measure, see colour cast and tone per step on a chart, and improve grey balance or even out tone
