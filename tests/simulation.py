@@ -105,3 +105,30 @@ def contact_print(
     grey = linear_to_srgb(reflectance)
     result: NDArray[np.float64] = np.repeat(grey[..., np.newaxis], 3, axis=-1)
     return result
+
+
+class CarbonLab(SimulatedLab):
+    """Like SimulatedLab, but printing makes a negative that is contact printed in
+    (simulated) carbon, and the scanner returns that carbon print."""
+
+    def runner(self, command):  # type: ignore[no-untyped-def]
+        import subprocess
+
+        import tifffile
+
+        self.commands.append(list(command))
+        page = tifffile.imread(command[-1])
+        step = max(1, round(300 / self.scan_dpi))
+        self.sheet = contact_print(page[::step, ::step])
+        self.jobs += 1
+        return subprocess.CompletedProcess(
+            command, 0, f"request id is Sim-{self.jobs} (1 file(s))\n", ""
+        )
+
+    def contact_print_file(self, path: str) -> None:
+        """For pages 'printed from GIMP': make the carbon print from the saved file."""
+        import tifffile
+
+        page = tifffile.imread(path)
+        step = max(1, round(300 / self.scan_dpi))
+        self.sheet = contact_print(page[::step, ::step])
