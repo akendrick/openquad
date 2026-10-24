@@ -268,6 +268,103 @@ def calibration_vectors() -> dict[str, Any]:
     }
 
 
+def builds_vectors() -> dict[str, Any]:
+    """Building calibrations from measurements: grey balance, linearization, process curves."""
+    from openquad.chart import (
+        PATCHES,
+        ChartReading,
+        ProcessCurve,
+        build_process_curve,
+        patch_level,
+        tone_errors,
+    )
+    from openquad.greybalance import build_calibration, load_calibration
+    from openquad.linearize import linearize, srgb_lightness, target_lightness, tone_curve
+    from openquad.measure import Measurement
+
+    data = ROOT / "calibration-data" / "canon-mg3600-plain"
+    first, second = data / "2026-10-20", data / "2026-10-22"
+
+    def measurement(path: Path) -> tuple[str, Measurement]:
+        text = path.read_text(encoding="utf-8")
+        return text, Measurement.from_json(text)
+
+    grey = []
+    grey_cases: list[tuple[str, float, float | None]] = [
+        ("m1.json", 1.0, None),
+        ("m5-corrected.json", 1.0, 0.5),
+        ("m4-corrected.json", 0.7, None),
+    ]
+    for name, damping, shadow_damping in grey_cases:
+        text, m = measurement(first / name)
+        built = build_calibration(m, damping=damping, shadow_damping=shadow_damping)
+        grey.append(
+            {
+                "measurement": text,
+                "damping": damping,
+                "shadow_damping": shadow_damping,
+                "levels": _ints(built.levels),
+                "curves": _ints(built.curves),
+            }
+        )
+
+    linear = []
+    for calibration_path, measurement_path in (
+        (first / "canon-plain-v3.oqcal", first / "m6-corrected.json"),
+        (first / "canon-plain-v4-linear.oqcal", second / "m7-corrected.json"),
+    ):
+        text, m = measurement(measurement_path)
+        calibration = load_calibration(calibration_path)
+        result = linearize(calibration, m)
+        linear.append(
+            {
+                "calibration": calibration_path.read_text(encoding="utf-8"),
+                "measurement": text,
+                "tone_curve": _floats(tone_curve(m)),
+                "levels": _ints(result.levels),
+                "curves": _ints(result.curves),
+                "settings": result.settings,
+            }
+        )
+
+    # Process curves from simulated chart readings (no carbon print has been read yet).
+    rng = np.random.default_rng(11)
+    patch_levels = np.array([patch_level(n) for n in range(PATCHES)], dtype=np.uint16)
+    passes = []
+    previous: ProcessCurve | None = None
+    for exponent in (0.6, 0.9):
+        sent = (previous or ProcessCurve.identity()).apply(patch_levels).astype(np.float64)
+        lightness = 18.0 + 70.0 * (sent / 65535.0) ** exponent + rng.normal(0, 0.4, PATCHES)
+        reading = ChartReading(
+            levels=patch_levels,
+            lightness=lightness,
+            strip=np.linspace(18.0, 88.0, 21),
+            orientation="F",
+            paper=90.0,
+        )
+        curve = build_process_curve(reading, previous, film="office")
+        passes.append(
+            {
+                "lightness": _floats(lightness),
+                "tone_errors": _floats(tone_errors(reading)),
+                "levels": _ints(curve.levels),
+                "curve": _ints(curve.curve),
+            }
+        )
+        previous = curve
+
+    probe = np.linspace(0.0, 65535.0, 103)
+    return {
+        "probe": _floats(probe),
+        "srgb_lightness": _floats(srgb_lightness(probe)),
+        "target_lightness": _floats(target_lightness(probe, 92.5, 23.5)),
+        "grey_balance": grey,
+        "linearize": linear,
+        "patch_levels": _ints(patch_levels),
+        "process": passes,
+    }
+
+
 def export(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
@@ -280,6 +377,7 @@ def export(directory: Path) -> list[Path]:
         ("negative", negative_vectors()),
         ("paper", paper_vectors()),
         ("calibration", calibration_vectors()),
+        ("builds", builds_vectors()),
     ):
         path = directory / f"{name}.json"
         path.write_text(json.dumps(data, separators=(",", ":")) + "\n", encoding="utf-8")

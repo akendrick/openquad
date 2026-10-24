@@ -15,6 +15,11 @@ func lookupTable(levels: [UInt16], values: [UInt16]) -> [UInt16] {
     return (0..<lutSize).map { UInt16(rint(interp(Double($0), xp, fp))) }
 }
 
+/// The 257 evenly spaced levels that folded and process curves are sampled at.
+func fineGrid(_ points: Int = 257) -> [UInt16] {
+    linspace(0, Double(maxValue), points).map { UInt16(rint($0)) }
+}
+
 /// Per-channel printer correction: grey level in -> value to send, for R, G and B.
 public struct Calibration: Sendable {
     public var levels: [UInt16]
@@ -101,6 +106,23 @@ public struct ProcessCurve: Sendable {
     public var film = ""
     public var printing = ""
     public var created = ""
+
+    public init(levels: [UInt16], curve: [UInt16], colour: String = "green", process: String = "carbon",
+                film: String = "", printing: String = "", created: String = "") {
+        self.levels = levels
+        self.curve = curve
+        self.colour = colour
+        self.process = process
+        self.film = film
+        self.printing = printing
+        self.created = created
+    }
+
+    /// No correction: every level maps to itself, on the usual 257-point grid.
+    public static func identity(colour: String = "green") -> ProcessCurve {
+        let levels = fineGrid()
+        return ProcessCurve(levels: levels, curve: levels, colour: colour)
+    }
 
     struct File: Codable {
         var format: String

@@ -5,8 +5,9 @@ implementation in `src/openquad`, which stays the reference.
 
 - `OpenQuadCore/`: Swift package with the core (colour maths, `.quad` files, curves,
   separation, colour layers, digital negatives, paper fitting, `.oqcal` calibrations and
-  `.oqproc` process curves; still to port: building calibrations from scans, chart
-  reading, eSCL scanning and printing).
+  `.oqproc` process curves, building grey balance, linearization and process curves
+  from measurements; still to port: reading scans (wedges and charts),
+  eSCL scanning and printing).
   Open `OpenQuadCore/Package.swift` in Xcode, or run
   `swift test --package-path swift/OpenQuadCore`.
 - **Parity:** `scripts/export_swift_vectors.py` writes test vectors (inputs and the
