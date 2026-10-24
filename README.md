@@ -83,7 +83,17 @@ openquad negative photo.tif -o neg.tif --colour green --fit Letter   # 2. a nega
 ```
 
 The orientation **F** in the safe edge prints in the carbon print: if it reads backwards, flip
-`--mirror`. Process calibration (a ChartThrob-style chart read from the carbon print) comes next.
+`--mirror`.
+
+Then calibrate the process from a ChartThrob-style chart (after Kevin Bjorke's ChartThrob):
+
+```bash
+openquad target --kind chart --colour green -o chart.tif     # print on film, contact print, scan
+openquad chart carbon-chart.jpg -o carbon.oqproc               # build the process curve
+openquad target --kind chart --process carbon.oqproc -o chart2.tif   # check: print, scan, read
+openquad chart carbon-chart2.jpg --process carbon.oqproc -o carbon-v2.oqproc
+openquad negative photo.tif -o neg.tif --process carbon-v2.oqproc --fit Letter
+```
 
 ## Development
 
