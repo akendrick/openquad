@@ -1,0 +1,10 @@
+Read the print sideways, mirrored, tilted +3.3°.
+colour    full L*  blocks  range  steps
+black        80.5      no   56.2    9/11
+green        91.3     yes   56.2    8/11
+orange       92.7     yes   54.6    8/11
+yellow       85.9      no   50.4    6/11
+red          67.7      no   28.2    8/11
+olive        90.5     yes   42.6    7/11
+Process white (best blocker) L* 92.7; bare paper L* 97.5 (difference 4.8; tissue stain is normally a few L*)
+Best: green (8 usable steps, 56.2 L*)

@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
-from PySide6.QtCore import QObject, QRunnable, Qt, QThreadPool, QTimer, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QImage, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QCheckBox,
@@ -32,10 +32,15 @@ from PySide6.QtWidgets import (
 )
 
 from openquad.composite import PRESETS
+from openquad.escl import Fetch, discover, http_fetch
+from openquad.negative import NEGATIVE_COLOURS
 from openquad.paper import PAPER_SIZES
 from openquad.printing import PrintError, Runner, list_printers, run_command
 from openquad.session import PrintSession
-from openquad.settings import Settings
+from openquad.settings import Settings, data_dir
+from openquad.ui import background
+from openquad.ui.calibration_dialog import CalibrationDialog, _emit
+from openquad.ui.process_dialog import ProcessDialog
 
 PRESET_LABELS = {
     "neutral": "Neutral (no toning)",
@@ -50,15 +55,6 @@ class _Signals(QObject):
     preview_ready = Signal(int, QImage)
     printed = Signal(str)
     failed = Signal(str)
-
-
-class _Task(QRunnable):
-    def __init__(self, work: Callable[[], None]) -> None:
-        super().__init__()
-        self._work = work
-
-    def run(self) -> None:
-        self._work()
 
 
 def to_qimage(rgb: NDArray[np.uint8]) -> QImage:
@@ -76,6 +72,9 @@ class MainWindow(QMainWindow):
         settings_path: Path | None = None,
         printers: Callable[[], list[str]] = list_printers,
         runner: Runner = run_command,
+        fetch: Fetch = http_fetch,
+        find_scanners: Callable[[], list[tuple[str, str]]] = discover,
+        calibrations_folder: Path | None = None,
     ) -> None:
         super().__init__()
         self.setWindowTitle("OpenQuad")
@@ -83,8 +82,11 @@ class MainWindow(QMainWindow):
         self.settings = settings or Settings.load(settings_path)
         self.settings_path = settings_path
         self.runner = runner
-        self.pool = QThreadPool.globalInstance()
-        self.signals = _Signals()
+        self.fetch, self.find_scanners = fetch, find_scanners
+        self.calibrations_folder = calibrations_folder or data_dir() / "calibrations"
+        self.calibration_dialog: CalibrationDialog | None = None
+        self.process_dialog: ProcessDialog | None = None
+        self.signals = _Signals(self)  # deleted with this window: no late deliveries
         self.signals.preview_ready.connect(self._show_preview)
         self.signals.printed.connect(self._printed)
         self.signals.failed.connect(self._failed)
@@ -93,6 +95,7 @@ class MainWindow(QMainWindow):
         # Dialogs, replaceable in tests.
         self.ask_open_path: Callable[[], str | None] = self._ask_open_path
         self.ask_calibration_path: Callable[[], str | None] = self._ask_calibration_path
+        self.ask_process_path: Callable[[], str | None] = self._ask_process_path
         self.ask_save_path: Callable[[], str | None] = self._ask_save_path
         self.confirm: Callable[[str], bool] = self._confirm
         self.show_error: Callable[[str], None] = self._show_error
@@ -123,10 +126,13 @@ class MainWindow(QMainWindow):
         self.calibration_button.clicked.connect(self.choose_calibration)
         self.clear_calibration_button = QPushButton("Clear")
         self.clear_calibration_button.clicked.connect(lambda: self.set_calibration(None))
+        self.calibrate_button = QPushButton("Calibrate…")
+        self.calibrate_button.clicked.connect(self.open_calibration)
         self.calibration_label.setWordWrap(True)
         calibration_row = QHBoxLayout()
         calibration_row.addWidget(self.calibration_button)
         calibration_row.addWidget(self.clear_calibration_button)
+        calibration_row.addWidget(self.calibrate_button)
 
         self.printer_box = QComboBox()
         try:
@@ -154,6 +160,37 @@ class MainWindow(QMainWindow):
         self.ppi_box.setValue(300)
         self.ppi_box.valueChanged.connect(self._ppi_changed)
         self.size_label = QLabel("")
+        self.size_label.setWordWrap(True)
+
+        self.mode_box = QComboBox()
+        self.mode_box.addItem("Print on paper", "print")
+        self.mode_box.addItem("Digital negative", "negative")
+        self.mode_box.currentIndexChanged.connect(self._mode_changed)
+        self.negative_colour_box = QComboBox()
+        for name in NEGATIVE_COLOURS:
+            self.negative_colour_box.addItem(name, name)
+        self.negative_colour_box.setCurrentIndex(self.negative_colour_box.findData("green"))
+        self.negative_colour_box.currentIndexChanged.connect(self._negative_colour_changed)
+        self.process_label = QLabel("None (uncalibrated)")
+        self.process_label.setWordWrap(True)
+        self.process_button = QPushButton("Choose…")
+        self.process_button.clicked.connect(self.choose_process)
+        self.clear_process_button = QPushButton("Clear")
+        self.clear_process_button.clicked.connect(lambda: self.set_process(None))
+        self.calibrate_process_button = QPushButton("Calibrate…")
+        self.calibrate_process_button.clicked.connect(self.open_process_calibration)
+        process_row = QHBoxLayout()
+        process_row.addWidget(self.process_button)
+        process_row.addWidget(self.clear_process_button)
+        process_row.addWidget(self.calibrate_process_button)
+        self.mirror_box = QCheckBox("Mirror (flip left to right)")
+        self.mirror_box.toggled.connect(self._mirror_changed)
+        self.safe_edge_box = QDoubleSpinBox()
+        self.safe_edge_box.setRange(0.0, 1.0)
+        self.safe_edge_box.setSingleStep(0.05)
+        self.safe_edge_box.setSuffix(" in")
+        self.safe_edge_box.setValue(self.session.safe_edge)
+        self.safe_edge_box.valueChanged.connect(self._safe_edge_changed)
 
         self.save_button = QPushButton("Save print file…")
         self.save_button.clicked.connect(self.save_print_file)
@@ -162,11 +199,22 @@ class MainWindow(QMainWindow):
         self.print_button.clicked.connect(self.print_photo)
 
         form = QFormLayout()
+        self.form = form
         form.addRow(self.open_button)
         form.addRow(self.photo_info)
+        form.addRow("Output", self.mode_box)
+        first = form.rowCount()
         form.addRow("Toning", self.preset_box)
         form.addRow("Calibration", self.calibration_label)
         form.addRow("", calibration_row)
+        self._print_rows = list(range(first, form.rowCount()))
+        first = form.rowCount()
+        form.addRow("Ink colour", self.negative_colour_box)
+        form.addRow("Process curve", self.process_label)
+        form.addRow("", process_row)
+        form.addRow(self.mirror_box)
+        form.addRow("Safe edge", self.safe_edge_box)
+        self._negative_rows = list(range(first, form.rowCount()))
         form.addRow("Printer", self.printer_box)
         form.addRow("Paper", self.paper_box)
         form.addRow(self.fit_box)
@@ -207,6 +255,14 @@ class MainWindow(QMainWindow):
                 box.blockSignals(False)
         self.session.printer = self.printer_box.currentData()
         self.session.set_paper(self.paper_box.currentData())
+        process, colour = self.settings.process, self.settings.negative_colour
+        if colour in NEGATIVE_COLOURS:
+            self.session.negative_colour = colour
+        if process and Path(process).is_file():
+            try:
+                self.session.set_process(process)
+            except (OSError, ValueError):
+                self.session.set_process(None)
         if calibration and Path(calibration).is_file():
             try:
                 self.session.set_calibration(calibration)
@@ -218,6 +274,9 @@ class MainWindow(QMainWindow):
         self.settings.paper = self.session.paper
         path = self.session.calibration_path
         self.settings.calibration = str(path) if path else None
+        process = self.session.process_path
+        self.settings.process = str(process) if process else None
+        self.settings.negative_colour = self.session.negative_colour
         with contextlib.suppress(OSError):  # settings are a convenience; never block printing
             self.settings.save(self.settings_path)
 
@@ -250,6 +309,66 @@ class MainWindow(QMainWindow):
         self._remember()
         self._refresh()
 
+    def open_calibration(self, show: bool = True) -> CalibrationDialog:
+        printers = [
+            self.printer_box.itemData(i)
+            for i in range(self.printer_box.count())
+            if self.printer_box.itemData(i)
+        ]
+        dialog = CalibrationDialog(
+            self.calibrations_folder,
+            printers,
+            printer=self.session.printer,
+            paper=self.session.paper,
+            scanner_host=self.settings.scanner_host,
+            starting=self.session.calibration,
+            starting_name=self.session.calibration_path.name
+            if self.session.calibration_path
+            else None,
+            runner=self.runner,
+            fetch=self.fetch,
+            find_scanners=self.find_scanners,
+            parent=self,
+        )
+        dialog.calibration_chosen.connect(self._calibration_made)
+        self.calibration_dialog = dialog
+        if show:
+            dialog.open()
+        return dialog
+
+    def open_process_calibration(self, show: bool = True) -> ProcessDialog:
+        printers = [
+            self.printer_box.itemData(i)
+            for i in range(self.printer_box.count())
+            if self.printer_box.itemData(i)
+        ]
+        dialog = ProcessDialog(
+            self.calibrations_folder.parent / "processes",
+            printers,
+            printer=self.session.printer,
+            scanner_host=self.settings.scanner_host,
+            runner=self.runner,
+            fetch=self.fetch,
+            find_scanners=self.find_scanners,
+            parent=self,
+        )
+        dialog.process_chosen.connect(self._process_made)
+        self.process_dialog = dialog
+        if show:
+            dialog.open()
+        return dialog
+
+    def _process_made(self, path: str) -> None:
+        self.set_process(path)
+        self.statusBar().showMessage(f"Using process curve {Path(path).name}")
+
+    def _calibration_made(self, path: str) -> None:
+        dialog = self.calibration_dialog
+        if dialog is not None and dialog.run is not None:
+            self.settings.scanner_host = dialog.run.scanner_host or self.settings.scanner_host
+        self.set_calibration(path)
+        self.statusBar().showMessage(f"Using calibration {Path(path).name}")
+
     def save_print_file(self) -> None:
         if self.session.photo is None:
             return
@@ -281,13 +400,47 @@ class MainWindow(QMainWindow):
         def work() -> None:
             try:
                 with tempfile.TemporaryDirectory(prefix="openquad-") as scratch:
-                    signals.printed.emit(session.print(scratch, runner))
+                    _emit(signals.printed, session.print(scratch, runner))
             except (OSError, ValueError, PrintError) as exc:
-                signals.failed.emit(str(exc))
+                _emit(signals.failed, str(exc))
 
-        self.pool.start(_Task(work))
+        background.submit(work)
 
     # --- reacting to changes --------------------------------------------------------
+
+    def _mode_changed(self) -> None:
+        self.session.set_mode(self.mode_box.currentData())
+        self._refresh()
+
+    def _negative_colour_changed(self) -> None:
+        try:
+            self.session.set_negative_colour(self.negative_colour_box.currentData())
+        except ValueError as exc:
+            self.show_error(str(exc))
+        self._remember()
+        self._refresh()
+
+    def _mirror_changed(self, checked: bool) -> None:
+        self.session.mirror = checked
+        self._refresh()
+
+    def _safe_edge_changed(self, value: float) -> None:
+        self.session.safe_edge = value
+        self._refresh()
+
+    def choose_process(self) -> None:
+        path = self.ask_process_path()
+        if path:
+            self.set_process(path)
+
+    def set_process(self, path: str | None) -> None:
+        try:
+            self.session.set_process(path)
+        except (OSError, ValueError) as exc:
+            self.show_error(f"Couldn't load the process curve: {exc}")
+            return
+        self._remember()
+        self._refresh()
 
     def _preset_changed(self) -> None:
         self.session.set_preset(self.preset_box.currentData())
@@ -313,6 +466,20 @@ class MainWindow(QMainWindow):
     def _refresh(self) -> None:
         session = self.session
         has_photo = session.photo is not None
+        for row in self._print_rows:
+            self.form.setRowVisible(row, not session.negative)
+        for row in self._negative_rows:
+            self.form.setRowVisible(row, session.negative)
+        self.save_button.setText("Save negative…" if session.negative else "Save print file…")
+        process = session.process_path.name if session.process_path else "None (uncalibrated)"
+        self.process_label.setText(process)
+        self.process_label.setToolTip(str(session.process_path or ""))
+        self.negative_colour_box.blockSignals(True)
+        self.negative_colour_box.setCurrentIndex(
+            self.negative_colour_box.findData(session.negative_colour)
+        )
+        self.negative_colour_box.blockSignals(False)
+        self.negative_colour_box.setEnabled(session.process is None)  # the curve sets it
         name = session.calibration_path.name if session.calibration_path else "None"
         self.calibration_label.setText(name)
         self.calibration_label.setToolTip(str(session.calibration_path or ""))
@@ -324,6 +491,8 @@ class MainWindow(QMainWindow):
             return
         width, height = session.size_inches()
         text = f"{width:.2f} × {height:.2f} in at {session.effective_ppi():.0f} ppi"
+        if session.negative:
+            text += " (with safe edge)"
         fits = session.fits_on_paper()
         self.size_label.setText(text if fits else text + " (too big for the paper)")
         self.size_label.setStyleSheet("" if fits else "color: #b00020")
@@ -338,10 +507,10 @@ class MainWindow(QMainWindow):
         side = max(self.preview_label.width(), self.preview_label.height(), 420)
 
         def work() -> None:
-            signals.preview_ready.emit(token, to_qimage(session.preview(max_side=side)))
+            _emit(signals.preview_ready, token, to_qimage(session.preview(max_side=side)))
 
         self.statusBar().showMessage("Rendering preview…")
-        self.pool.start(_Task(work))
+        background.submit(work)
 
     # --- results from the thread pool ----------------------------------------------
 
@@ -364,7 +533,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
-        QTimer.singleShot(0, self._fit_pixmap)
+        self._fit_pixmap()  # directly: a deferred timer could outlive the window
 
     def _printed(self, job: str) -> None:
         self.print_button.setEnabled(True)
@@ -388,9 +557,17 @@ class MainWindow(QMainWindow):
         )
         return path or None
 
+    def _ask_process_path(self) -> str | None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Choose process curve", str(Path.home()), "Process curves (*.oqproc)"
+        )
+        return path or None
+
     def _ask_save_path(self) -> str | None:
         stem = self.session.source.stem if self.session.source else "print"
         suggested = f"{stem}-{self.session.preset}.tif"
+        if self.session.negative:
+            suggested = f"{stem}-negative-{self.session.negative_colour}.tif"
         path, _ = QFileDialog.getSaveFileName(self, "Save print file", suggested, "TIFF (*.tif)")
         return path or None
 
