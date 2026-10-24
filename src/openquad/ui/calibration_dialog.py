@@ -7,12 +7,13 @@ or the scanner asks first; dialogs are attributes so tests can replace them.
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
+from PySide6.QtCore import QObject, Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -33,26 +34,21 @@ from openquad.escl import Fetch, discover, http_fetch
 from openquad.greybalance import Calibration
 from openquad.paper import PAPER_SIZES
 from openquad.printing import Runner, run_command
+from openquad.ui import background
 from openquad.ui.charts import WedgeChart
 
 Discover = Callable[[], list[tuple[str, str]]]
 
 
+def _emit(signal: Any, *args: object) -> None:
+    """Emit from a background job; the window may have been closed meanwhile."""
+    with contextlib.suppress(RuntimeError):  # its signal hub was deleted with the window
+        signal.emit(*args)
+
+
 class _Signals(QObject):
     done = Signal(str, object)  # (step, result)
     failed = Signal(str, str)  # (step, message)
-
-
-class _Task(QRunnable):
-    def __init__(self, step: str, work: Callable[[], Any], signals: _Signals) -> None:
-        super().__init__()
-        self.step, self.work, self.signals = step, work, signals
-
-    def run(self) -> None:
-        try:
-            self.signals.done.emit(self.step, self.work())
-        except Exception as exc:  # report every failure in the dialog, never crash
-            self.signals.failed.emit(self.step, str(exc))
 
 
 class CalibrationDialog(QDialog):
@@ -82,8 +78,7 @@ class CalibrationDialog(QDialog):
             find_scanners,
         )
         self.run: CalibrationRun | None = None
-        self.pool = QThreadPool.globalInstance()
-        self.signals = _Signals()
+        self.signals = _Signals(self)  # deleted with this window: no late deliveries
         self.signals.done.connect(self._done)
         self.signals.failed.connect(self._failed)
         self.confirm: Callable[[str, str], bool] = self._confirm
@@ -211,11 +206,22 @@ class CalibrationDialog(QDialog):
 
     def _go(self, step: str, work: Callable[[], Any]) -> None:
         self._busy(True)
-        self.pool.start(_Task(step, work, self.signals))
+        signals = self.signals
+
+        def job() -> None:
+            try:
+                result = work()
+            except Exception as exc:  # report every failure in the dialog, never crash
+                _emit(signals.failed, step, str(exc))
+                return
+            _emit(signals.done, step, result)
+
+        background.submit(job)
 
     def search_scanners(self) -> None:
         self._say("Looking for scanners…")
-        self._go("find", self.find_scanners)
+        find = self.find_scanners  # background jobs hold no reference to this window
+        self._go("find", lambda: find())
 
     def start(self) -> None:
         printer = self.printer_box.currentData()
@@ -251,7 +257,8 @@ class CalibrationDialog(QDialog):
         if not self.confirm("Print?", question):
             return
         self._say(f"Printing round {run.current.version}…")
-        self._go("print", lambda: run.print_page(self.runner))
+        runner = self.runner  # background jobs hold no reference to this window
+        self._go("print", lambda: run.print_page(runner))
 
     def scan_and_measure(self) -> None:
         run = self.run
@@ -266,8 +273,10 @@ class CalibrationDialog(QDialog):
             return
         self._say("Scanning and measuring…")
 
+        fetch = self.fetch  # background jobs hold no reference to this window
+
         def work() -> object:
-            run.scan_page(self.fetch)
+            run.scan_page(fetch)
             return run.measure()
 
         self._go("measure", work)

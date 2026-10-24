@@ -10,8 +10,10 @@ from PySide6.QtGui import QColor, QPainter, QPaintEvent, QPen
 from PySide6.QtWidgets import QWidget
 
 from openquad.calibrate import CAST_GOAL, TONE_GOAL
+from openquad.chart import ChartReading, tone_errors
 from openquad.linearize import tone_report
 from openquad.measure import Measurement
+from openquad.process_run import TONE_GOAL as PROCESS_GOAL
 
 A_COLOUR = QColor("#c2185b")  # a*: green-red axis
 B_COLOUR = QColor("#1565c0")  # b*: blue-yellow axis
@@ -120,3 +122,74 @@ class WedgeChart(QWidget):
         painter.setPen(QPen(colour, 2))
         for a, b in itertools.pairwise(points):
             painter.drawLine(a, b)
+
+
+class ToneChart(QWidget):
+    """Measured L* of the 101 chart patches against their targets, one line per colour,
+    with the ±3 L* goal band around the target."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setMinimumSize(420, 220)
+        self.readings: dict[str, ChartReading] = {}
+
+    def set_readings(self, readings: dict[str, ChartReading]) -> None:
+        self.readings = readings
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:  # noqa: N802 (Qt override)
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.fillRect(self.rect(), self.palette().base())
+        if not self.readings:
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No chart read yet")
+            return
+        area = QRectF(44, 10, self.width() - 54, self.height() - 40)
+        painter.setPen(QPen(self.palette().mid().color(), 1))
+        painter.drawRect(area)
+
+        def x(n: int) -> float:
+            return area.left() + n / 100 * area.width()
+
+        def y(lightness: float) -> float:
+            return area.bottom() - max(0.0, min(100.0, lightness)) / 100 * area.height()
+
+        first = next(iter(self.readings.values()))
+        target = first.lightness - tone_errors(first)
+        band = [QPointF(x(n), y(v + PROCESS_GOAL)) for n, v in enumerate(target)]
+        band += [QPointF(x(n), y(v - PROCESS_GOAL)) for n, v in reversed(list(enumerate(target)))]
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(GOAL_FILL)
+        painter.drawPolygon(band)
+        painter.setPen(QPen(self.palette().text().color(), 1, Qt.PenStyle.DashLine))
+        for a, b in itertools.pairwise(enumerate(target)):
+            painter.drawLine(QPointF(x(a[0]), y(a[1])), QPointF(x(b[0]), y(b[1])))
+        for k, (colour, reading) in enumerate(self.readings.items()):
+            pen = QColor(LINE_COLOURS.get(colour, "#455a64"))
+            points = [QPointF(x(n), y(v)) for n, v in enumerate(reading.lightness)]
+            self._line(painter, pen, points)
+            painter.setPen(pen)
+            painter.drawText(QRectF(area.left() + 8, area.top() + 4 + 16 * k, 200, 16),
+                             Qt.AlignmentFlag.AlignLeft, colour)  # fmt: skip
+        painter.setPen(self.palette().text().color())
+        painter.drawText(QRectF(0, area.top(), 40, 16), Qt.AlignmentFlag.AlignRight, "L* 100")
+        painter.drawText(QRectF(0, area.bottom() - 16, 40, 16), Qt.AlignmentFlag.AlignRight, "0")
+        painter.drawText(QRectF(area.left(), area.bottom() + 4, area.width(), 16),
+                         Qt.AlignmentFlag.AlignCenter,
+                         "patch 0 (print white) … 100 (print black); dashed: target")  # fmt: skip
+
+    @staticmethod
+    def _line(painter: QPainter, colour: QColor, points: list[QPointF]) -> None:
+        painter.setPen(QPen(colour, 2))
+        for a, b in itertools.pairwise(points):
+            painter.drawLine(a, b)
+
+
+LINE_COLOURS = {
+    "black": "#212121",
+    "green": "#2e7d32",
+    "orange": "#ef6c00",
+    "yellow": "#f9a825",
+    "red": "#c62828",
+    "olive": "#827717",
+}
