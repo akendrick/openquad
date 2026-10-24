@@ -151,12 +151,18 @@ public struct ChartReading: Sendable {
     public var levels: [UInt16]
     public var lightness: [Double]
     public var strip: [Double]
+    /// How the print lay on the scanner.
+    public var orientation: String
+    /// L* of the safe edge (what the process gives where the negative blocks fully).
+    public var paper: Double
 
-    public init(levels: [UInt16], lightness: [Double], strip: [Double] = []) {
+    public init(levels: [UInt16], lightness: [Double], strip: [Double] = [], orientation: String = "", paper: Double = 100) {
         precondition(levels.count == lightness.count, "one lightness per patch")
         self.levels = levels
         self.lightness = lightness
         self.strip = strip
+        self.orientation = orientation
+        self.paper = paper
     }
 
     public var black: Double { lightness.min()! }
