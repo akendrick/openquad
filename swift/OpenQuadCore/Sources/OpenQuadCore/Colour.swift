@@ -31,13 +31,27 @@ public enum Colour {
 
     /// Linear sRGB to CIE L*a*b* (D65 white).
     public static func linearRGBToLab(_ r: Double, _ g: Double, _ b: Double) -> (l: Double, a: Double, b: Double) {
-        let delta = 6.0 / 29.0
         func f(_ row: Int) -> Double {
             let m = rgbToXYZ[row]
             let t = (r * m[0] + g * m[1] + b * m[2]) / d65White[row]
-            return t > delta * delta * delta ? cbrt(t) : t / (3 * delta * delta) + 4.0 / 29.0
+            return labF(t)
         }
         let fx = f(0), fy = f(1), fz = f(2)
         return (116.0 * fy - 16.0, 500.0 * (fx - fy), 200.0 * (fy - fz))
+    }
+
+    // Constants computed as Python does (delta**3 and 3 * delta**2 call pow).
+    static let labDelta = 6.0 / 29.0
+    static let labCube = pow(labDelta, 3)
+    static let labSlope = 3 * pow(labDelta, 2)
+
+    static func labF(_ t: Double) -> Double {
+        t > labCube ? cbrt(t) : t / labSlope + 4.0 / 29.0
+    }
+
+    /// L* alone (the first value of linearRGBToLab), for whole scans.
+    public static func lightness(_ r: Double, _ g: Double, _ b: Double) -> Double {
+        let m = rgbToXYZ[1]
+        return 116.0 * labF((r * m[0] + g * m[1] + b * m[2]) / d65White[1]) - 16.0
     }
 }

@@ -365,6 +365,223 @@ def builds_vectors() -> dict[str, Any]:
     }
 
 
+# Real wedge scans, reduced (box filter) so the vectors stay small, as lossless PNGs.
+WEDGE_SCANS = (
+    ("wedge-single.png", "2026-10-20/scan1.jpg", 2, None),
+    ("wedge-pair-v1.png", "2026-10-20/scan4-document.jpg", 4, "2026-10-20/canon-plain.oqcal"),
+    ("wedge-pair-v5.png", "2026-10-22/scan8-v5.jpg", 4, "canon-plain.oqcal"),
+)
+
+
+def _measurement(m: Any) -> dict[str, Any]:
+    return {
+        "levels": _ints(m.levels),
+        "sent": _ints(m.sent),
+        "rgb": _floats(m.rgb),
+        "lab": _floats(m.lab),
+    }
+
+
+def measure_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
+    """Reading wedge scans: frames, marks, splitting a comparison page, measurements."""
+    import hashlib
+
+    from PIL import Image
+
+    from openquad.greybalance import load_calibration
+    from openquad.measure import (
+        count_marks,
+        load_scan,
+        locate_frame,
+        measure_pair,
+        measure_scan,
+        split_pair,
+    )
+    from openquad.targets import wedge_levels
+
+    data = ROOT / "calibration-data" / "canon-mg3600-plain"
+    scans, written = [], []
+    for name, source, factor, calibration in WEDGE_SCANS:
+        path = directory / name
+        with Image.open(data / source) as image:
+            image.convert("RGB").reduce(factor).save(path)
+        written.append(path)
+        scan = load_scan(path)
+        entry: dict[str, Any] = {
+            "file": name,
+            "shape": list(scan.shape),
+            "sha256": hashlib.sha256(np.asarray(Image.open(path)).tobytes()).hexdigest(),
+        }
+        if calibration is None:
+            entry["frame"] = list(locate_frame(scan))
+            entry["marks"] = count_marks(scan, locate_frame(scan))
+            entry["measurement"] = _measurement(measure_scan(scan))
+        else:
+            sent = load_calibration(data / calibration).sent_for(wedge_levels(21))
+            top, bottom = split_pair(scan)
+            entry["split"] = top.shape[0]
+            entry["frames"] = [list(locate_frame(part)) for part in (top, bottom)]
+            entry["marks"] = [count_marks(part, locate_frame(part)) for part in (top, bottom)]
+            entry["sent"] = _ints(sent)
+            plain, corrected = measure_pair(scan, sent)
+            entry["uncorrected"] = _measurement(plain)
+            entry["corrected"] = _measurement(corrected)
+        scans.append(entry)
+    return {"wedge_levels": _ints(wedge_levels(21)), "scans": scans}, written
+
+
+# Real carbon prints of the blocking sheet (tilted, sideways, mirrored), reduced.
+BLOCKING_SCANS = (
+    ("blocking-print-1.png", "2026-10-23/blocking-carbon-print-scan.jpg"),
+    ("blocking-print-2.png", "2026-10-24/blocking-carbon-print-2-scan.jpg"),
+)
+CHART_SCANS = ("chart-mirrored.png", "chart-sideways-tissue.png", "chart-tilted.png")
+PAGE_SCAN = "chart-page.png"
+
+
+def _simulated_charts(directory: Path) -> list[Path]:
+    """Simulated carbon prints of the chart (no real one exists yet), as 8-bit PNGs."""
+    from PIL import Image
+
+    sys.path.insert(0, str(ROOT))
+    from openquad.chart import ProcessCurve, chart_negative, chart_page
+    from tests.simulation import contact_print
+    from tests.test_blocking import on_tissue, scanned
+
+    printed = contact_print(chart_negative("green", dpi=100))
+    sideways = np.ascontiguousarray(np.rot90(on_tissue(printed)))
+    tilted = (
+        np.asarray(
+            Image.fromarray(np.rint(printed * 255).astype(np.uint8)).rotate(
+                -2.6, resample=Image.Resampling.BILINEAR, expand=True, fillcolor=(30, 30, 30)
+            ),
+            dtype=np.float64,
+        )
+        / 255.0
+    )
+    darker = ProcessCurve(
+        np.array([0, 65535], dtype=np.uint16), np.array([0, 32768], dtype=np.uint16), "orange"
+    )
+    page = contact_print(chart_page(["green", "orange"], [None, darker], dpi=100))
+    scans = (
+        (CHART_SCANS[0], scanned(printed, "mirrored")),
+        (CHART_SCANS[1], scanned(sideways)),
+        (CHART_SCANS[2], scanned(tilted, seed=2)),
+        (PAGE_SCAN, scanned(page, "turned 180°")),
+    )
+    written = []
+    for name, scan in scans:
+        path = directory / name
+        Image.fromarray(np.rint(scan * 255).astype(np.uint8)).save(path)
+        written.append(path)
+    return written
+
+
+def reading_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
+    """Reading prints: the blocking sheet (real carbon prints) and process charts."""
+    import hashlib
+
+    from PIL import Image
+
+    from openquad.blocking import (
+        BlockingLayout,
+        _deskew,
+        _find_sheet,
+        _fit_layout,
+        _lightness,
+        analyse,
+    )
+    from openquad.chart import ChartLayout, _points, read_chart, read_chart_page
+    from openquad.measure import load_scan
+
+    def scan_entry(path: Path) -> tuple[Any, dict[str, Any]]:
+        scan = load_scan(path)
+        digest = hashlib.sha256(np.asarray(Image.open(path)).tobytes()).hexdigest()
+        return scan, {"file": path.name, "shape": list(scan.shape), "sha256": digest}
+
+    def steps(lightness: Any, aspect: float, layout: Any, points: Any) -> dict[str, Any]:
+        rough = _find_sheet(lightness, aspect)
+        turned, tilt = _deskew(lightness, rough)
+        box, fit, score = _fit_layout(turned, rough, layout, *points)
+        return {
+            "rough": _ints(rough),
+            "tilt": float(tilt),
+            "box": _ints(box),
+            "fit": _ints(fit),
+            "score": float(score),
+        }
+
+    written: list[Path] = []
+    blocking = []
+    layout = BlockingLayout()
+    for name, source in BLOCKING_SCANS:
+        path = directory / name
+        with Image.open(ROOT / "calibration-data" / "carbon-ohp" / source) as image:
+            image.convert("RGB").reduce(3).save(path)
+        written.append(path)
+        scan, entry = scan_entry(path)
+        lightness = _lightness(scan)
+        entry["lightness_sample"] = _floats(lightness[::97, ::89])
+        entry["percentiles"] = _floats(np.percentile(lightness, [98, 2, 99, 50, 37.5]))
+        entry["steps"] = steps(lightness, layout.width / layout.height, layout, (None, None))
+        report = analyse(scan)
+        entry["report"] = {
+            "orientation": report.orientation,
+            "paper": report.paper,
+            "edge": report.edge,
+            "white": report.white,
+            "full": [r.full for r in report.results],
+            "wedge": [list(r.wedge) for r in report.results],
+            "lines": report.lines(),
+        }
+        blocking.append(entry)
+
+    written += _simulated_charts(directory)
+    charts = []
+    chart_layout = ChartLayout()
+    for name in CHART_SCANS:
+        scan, entry = scan_entry(directory / name)
+        lightness = _lightness(scan)
+        entry["steps"] = steps(
+            lightness, chart_layout.width / chart_layout.height, chart_layout, _points(chart_layout)
+        )
+        reading = read_chart(scan)
+        entry["reading"] = _reading(reading)
+        charts.append(entry)
+    scan, page = scan_entry(directory / PAGE_SCAN)
+    page["readings"] = [_reading(r) for r in read_chart_page(scan, 2)]
+
+    # Pillow's bilinear rotate on float32 images, which the deskew relies on.
+    rng = np.random.default_rng(5)
+    small = (rng.random((23, 37)) * 100).astype(np.float32)
+    rotations = []
+    for angle, centre, fill in ((-2.75, None, 50.0), (0.35, None, 7.25), (3.0, (11.5, 20.0), 99.0),
+                                (-5.95, (30.0, 4.5), 0.0), (0.0, None, 1.0)):  # fmt: skip
+        turned = Image.fromarray(small, mode="F").rotate(
+            angle, resample=Image.Resampling.BILINEAR, center=centre, fillcolor=fill
+        )
+        rotations.append({"angle": angle, "centre": centre, "fill": fill,
+                          "pixels": _floats(np.asarray(turned))})  # fmt: skip
+    return {
+        "blocking": blocking,
+        "charts": charts,
+        "page": page,
+        "rotate_input": _floats(small),
+        "rotate_shape": list(small.shape),
+        "rotations": rotations,
+    }, written
+
+
+def _reading(reading: Any) -> dict[str, Any]:
+    return {
+        "levels": _ints(reading.levels),
+        "lightness": _floats(reading.lightness),
+        "strip": _floats(reading.strip),
+        "orientation": reading.orientation,
+        "paper": reading.paper,
+    }
+
+
 def export(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
@@ -382,7 +599,13 @@ def export(directory: Path) -> list[Path]:
         path = directory / f"{name}.json"
         path.write_text(json.dumps(data, separators=(",", ":")) + "\n", encoding="utf-8")
         written.append(path)
-    return written
+    measured, images = measure_vectors(directory)
+    path = directory / "measure.json"
+    path.write_text(json.dumps(measured, separators=(",", ":")) + "\n", encoding="utf-8")
+    read, prints = reading_vectors(directory)
+    reading_path = directory / "reading.json"
+    reading_path.write_text(json.dumps(read, separators=(",", ":")) + "\n", encoding="utf-8")
+    return [*written, path, reading_path, *images, *prints]
 
 
 def main(argv: list[str]) -> None:

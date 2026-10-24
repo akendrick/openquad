@@ -13,6 +13,8 @@ public enum Negative {
         "red": (0.85, 0.10, 0.10),
         "olive": (0.40, 0.40, 0.0),
     ]
+    /// The colours in their usual order (the blocking sheet's rows).
+    public static let colourOrder = ["black", "green", "orange", "yellow", "red", "olive"]
     public static let defaultColour = "black"
 
     /// The letter F, 7 rows by 5 columns: asymmetric both ways, so a flip shows.

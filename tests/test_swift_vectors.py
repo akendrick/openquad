@@ -44,7 +44,7 @@ def test_same_allows_only_tiny_float_differences() -> None:
 
 def test_committed_vectors_match_the_python_core(tmp_path: Path) -> None:
     fresh = EXPORT.export(tmp_path)
-    for path in fresh:
+    for path in (p for p in fresh if p.suffix == ".json"):  # scans are checked via measure.json
         committed = EXPORT.DEFAULT_DIR / path.name
         assert committed.exists(), f"missing {committed}; run scripts/export_swift_vectors.py"
         assert same(json.loads(committed.read_text()), json.loads(path.read_text())), (
@@ -56,14 +56,25 @@ def test_committed_vectors_match_the_python_core(tmp_path: Path) -> None:
 def test_main_writes_all_files(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
     EXPORT.main(["export_swift_vectors.py", str(tmp_path)])
     assert sorted(p.name for p in tmp_path.iterdir()) == [
+        "blocking-print-1.png",
+        "blocking-print-2.png",
         "builds.json",
         "calibration.json",
+        "chart-mirrored.png",
+        "chart-page.png",
+        "chart-sideways-tissue.png",
+        "chart-tilted.png",
         "colour.json",
         "composite.json",
         "curves.json",
+        "measure.json",
         "negative.json",
         "paper.json",
         "quadfile.json",
+        "reading.json",
         "separate.json",
+        "wedge-pair-v1.png",
+        "wedge-pair-v5.png",
+        "wedge-single.png",
     ]
-    assert capsys.readouterr().out.count("wrote") == 9
+    assert capsys.readouterr().out.count("wrote") == 20
