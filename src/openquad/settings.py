@@ -22,12 +22,20 @@ def default_path() -> Path:
     return Path.home() / ".config" / "openquad" / "settings.json"
 
 
+def data_dir() -> Path:
+    """Where the app keeps its own files (calibrations, scans), next to the settings."""
+    return default_path().parent
+
+
 @dataclass
 class Settings:
     printer: str | None = None
+    scanner_host: str | None = None
     paper: str = "Letter"
     calibration: str | None = None
     last_folder: str | None = None
+    process: str | None = None  # digital negative process curve
+    negative_colour: str = "green"
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:

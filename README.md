@@ -7,7 +7,11 @@ and prints through libgutenprint's raw ink mode. It can also layer colour tones 
 black + red duotone) to emulate printing from several stacked negatives on an ordinary colour
 inkjet.
 
-**Status:** Phase 0 (project foundation). Not usable yet.
+**Status (Oct 2026):** usable for colour-inkjet printing. Toning (neutral by default; black + red and
+other presets on request), scan-based grey balance and tone linearization work end to end on a Canon
+PIXMA MG3600, from the command line or the desktop app's print window. The raw-ink (QuadToneRIP-style)
+path needs a Gutenprint-supported printer and isn't built yet. Hardware results:
+[docs/hardware-tests.md](docs/hardware-tests.md).
 
 ## Desktop app
 
@@ -18,6 +22,15 @@ uv run openquad-app
 
 Open a photo, pick toning (neutral unless you choose otherwise), calibration, printer and paper; the
 preview shows the toned result; Print asks for confirmation first.
+
+**Output → Digital negative** makes negatives instead: pick the ink colour (or a process curve, which
+sets it), mirror and safe edge; the preview shows the negative as it will look on the film; **Save
+negative** writes the file to print from GIMP. Its **Calibrate…** opens the process wizard (chart page,
+contact print, scan, refine).
+
+**Calibrate…** opens the calibration wizard: print a comparison page, put it face down on the
+scanner, scan and measure, and follow the suggested step (improve grey balance, or even out tone)
+until both goals are met. Then **Use this calibration**.
 
 ## Usage
 
@@ -60,6 +73,32 @@ A calibration is only valid for the printer, paper and driver settings it was ma
 
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
 `--ppi`, `--copies` and `--option NAME=VALUE` (driver options) to change that.
+
+## Digital negatives (carbon printing)
+
+Print negatives on **inkjet-coated** transparency film (plain or laser film won't hold the ink):
+
+```bash
+openquad target --kind blocking -o blocking.tif      # 1. which ink colour blocks the UV?
+openquad print blocking.tif --printer Canon_MG3600_series
+#    expose it on carbon tissue at your usual time, make the print, scan it:
+openquad scan --host 876298000000.local -o carbon.jpg
+openquad blocking carbon.jpg                          #    -> which colours block, and their range
+openquad negative photo.tif -o neg.tif --colour green --fit Letter   # 2. a negative in that colour
+```
+
+The orientation **F** in the safe edge prints in the carbon print: if it reads backwards, flip
+`--mirror`.
+
+Then calibrate the process from a ChartThrob-style chart (after Kevin Bjorke's ChartThrob):
+
+```bash
+openquad target --kind chart --colour green -o chart.tif     # print on film, contact print, scan
+openquad chart carbon-chart.jpg -o carbon.oqproc               # build the process curve
+openquad target --kind chart --process carbon.oqproc -o chart2.tif   # check: print, scan, read
+openquad chart carbon-chart2.jpg --process carbon.oqproc -o carbon-v2.oqproc
+openquad negative photo.tif -o neg.tif --process carbon-v2.oqproc --fit Letter
+```
 
 ## Development
 

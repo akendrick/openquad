@@ -124,3 +124,79 @@ def scan(
     path = Path(output)
     path.write_bytes(image)
     return path
+
+
+# --- finding scanners on the network -------------------------------------------------
+
+Browse = Callable[[list[str], float], str]  # (command, seconds) -> text it printed
+
+
+def run_for(command: list[str], seconds: float) -> str:
+    """Run a browsing command for `seconds` (they never exit on their own) and return its output."""
+    import os
+    import signal
+    import subprocess
+
+    try:
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            start_new_session=True,  # its own process group, so children stop with it
+        )
+    except FileNotFoundError:
+        return ""
+    try:
+        out, _ = process.communicate(timeout=seconds)
+    except subprocess.TimeoutExpired:
+        # Stop the whole group: a child left running would hold the pipe open.
+        os.killpg(process.pid, signal.SIGKILL)
+        out, _ = process.communicate()
+    return out or ""
+
+
+def parse_avahi(text: str) -> list[tuple[str, str]]:
+    """(name, host:port) from `avahi-browse -rpt _uscan._tcp` output."""
+    found = []
+    for line in text.splitlines():
+        fields = line.split(";")
+        if len(fields) >= 9 and fields[0] == "=":
+            found.append((fields[3].replace("\\032", " "), f"{fields[6]}:{fields[8]}"))
+    return found
+
+
+def parse_dns_sd_browse(text: str) -> list[str]:
+    """Instance names from `dns-sd -B _uscan._tcp` output."""
+    names = []
+    for line in text.splitlines():
+        parts = line.split(None, 6)
+        if len(parts) == 7 and parts[1] == "Add" and parts[5] == "_uscan._tcp.":
+            names.append(parts[6].strip())
+    return names
+
+
+def parse_dns_sd_resolve(text: str) -> str | None:
+    """host:port from `dns-sd -L NAME _uscan._tcp` output."""
+    for line in text.splitlines():
+        if "can be reached at" in line:
+            target = line.split("can be reached at", 1)[1].split()[0]
+            host, _, port = target.rpartition(":")
+            return f"{host.rstrip('.')}:{port}" if port.isdigit() else target
+    return None
+
+
+def discover(browse: Browse = run_for, seconds: float = 3.0) -> list[tuple[str, str]]:
+    """eSCL scanners on the network: [(name, "host:port")]. Uses avahi or dns-sd."""
+    import shutil
+
+    if shutil.which("avahi-browse"):
+        return parse_avahi(browse(["avahi-browse", "-rpt", "_uscan._tcp"], seconds))
+    found = []
+    for name in dict.fromkeys(
+        parse_dns_sd_browse(browse(["dns-sd", "-B", "_uscan._tcp"], seconds))
+    ):
+        host = parse_dns_sd_resolve(browse(["dns-sd", "-L", name, "_uscan._tcp"], seconds))
+        if host:
+            found.append((name, host))
+    return found

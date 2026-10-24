@@ -14,9 +14,11 @@ import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
 
+from openquad.chart import ProcessCurve, load_process
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.greybalance import Calibration, load_calibration
 from openquad.imageio import save_rgb, srgb_profile
+from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, make_negative, negative_ppi
 from openquad.paper import DEFAULT_MARGIN, PAPER_SIZES, fit_ppi, print_size
 from openquad.photo import Photo, load_photo
 from openquad.printing import PrintJob, Runner, run_command, send
@@ -41,6 +43,13 @@ class PrintSession:
     margin: float = DEFAULT_MARGIN
     ppi: float | None = None  # used when fit is off; None = the photo's own DPI
     notes: list[str] = field(default_factory=list)
+    # Digital negative mode: the photo becomes a negative for contact printing.
+    mode: str = "print"  # "print" or "negative"
+    negative_colour: str = "green"
+    process: ProcessCurve | None = None
+    process_path: Path | None = None
+    mirror: bool = False
+    safe_edge: float = 0.25
 
     # --- choosing things ------------------------------------------------------------
 
@@ -65,6 +74,36 @@ class PrintSession:
         self.calibration = load_calibration(path)
         self.calibration_path = Path(path)
 
+    def set_mode(self, mode: str) -> None:
+        if mode not in ("print", "negative"):
+            raise SessionError(f"unknown mode {mode!r}")
+        self.mode = mode
+
+    def set_negative_colour(self, colour: str) -> None:
+        if colour not in NEGATIVE_COLOURS:
+            raise SessionError(f"unknown negative colour {colour!r}")
+        if self.process is not None and self.process.colour != colour:
+            raise SessionError(f"the process curve is for {self.process.colour} negatives")
+        self.negative_colour = colour
+
+    def set_process(self, path: str | Path | None) -> None:
+        """Use a process curve; it decides the negative colour it was made for."""
+        if path is None:
+            self.process, self.process_path = None, None
+            return
+        self.process = load_process(path)
+        self.process_path = Path(path)
+        self.negative_colour = self.process.colour
+
+    @property
+    def negative(self) -> bool:
+        return self.mode == "negative"
+
+    def _negative_settings(self) -> NegativeSettings:
+        return NegativeSettings(
+            colour=self.negative_colour, mirror=self.mirror, safe_edge=self.safe_edge
+        )
+
     def set_paper(self, paper: str) -> None:
         if paper not in PAPER_SIZES:
             raise SessionError(f"unknown paper {paper!r}")
@@ -79,6 +118,8 @@ class PrintSession:
 
     def effective_ppi(self) -> float:
         photo = self._photo()
+        if self.fit and self.negative:
+            return negative_ppi(*photo.size, self.paper, self.safe_edge, self.margin)
         if self.fit:
             return fit_ppi(*photo.size, self.paper, self.margin)
         if self.ppi:
@@ -86,7 +127,10 @@ class PrintSession:
         return photo.dpi[0] if photo.dpi else FALLBACK_PPI
 
     def size_inches(self) -> tuple[float, float]:
-        return print_size(*self._photo().size, self.effective_ppi())
+        width, height = print_size(*self._photo().size, self.effective_ppi())
+        if self.negative:  # the safe edge goes round the photo
+            width, height = width + 2 * self.safe_edge, height + 2 * self.safe_edge
+        return width, height
 
     def fits_on_paper(self) -> bool:
         width, height = self.size_inches()
@@ -95,8 +139,13 @@ class PrintSession:
 
     # --- rendering ------------------------------------------------------------------
 
-    def render(self, pixels: NDArray[np.uint16]) -> NDArray[np.uint16]:
-        """Tone and calibrate greyscale pixels: what is sent to the printer."""
+    def render(self, pixels: NDArray[np.uint16], dpi: float | None = None) -> NDArray[np.uint16]:
+        """What is sent to the printer: a toned, calibrated print, or (in negative mode)
+        the negative through the process curve, with its safe edge at `dpi`."""
+        if self.negative:
+            if self.process is not None:
+                pixels = self.process.apply(pixels)
+            return make_negative(pixels, self._negative_settings(), dpi or self.effective_ppi())
         rgb = composite(pixels, PRESETS[self.preset])
         return self.calibration.apply(rgb) if self.calibration else rgb
 
@@ -112,13 +161,28 @@ class PrintSession:
             size = (max(1, round(width * scale)), max(1, round(height * scale)))
             image = Image.fromarray(pixels).resize(size, Image.Resampling.BILINEAR)
             pixels = np.asarray(image, dtype=np.uint16)
-        toned = composite(pixels, PRESETS[self.preset])
-        return (toned >> 8).astype(np.uint8)
+        if self.negative:  # the negative as it will look on the film
+            shown = self.render(pixels, dpi=self.effective_ppi() * scale)
+        else:
+            shown = composite(pixels, PRESETS[self.preset])
+        return (shown >> 8).astype(np.uint8)
 
     def summary(self) -> list[str]:
         """Lines for the print confirmation."""
         width, height = self.size_inches()
         calibration = self.calibration_path.name if self.calibration_path else "none"
+        if self.negative:
+            process = self.process_path.name if self.process_path else "none (uncalibrated)"
+            return [
+                f"Photo: {self.source.name if self.source else 'untitled'}",
+                "Output: digital negative",
+                f"Printer: {self.printer or 'not chosen'}",
+                f"Paper: {self.paper}",
+                f"Size: {width:.2f} x {height:.2f} in with a {self.safe_edge:g} in safe edge",
+                f"Colour: {self.negative_colour}",
+                f"Process curve: {process}",
+                f"Mirrored: {'yes' if self.mirror else 'no'}",
+            ]
         return [
             f"Photo: {self.source.name if self.source else 'untitled'}",
             f"Printer: {self.printer or 'not chosen'}",
