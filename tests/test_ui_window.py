@@ -177,3 +177,18 @@ def test_no_printers(qtbot, tmp_path: Path) -> None:  # type: ignore[no-untyped-
     win.open_photo()
     win.print_photo()
     assert "No printer" in win.errors[0]
+
+
+def test_app_collects_garbage_only_on_the_main_thread(qtbot) -> None:  # type: ignore[no-untyped-def]
+    import gc
+
+    from PySide6.QtWidgets import QApplication
+
+    from openquad.ui.app import GC_INTERVAL_MS, collect_on_main_thread
+
+    timer = collect_on_main_thread(QApplication.instance())  # type: ignore[arg-type]
+    try:
+        assert not gc.isenabled()  # never automatic: it could run on a worker thread
+        assert timer.isActive() and timer.interval() == GC_INTERVAL_MS
+    finally:
+        timer.stop()

@@ -22,6 +22,14 @@ versions follow [Semantic Versioning](https://semver.org/).
   scanned contact print (any orientation, tilt, tissue field) and builds a process curve that puts
   each tone at its target lightness; `--process` on `target --kind chart` (to check or refine) and on
   `openquad negative` applies it.
+- App (Phase 7, step 4): a **Digital negative** output mode in the print window (ink colour, process
+  curve, mirror, safe edge; the preview shows the negative as on film; **Save negative** for printing
+  from GIMP), and a **process calibration wizard** (chart page per colour, print here or from GIMP,
+  scan here or read a scan file, measured-vs-target chart, refine, use a colour's curve). Runs are kept
+  with every file and a `run.json` log (`process_run.ProcessRun`, Qt-free).
+- App stability: background work runs on Python's thread pool and Python's garbage collector runs
+  only on the main thread (automatic collection on a worker thread freed Qt objects there and crashed
+  the app intermittently); window signal hubs are owned by their windows.
 - Several colours on one page: `--colour green,orange` stacks compact charts (identification squares
   tell them apart); `openquad chart SCAN --colours green,orange -o x.oqproc` reads both and writes
   one curve per colour.

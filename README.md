@@ -23,6 +23,11 @@ uv run openquad-app
 Open a photo, pick toning (neutral unless you choose otherwise), calibration, printer and paper; the
 preview shows the toned result; Print asks for confirmation first.
 
+**Output → Digital negative** makes negatives instead: pick the ink colour (or a process curve, which
+sets it), mirror and safe edge; the preview shows the negative as it will look on the film; **Save
+negative** writes the file to print from GIMP. Its **Calibrate…** opens the process wizard (chart page,
+contact print, scan, refine).
+
 **Calibrate…** opens the calibration wizard: print a comparison page, put it face down on the
 scanner, scan and measure, and follow the suggested step (improve grey balance, or even out tone)
 until both goals are met. Then **Use this calibration**.

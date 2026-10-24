@@ -428,3 +428,31 @@ def load_process(path: str | Path) -> ProcessCurve:
 
 def save_process(curve: ProcessCurve, path: str | Path) -> None:
     Path(path).write_text(curve.to_json() + "\n", encoding="utf-8")
+
+
+def reading_to_json(reading: ChartReading) -> str:
+    return json.dumps(
+        {
+            "format": "openquad-chart-reading",
+            "version": 1,
+            "levels": reading.levels.tolist(),
+            "lightness": np.round(reading.lightness, 3).tolist(),
+            "strip": np.round(reading.strip, 3).tolist(),
+            "orientation": reading.orientation,
+            "paper": round(reading.paper, 3),
+        },
+        indent=1,
+    )
+
+
+def reading_from_json(text: str) -> ChartReading:
+    data = json.loads(text)
+    if data.get("format") != "openquad-chart-reading":
+        raise ValueError("not an OpenQuad chart reading")
+    return ChartReading(
+        levels=np.array(data["levels"], dtype=np.uint16),
+        lightness=np.array(data["lightness"], dtype=np.float64),
+        strip=np.array(data["strip"], dtype=np.float64),
+        orientation=data["orientation"],
+        paper=float(data["paper"]),
+    )

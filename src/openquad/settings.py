@@ -34,6 +34,8 @@ class Settings:
     paper: str = "Letter"
     calibration: str | None = None
     last_folder: str | None = None
+    process: str | None = None  # digital negative process curve
+    negative_colour: str = "green"
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:
