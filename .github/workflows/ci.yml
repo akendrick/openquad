@@ -36,3 +36,12 @@ jobs:
       - run: uv run ruff format --check .
       - run: uv run mypy
       - run: uv run pytest
+
+  swift:
+    # The native Mac core must keep matching the Python reference (test vectors).
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - run: swift --version
+      - run: swift test --package-path swift/OpenQuadCore

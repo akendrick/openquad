@@ -23,3 +23,8 @@ helper/build/
 
 # Generated test prints
 test-prints/
+
+# Swift build output
+swift/**/.build/
+swift/**/.swiftpm/
+*.xcodeproj/xcuserdata/
