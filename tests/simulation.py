@@ -81,3 +81,27 @@ class SimulatedLab:
         buffer = io.BytesIO()
         Image.fromarray(np.round(scan * 255).astype(np.uint8)).save(buffer, "JPEG", quality=92)
         return 200, "", buffer.getvalue()
+
+
+def contact_print(
+    negative: NDArray[np.uint16],
+    exposure: float = 1.0,
+    film: float = 0.9,
+    black_leak: float = 0.0,
+) -> NDArray[np.float64]:
+    """A simulated carbon print (encoded sRGB 0-1) contact-printed through a negative.
+
+    Carbon tissue is exposed by near-UV, which ink absorbs mostly through its blue
+    channel: transmission = film base * (mostly blue, a little green). More exposure
+    hardens more pigment, so the print gets darker, up to the tissue's maximum.
+    """
+    linear = srgb_to_linear(negative.astype(np.float64) / 65535)
+    # No ink is perfectly opaque: a small leak means long exposures eventually show through.
+    transmission = film * (0.003 + 0.85 * linear[..., 2] + 0.15 * linear[..., 1])
+    # Pigment black sits thinly on coated film: it can pass more UV than coloured dyes.
+    transmission += film * black_leak * (1.0 - linear.max(axis=-1))
+    hardened = 1.0 - np.exp(-4.0 * exposure * transmission)
+    reflectance = 0.88 * (1.0 - 0.97 * hardened)  # paper white 0.88, max density ~1.5
+    grey = linear_to_srgb(reflectance)
+    result: NDArray[np.float64] = np.repeat(grey[..., np.newaxis], 3, axis=-1)
+    return result

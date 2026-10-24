@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from openquad import __version__
+from openquad.blocking import analyse, blocking_sheet
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.escl import INTENTS, Fetch, ScanError, ScanSettings, http_fetch, scan
 from openquad.greybalance import (
@@ -27,7 +28,14 @@ from openquad.greybalance import (
 from openquad.imageio import GreyImage, read_dpi, save_grey, save_rgb, srgb_profile
 from openquad.linearize import linearize, tone_report
 from openquad.measure import Measurement, load_scan, measure_pair, measure_scan
-from openquad.paper import fit_ppi
+from openquad.negative import (
+    DEFAULT_COLOUR,
+    NEGATIVE_COLOURS,
+    NegativeSettings,
+    make_negative,
+    negative_ppi,
+)
+from openquad.paper import DEFAULT_MARGIN, fit_ppi
 from openquad.photo import load_photo
 from openquad.printing import PrintError, PrintJob, Runner, list_printers, run_command, send
 from openquad.targets import framed_target, step_wedge, wedge_levels
@@ -51,10 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("-o", "--output", type=Path, required=True, help="TIFF to write")
     target.add_argument(
         "--kind",
-        choices=["wedge", "grey-balance", "comparison"],
+        choices=["wedge", "grey-balance", "comparison", "blocking"],
         default="wedge",
         help="wedge: greyscale step wedge; grey-balance: framed RGB target to scan; "
-        "comparison: uncorrected + corrected targets on one page (needs --calibration)",
+        "comparison: uncorrected + corrected targets on one page (needs --calibration); "
+        "blocking: digital-negative colour test sheet",
     )
     target.add_argument("--steps", type=int, default=21, help="wedge patches (default 21)")
     target.add_argument("--patch-width", type=int, default=100, help="wedge pixels (default 100)")
@@ -62,6 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--vertical", action="store_true", help="wedge: stack top to bottom")
     target.add_argument("--dpi", type=float, default=DEFAULT_DPI, help="resolution (default 300)")
     target.add_argument("--calibration", type=Path, help="grey-balance: apply this calibration")
+    target.add_argument("--mirror", action="store_true", help="blocking: mirror the sheet")
 
     comp = commands.add_parser("composite", help="tone a greyscale TIFF with colour layers")
     comp.add_argument("input", type=Path, help="16-bit (or 8-bit) greyscale TIFF")
@@ -76,6 +86,21 @@ def build_parser() -> argparse.ArgumentParser:
     comp.add_argument("--calibration", type=Path, help="grey-balance calibration to apply")
 
     commands.add_parser("presets", help="list the colour-layer presets")
+
+    blk = commands.add_parser("blocking", help="read a scanned print of the blocking test")
+    blk.add_argument("scan", type=Path, help="scan of the exposed print (JPEG, PNG or TIFF)")
+
+    neg = commands.add_parser("negative", help="make a digital negative for contact printing")
+    neg.add_argument("input", type=Path, help="greyscale photo (any bit depth; RGB/RGBA grey too)")
+    neg.add_argument("-o", "--output", type=Path, required=True, help="negative TIFF to write")
+    neg.add_argument("--colour", choices=sorted(NEGATIVE_COLOURS), default=DEFAULT_COLOUR,
+                     help="ink colour of the negative (default black)")  # fmt: skip
+    neg.add_argument("--mirror", action="store_true", help="flip left to right")
+    neg.add_argument("--safe-edge", type=float, default=0.25, help="opaque border, inches (0.25)")
+    neg.add_argument("--no-mark", action="store_true", help="leave the orientation F out")
+    size = neg.add_mutually_exclusive_group()
+    size.add_argument("--dpi", type=float, help="print resolution (default: the photo's own)")
+    size.add_argument("--fit", metavar="PAPER", help="size photo + safe edge to fit PAPER")
 
     prt = commands.add_parser("print", help="print a TIFF through the printer's normal driver")
     prt.add_argument("input", type=Path, help="TIFF to print")
@@ -152,6 +177,13 @@ def _calibration(path: Path | None) -> Calibration | None:
 
 def _target(args: argparse.Namespace) -> None:
     dpi = (args.dpi, args.dpi)
+    if args.kind == "blocking":
+        sheet = blocking_sheet(dpi=args.dpi, mirror=args.mirror)
+        save_rgb(args.output, sheet, dpi, srgb_profile())
+        width, height = sheet.shape[1] / args.dpi, sheet.shape[0] / args.dpi
+        print(f"wrote {args.output} (blocking test, {width:.2f} x {height:.2f} in): print it on")
+        print("film, expose it at your usual time, then scan the print: openquad blocking SCAN")
+        return
     if args.kind == "comparison":
         calibration = _calibration(args.calibration)
         if not calibration:
@@ -203,6 +235,29 @@ def _pixel_size(path: Path) -> tuple[int, int]:
         return (int(shape[1]), int(shape[0]))
     with Image.open(path) as image:
         return image.size
+
+
+def _blocking(args: argparse.Namespace) -> None:
+    report = analyse(load_scan(args.scan))
+    print(f"Read the print {report.orientation}.")
+    for line in report.lines():
+        print(line)
+
+
+def _negative(args: argparse.Namespace) -> None:
+    photo = load_photo(args.input)
+    settings = NegativeSettings(
+        colour=args.colour, mirror=args.mirror, safe_edge=args.safe_edge, mark=not args.no_mark
+    )
+    if args.fit:
+        dpi = negative_ppi(*photo.size, args.fit, settings.safe_edge, DEFAULT_MARGIN)
+    else:
+        dpi = args.dpi or (photo.dpi[0] if photo.dpi else DEFAULT_DPI)
+    save_rgb(args.output, make_negative(photo.pixels, settings, dpi), (dpi, dpi), srgb_profile())
+    width, height = (n / dpi + 2 * settings.safe_edge for n in photo.size)
+    flip = ", mirrored" if settings.mirror else ""
+    size = f"{width:.2f} x {height:.2f} in at {dpi:.0f} dpi"
+    print(f"wrote {args.output} ({settings.colour}{flip}, {size})")
 
 
 def _composite(args: argparse.Namespace) -> None:
@@ -336,6 +391,10 @@ def main(
             _composite(args)
         elif args.command == "presets":
             _presets()
+        elif args.command == "negative":
+            _negative(args)
+        elif args.command == "blocking":
+            _blocking(args)
         elif args.command == "print":
             _print(args, runner)
         elif args.command == "printers":

@@ -133,18 +133,25 @@ Browse = Callable[[list[str], float], str]  # (command, seconds) -> text it prin
 
 def run_for(command: list[str], seconds: float) -> str:
     """Run a browsing command for `seconds` (they never exit on their own) and return its output."""
+    import os
+    import signal
     import subprocess
 
     try:
         process = subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            start_new_session=True,  # its own process group, so children stop with it
         )
     except FileNotFoundError:
         return ""
     try:
         out, _ = process.communicate(timeout=seconds)
     except subprocess.TimeoutExpired:
-        process.kill()
+        # Stop the whole group: a child left running would hold the pipe open.
+        os.killpg(process.pid, signal.SIGKILL)
         out, _ = process.communicate()
     return out or ""
 
