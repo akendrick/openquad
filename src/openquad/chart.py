@@ -28,6 +28,7 @@ from openquad.blocking import (
     BlockingError,
     _deskew,
     _find_sheet,
+    _find_sheets,
     _fit_layout,
     _marker_contrast,
     _safe_edge_lightness,
@@ -39,6 +40,8 @@ from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, make_negative
 from openquad.quadfile import MAX_VALUE
 
 PATCHES = 101  # 0% .. 100% in 1% steps
+ID_COLUMN = 5  # first bottom-row column used for identification squares
+MAX_ID = 4
 STRIP = 21
 PROCESS_FORMAT = "openquad-process"
 
@@ -85,11 +88,22 @@ class ChartLayout:
     def height(self) -> float:
         return self.grid_top + self.grid_height + 2 * self.gap
 
+    @classmethod
+    def compact(cls) -> ChartLayout:
+        """A smaller chart (about 5.0 x 4.8 in with its safe edge): two fit on one page."""
+        return cls(patch=0.3, gap=0.05, marker=0.25, strip_width=0.33, gradient_width=0.25)
+
     def marker_box(self) -> tuple[float, float, float, float]:
         return (self.gap * 2, self.gap * 2, self.gap * 2 + self.marker, self.gap * 2 + self.marker)
 
+    def id_box(self, k: int) -> tuple[float, float, float, float]:
+        """Identification squares, in the empty middle of the bottom row (columns 5-8),
+        away from every corner so they can't be mistaken for the marker."""
+        return self.patch_box(PATCHES - 1 + ID_COLUMN + k)
+
     def patch_box(self, n: int) -> tuple[float, float, float, float]:
-        """Patch n (0 = white print .. 100 = black print), row by row; 100 sits alone in row 10."""
+        """Patch n (0 = white print .. 100 = black print), row by row; 100 sits alone in row 10
+        (higher n give the other bottom-row cells, used for identification squares)."""
         row, column = divmod(n, 10)
         left = self.grid_left + column * (self.patch + self.gap)
         top = self.grid_top + row * (self.patch + self.gap)
@@ -114,10 +128,15 @@ def patch_level(n: int) -> int:
     return round(MAX_VALUE * (1 - n / (PATCHES - 1)))
 
 
-def chart_photo(layout: ChartLayout | None = None, dpi: float = 300.0) -> NDArray[np.uint16]:
+def chart_photo(
+    layout: ChartLayout | None = None, dpi: float = 300.0, index: int = 0
+) -> NDArray[np.uint16]:
     """The chart as the photo it stands for (before inversion): black background,
-    the 101 patches, the 21-step strip, the gradient and a white marker."""
+    the 101 patches, the 21-step strip, the gradient, a white marker, and `index`
+    identification squares (to tell charts apart when several share a page)."""
     layout = layout or ChartLayout()
+    if not 0 <= index <= MAX_ID:
+        raise ValueError(f"chart index must be 0-{MAX_ID}, got {index}")
 
     def px(box: tuple[float, float, float, float]) -> tuple[slice, slice]:
         l, t, r, b = (round(v * dpi) for v in box)  # noqa: E741
@@ -125,6 +144,8 @@ def chart_photo(layout: ChartLayout | None = None, dpi: float = 300.0) -> NDArra
 
     photo = np.zeros((round(layout.height * dpi), round(layout.width * dpi)), dtype=np.uint16)
     photo[px(layout.marker_box())] = MAX_VALUE  # prints white: full ink on the film
+    for k in range(index):
+        photo[px(layout.id_box(k))] = MAX_VALUE
     for n in range(PATCHES):
         photo[px(layout.patch_box(n))] = patch_level(n)
     for step in range(STRIP):
@@ -142,12 +163,46 @@ def chart_negative(
     mirror: bool = False,
     dpi: float = 300.0,
     layout: ChartLayout | None = None,
+    index: int = 0,
 ) -> NDArray[np.uint16]:
     """The chart printed as a negative, through `process` if given (to check or refine it)."""
-    photo = chart_photo(layout, dpi)
+    photo = chart_photo(layout, dpi, index)
     if process is not None:
         photo = process.apply(photo)
     return make_negative(photo, NegativeSettings(colour=colour, mirror=mirror), dpi)
+
+
+PAGE_GAP = 0.3  # inches of clear film between stacked charts
+
+
+def chart_page(
+    colours: list[str],
+    processes: list[ProcessCurve | None] | None = None,
+    mirror: bool = False,
+    dpi: float = 300.0,
+) -> NDArray[np.uint16]:
+    """Several compact charts stacked on one page, one per colour, top to bottom.
+
+    Chart k carries k identification squares, so a scan of the page says which is which.
+    """
+    if not 1 <= len(colours) <= MAX_ID + 1:
+        raise ValueError(f"a page holds 1-{MAX_ID + 1} charts, got {len(colours)}")
+    processes = processes or [None] * len(colours)
+    if len(processes) != len(colours):
+        raise ValueError("give one process curve (or none) per colour")
+    layout = ChartLayout.compact()
+    charts = [
+        chart_negative(c, pr, mirror, dpi, layout, index=k)
+        for k, (c, pr) in enumerate(zip(colours, processes, strict=True))
+    ]
+    gap = round(PAGE_GAP * dpi)
+    height = sum(c.shape[0] for c in charts) + gap * (len(charts) - 1)
+    page = np.full((height, charts[0].shape[1], 3), MAX_VALUE, dtype=np.uint16)  # clear film
+    top = 0
+    for chart in charts:
+        page[top : top + chart.shape[0]] = chart
+        top += chart.shape[0] + gap
+    return page
 
 
 # --- reading the carbon print --------------------------------------------------------
@@ -179,8 +234,9 @@ def _points(layout: ChartLayout) -> tuple[list[tuple[float, float]], list[tuple[
         dark.append(((l + r) / 2, b + layout.gap / 2))
     l, t, r, b = layout.patch_box(PATCHES - 1)  # noqa: E741
     dark.append(((l + r) / 2, (t + b) / 2))  # the black patch prints like clear film
-    for n in range(1, 10):  # the rest of row 10 is background
-        dark.append(((l + r) / 2 + n * (layout.patch + layout.gap), (t + b) / 2))
+    for n in range(1, 10):  # the rest of row 10 is background (apart from the id squares)
+        if not ID_COLUMN <= n < ID_COLUMN + MAX_ID:
+            dark.append(((l + r) / 2 + n * (layout.patch + layout.gap), (t + b) / 2))
     light = []
     for n in range(0, 30):
         l, t, r, b = layout.patch_box(n)  # noqa: E741
@@ -188,19 +244,23 @@ def _points(layout: ChartLayout) -> tuple[list[tuple[float, float]], list[tuple[
     return dark, light
 
 
-def read_chart(scan: NDArray[np.float64], layout: ChartLayout | None = None) -> ChartReading:
-    """Measure every patch of a scanned print of the chart (any way up, tilted, mirrored)."""
-    layout = layout or ChartLayout()
-    lightness = linear_rgb_to_lab(srgb_to_linear(scan))[..., 0]
-    rough = _find_sheet(lightness, layout.width / layout.height)
-    lightness, tilt = _deskew(lightness, rough)
+@dataclass(frozen=True)
+class _Located:
+    reading: ChartReading
+    index: int
+
+
+def _read_one(
+    full: NDArray[np.float64], rough: tuple[int, int, int, int], layout: ChartLayout
+) -> _Located:
+    lightness, tilt = _deskew(full, rough)
     dark, light = _points(layout)
     box, fit, score = _fit_layout(lightness, rough, layout, dark, light)
     view = _view(lightness, box, fit)
     if score < 2 * MARKER_CONTRAST or _marker_contrast(view, layout) < MARKER_CONTRAST:
         raise BlockingError("couldn't find the chart's marker; is the whole chart on the scan?")
     h, w = view.shape
-    if 0.36 * w / layout.width < 10:
+    if layout.patch * w / layout.width < 10:
         raise BlockingError("the patches are too small to read; scan at a higher resolution")
 
     def sample(patch_box: tuple[float, float, float, float]) -> float:
@@ -213,13 +273,45 @@ def read_chart(scan: NDArray[np.float64], layout: ChartLayout | None = None) -> 
 
     from openquad.blocking import _orientation_name
 
-    return ChartReading(
+    patches = np.array([sample(layout.patch_box(n)) for n in range(PATCHES)])
+    background = sample(layout.patch_box(PATCHES))  # bottom row, column 1: clear film
+    marker = sample(layout.marker_box())
+    index = sum(1 for k in range(MAX_ID) if sample(layout.id_box(k)) > (marker + background) / 2)
+    reading = ChartReading(
         levels=np.array([patch_level(n) for n in range(PATCHES)], dtype=np.uint16),
-        lightness=np.array([sample(layout.patch_box(n)) for n in range(PATCHES)]),
+        lightness=patches,
         strip=np.array([sample(layout.strip_box(s)) for s in range(STRIP)]),
         orientation=_orientation_name(*fit) + (f", tilted {tilt:+.1f}°" if tilt else ""),
         paper=_safe_edge_lightness(lightness, box, w / layout.width),
     )
+    return _Located(reading, index)
+
+
+def read_chart(scan: NDArray[np.float64], layout: ChartLayout | None = None) -> ChartReading:
+    """Measure every patch of a scanned print of the chart (any way up, tilted, mirrored)."""
+    layout = layout or ChartLayout()
+    lightness = linear_rgb_to_lab(srgb_to_linear(scan))[..., 0]
+    return _read_one(
+        lightness, _find_sheet(lightness, layout.width / layout.height), layout
+    ).reading
+
+
+def read_chart_page(scan: NDArray[np.float64], count: int) -> list[ChartReading]:
+    """Measure the `count` compact charts of a scanned page, in page order (chart 0 first),
+    told apart by their identification squares."""
+    layout = ChartLayout.compact()
+    lightness = linear_rgb_to_lab(srgb_to_linear(scan))[..., 0]
+    found = [
+        _read_one(lightness, box, layout)
+        for box in _find_sheets(lightness, layout.width / layout.height, count)
+    ]
+    indices = sorted(f.index for f in found)
+    if indices != list(range(count)):
+        raise BlockingError(
+            f"couldn't tell the charts apart (identification marks read {indices}); "
+            "is every chart fully on the scan?"
+        )
+    return [f.reading for f in sorted(found, key=lambda f: f.index)]
 
 
 # --- the process curve ---------------------------------------------------------------

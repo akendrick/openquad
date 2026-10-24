@@ -22,6 +22,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   scanned contact print (any orientation, tilt, tissue field) and builds a process curve that puts
   each tone at its target lightness; `--process` on `target --kind chart` (to check or refine) and on
   `openquad negative` applies it.
+- Several colours on one page: `--colour green,orange` stacks compact charts (identification squares
+  tell them apart); `openquad chart SCAN --colours green,orange -o x.oqproc` reads both and writes
+  one curve per colour.
 
 ### Added (Phase 5: desktop app)
 - Calibration wizard ("Calibrate…" in the print window): print a comparison page, scan it over eSCL,

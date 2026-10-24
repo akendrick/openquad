@@ -221,3 +221,96 @@ def test_chart_commands_end_to_end(tmp_path: Path, capsys: pytest.CaptureFixture
     assert "green" in capsys.readouterr().out  # the curve's colour is used
     argv = ["negative", str(photo), "-o", str(neg), "--process", str(curve), "--colour", "orange"]
     assert main(argv) == 1  # a curve made for green negatives can't be used for orange
+
+
+# --- several charts on one page (green over orange) ----------------------------------
+
+
+def page_scan(colours: list[str], processes=None, turn: str = "as scanned") -> np.ndarray:  # type: ignore[no-untyped-def]
+    from openquad.chart import chart_page
+
+    return scanned(contact_print(chart_page(colours, processes, dpi=DPI)), turn)
+
+
+def test_page_stacks_compact_charts_with_id_marks() -> None:
+    from openquad.chart import PAGE_GAP, chart_page
+
+    layout = ChartLayout.compact()
+    page = chart_page(["green", "orange"], dpi=DPI)
+    one = chart_negative("green", dpi=DPI, layout=layout)
+    assert page.shape == (2 * one.shape[0] + round(PAGE_GAP * DPI), one.shape[1], 3)
+    assert page.shape[0] / DPI <= 9.95  # fits a Letter page with 0.5 in margins
+    assert np.array_equal(page[: one.shape[0]], one)  # green on top, no id square
+    assert not np.array_equal(
+        page[-one.shape[0] :], chart_negative("orange", dpi=DPI, layout=layout)
+    )
+
+
+@pytest.mark.parametrize("turn", ["as scanned", "turned 180°", "mirrored"])
+def test_reads_both_charts_and_knows_which_is_which(turn: str) -> None:
+    from openquad.chart import read_chart_page
+
+    # Print the orange chart through a curve that halves the ink, so it reads clearly
+    # darker: then we can check each reading comes back under the right colour.
+    levels = np.array([0, 65535], dtype=np.uint16)
+    darker = ProcessCurve(levels, np.array([0, 32768], dtype=np.uint16), colour="orange")
+    green, orange = read_chart_page(page_scan(["green", "orange"], [None, darker], turn=turn), 2)
+    assert orange.lightness[:50].mean() < green.lightness[:50].mean() - 10
+    plain = read_chart_page(page_scan(["green", "orange"], [None, darker]), 2)
+    assert np.abs(green.lightness - plain[0].lightness).max() < 2.0
+    assert np.abs(orange.lightness - plain[1].lightness).max() < 2.0
+
+
+def test_both_colours_calibrate_from_one_page() -> None:
+    from openquad.chart import read_chart_page
+
+    first = read_chart_page(page_scan(["green", "orange"]), 2)
+    curves = [build_process_curve(r) for r in first]
+    second = read_chart_page(page_scan(["green", "orange"], curves), 2)
+    for reading in second:
+        assert np.abs(tone_errors(reading)).max() < 3.0
+
+
+def test_page_errors() -> None:
+    from openquad.chart import chart_page, read_chart_page
+
+    with pytest.raises(ValueError, match="1-5 charts"):
+        chart_page([], dpi=DPI)
+    with pytest.raises(ValueError, match="one process curve"):
+        chart_page(["green"], [None, None], dpi=DPI)
+    with pytest.raises(BlockingError, match="expected 3 sheets"):
+        read_chart_page(page_scan(["green", "orange"]), 3)
+    with pytest.raises(ValueError, match="chart index"):
+        chart_photo(index=9)
+
+
+def test_page_commands(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    import tifffile
+
+    from openquad.cli import main
+
+    page = tmp_path / "page.tif"
+    argv = [
+        "target",
+        "--kind",
+        "chart",
+        "--colour",
+        "green,orange",
+        "-o",
+        str(page),
+        "--dpi",
+        "100",
+    ]
+    assert main(argv) == 0
+    assert "green over orange" in capsys.readouterr().out
+    scan = tmp_path / "page.jpg"
+    pixels = scanned(contact_print(tifffile.imread(page)))
+    Image.fromarray(np.round(pixels * 255).astype(np.uint8)).save(scan, quality=92)
+    out = tmp_path / "carbon.oqproc"
+    assert main(["chart", str(scan), "--colours", "green,orange", "-o", str(out)]) == 0
+    printed = capsys.readouterr().out
+    assert "Chart 1 (green)" in printed and "Chart 2 (orange)" in printed
+    assert load_process(tmp_path / "carbon-green.oqproc").colour == "green"
+    assert load_process(tmp_path / "carbon-orange.oqproc").colour == "orange"
+    with pytest.raises(SystemExit):
+        main(["target", "--kind", "chart", "--colour", "green,purple", "-o", str(page)])

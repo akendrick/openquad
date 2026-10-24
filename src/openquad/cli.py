@@ -17,10 +17,14 @@ from PIL import Image
 from openquad import __version__
 from openquad.blocking import analyse, blocking_sheet
 from openquad.chart import (
+    ChartReading,
+    ProcessCurve,
     build_process_curve,
     chart_negative,
+    chart_page,
     load_process,
     read_chart,
+    read_chart_page,
     save_process,
     tone_errors,
 )
@@ -49,6 +53,16 @@ from openquad.printing import PrintError, PrintJob, Runner, list_printers, run_c
 from openquad.targets import framed_target, step_wedge, wedge_levels
 
 DEFAULT_DPI = 300.0
+
+
+def _colours(text: str) -> list[str]:
+    names = [name.strip() for name in text.split(",") if name.strip()]
+    unknown = [name for name in names if name not in NEGATIVE_COLOURS]
+    if not names or unknown:
+        raise argparse.ArgumentTypeError(
+            f"choose from {', '.join(NEGATIVE_COLOURS)} (comma-separated), got {text!r}"
+        )
+    return names
 
 
 def _option(text: str) -> tuple[str, str]:
@@ -81,9 +95,19 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--dpi", type=float, default=DEFAULT_DPI, help="resolution (default 300)")
     target.add_argument("--calibration", type=Path, help="grey-balance: apply this calibration")
     target.add_argument("--mirror", action="store_true", help="blocking/chart: mirror the sheet")
-    target.add_argument("--colour", choices=sorted(NEGATIVE_COLOURS), default="green",
-                        help="chart: negative colour (default green)")  # fmt: skip
-    target.add_argument("--process", type=Path, help="chart: print through this process curve")
+    target.add_argument(
+        "--colour",
+        type=_colours,
+        default=["green"],
+        help="chart: negative colour, or several stacked on one page, e.g. green,orange",
+    )
+    target.add_argument(
+        "--process",
+        type=Path,
+        action="append",
+        default=[],
+        help="chart: print through this process curve (one per colour, in order)",
+    )
 
     comp = commands.add_parser("composite", help="tone a greyscale TIFF with colour layers")
     comp.add_argument("input", type=Path, help="16-bit (or 8-bit) greyscale TIFF")
@@ -101,8 +125,22 @@ def build_parser() -> argparse.ArgumentParser:
 
     crt = commands.add_parser("chart", help="read a scanned print of the process chart")
     crt.add_argument("scan", type=Path, help="scan of the contact print (JPEG, PNG or TIFF)")
-    crt.add_argument("--process", type=Path, help="process curve the chart was printed through")
-    crt.add_argument("-o", "--output", type=Path, help="process curve (.oqproc) to write")
+    crt.add_argument(
+        "--colours",
+        type=_colours,
+        default=None,
+        help="a page of stacked charts, top to bottom, e.g. green,orange",
+    )
+    crt.add_argument(
+        "--process",
+        type=Path,
+        action="append",
+        default=[],
+        help="process curve each chart was printed through (one per chart, in order)",
+    )
+    crt.add_argument(
+        "-o", "--output", type=Path, help="process curve (.oqproc) to write; NAME-COLOUR for a page"
+    )
     crt.add_argument("--film", default="", help="film it was made for")
     crt.add_argument("--printing", default="", help="printer and print dialog settings")
 
@@ -198,12 +236,20 @@ def _calibration(path: Path | None) -> Calibration | None:
 def _target(args: argparse.Namespace) -> None:
     dpi = (args.dpi, args.dpi)
     if args.kind == "chart":
-        process = load_process(args.process) if args.process else None
-        colour = process.colour if process else args.colour
-        sheet = chart_negative(colour, process, mirror=args.mirror, dpi=args.dpi)
+        processes = [load_process(path) for path in args.process]
+        colours = [pr.colour for pr in processes] if processes else args.colour
+        if processes and len(processes) != len(args.colour) and args.colour != ["green"]:
+            raise ValueError("give one --process per colour")
+        if len(colours) > 1:
+            curves: list[ProcessCurve | None] = list(processes) or [None] * len(colours)
+            sheet = chart_page(colours, curves, mirror=args.mirror, dpi=args.dpi)
+        else:
+            process = processes[0] if processes else None
+            sheet = chart_negative(colours[0], process, mirror=args.mirror, dpi=args.dpi)
+        colour = " over ".join(colours)
         save_rgb(args.output, sheet, dpi, srgb_profile())
         width, height = sheet.shape[1] / args.dpi, sheet.shape[0] / args.dpi
-        through = f", through {args.process.name}" if args.process else ""
+        through = f", through {', '.join(p.name for p in args.process)}" if args.process else ""
         print(
             f"wrote {args.output} (process chart, {colour}{through}, {width:.2f} x {height:.2f} in)"
         )
@@ -276,11 +322,9 @@ def _blocking(args: argparse.Namespace) -> None:
         print(line)
 
 
-def _chart(args: argparse.Namespace) -> None:
-    previous = load_process(args.process) if args.process else None
-    reading = read_chart(load_scan(args.scan))
+def _report_chart(reading: ChartReading, label: str) -> None:
     errors = tone_errors(reading)
-    print(f"Read the chart {reading.orientation}.")
+    print(f"{label}: read {reading.orientation}.")
     print(f"Process white L* {reading.white:.1f}, black L* {reading.black:.1f} "
           f"(range {reading.white - reading.black:.1f}).")  # fmt: skip
     print("patch  tone   measured  target  error")
@@ -291,10 +335,28 @@ def _chart(args: argparse.Namespace) -> None:
         )
     worst, mean = abs(errors).max(), abs(errors).mean()
     print(f"tone error: worst {worst:.1f} L*, mean {mean:.2f} (goal under 3)")
-    if args.output:
-        curve = build_process_curve(reading, previous, film=args.film, printing=args.printing)
-        save_process(curve, args.output)
-        print(f"wrote {args.output}")
+
+
+def _chart(args: argparse.Namespace) -> None:
+    scan = load_scan(args.scan)
+    colours = args.colours or [None]
+    previous = [load_process(path) for path in args.process]
+    if previous and len(previous) != len(colours):
+        raise ValueError("give one --process per chart")
+    readings = read_chart_page(scan, len(colours)) if args.colours else [read_chart(scan)]
+    for k, (colour, reading) in enumerate(zip(colours, readings, strict=True)):
+        label = f"Chart {k + 1} ({colour})" if colour else "Chart"
+        _report_chart(reading, label)
+        if args.output:
+            before = previous[k] if previous else None
+            if before is None and colour:
+                before = ProcessCurve.identity(colour)
+            curve = build_process_curve(reading, before, film=args.film, printing=args.printing)
+            path = args.output
+            if args.colours:
+                path = args.output.with_name(f"{args.output.stem}-{colour}{args.output.suffix}")
+            save_process(curve, path)
+            print(f"wrote {path}")
 
 
 def _negative(args: argparse.Namespace) -> None:

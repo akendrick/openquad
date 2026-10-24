@@ -32,6 +32,7 @@ FULL_BLOCK_DELTA = 3.0  # within this many L* of paper white = blocks fully
 DISTINCT_STEP = 1.5  # wedge steps at least this far apart in L* count as usable
 MIN_STEP_PIXELS = 12  # a wedge patch must be at least this wide in the scan
 MARKER_CONTRAST = 10.0  # L* by which the marker must outshine the other candidate spots
+SHEET_SHAPE_TOLERANCE = 0.12  # shape error allowed for each of several sheets on a scan
 NEAR_SQUARE = 0.15  # sheets within this of square are tried in every orientation
 MAX_TILT = 6.0  # degrees of tilt on the scanner that are corrected
 MARKER_SLACK = 0.12  # inches the marker may sit off its nominal spot
@@ -275,6 +276,13 @@ def _dark_regions(dark: NDArray[np.bool_]) -> list[tuple[int, int, int, int, int
 
 
 def _find_sheet(lightness: NDArray[np.float64], aspect: float = 0.0) -> tuple[int, int, int, int]:
+    """The single best-matching sheet; see `_find_sheets`."""
+    return _find_sheets(lightness, aspect, 1)[0]
+
+
+def _find_sheets(
+    lightness: NDArray[np.float64], aspect: float = 0.0, count: int = 1
+) -> list[tuple[int, int, int, int]]:
     """(top, left, bottom, right) of the sheet's exposed inner area.
 
     That area is clear film, so it prints dark, and the light safe edge encloses it.
@@ -311,10 +319,18 @@ def _find_sheet(lightness: NDArray[np.float64], aspect: float = 0.0) -> tuple[in
         found = (right - left + 1) / (bottom - top + 1)
         return min(abs(found / aspect - 1), abs(found * aspect - 1))
 
-    _, top, left, bottom, right, _ = min(inside, key=lambda r: (round(shape_error(r), 2), -r[0]))
-    top, left = max(top - ERODE, 0), max(left - ERODE, 0)
-    bottom, right = min(bottom + ERODE, small.shape[0] - 1), min(right + ERODE, small.shape[1] - 1)
-    return top * step, left * step, (bottom + 1) * step, (right + 1) * step
+    if count > 1 and aspect:
+        # Several sheets: only sheet-shaped regions count (not the field around them).
+        inside = [r for r in inside if shape_error(r) <= SHEET_SHAPE_TOLERANCE]
+    ranked = sorted(inside, key=lambda r: (round(shape_error(r), 2), -r[0]))
+    if len(ranked) < count:
+        raise BlockingError(f"expected {count} sheets on the scan, found {len(ranked)}")
+    boxes = []
+    for _, top, left, bottom, right, _ in ranked[:count]:
+        top, left = max(top - ERODE, 0), max(left - ERODE, 0)
+        bottom, right = min(bottom + ERODE, h - 1), min(right + ERODE, w - 1)
+        boxes.append((top * step, left * step, (bottom + 1) * step, (right + 1) * step))
+    return boxes
 
 
 def _erode(mask: NDArray[np.bool_], radius: int) -> NDArray[np.bool_]:
