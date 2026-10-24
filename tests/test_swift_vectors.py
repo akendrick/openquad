@@ -67,14 +67,21 @@ def test_main_writes_all_files(tmp_path: Path, capsys) -> None:  # type: ignore[
         "colour.json",
         "composite.json",
         "curves.json",
+        "devices.json",
+        "grey16-cm.tif",
+        "grey16-nounit.tif",
+        "grey16-white.tif",
+        "grey16.tif",
+        "grey8.tif",
         "measure.json",
         "negative.json",
         "paper.json",
         "quadfile.json",
         "reading.json",
+        "rgb16.tif",
         "separate.json",
         "wedge-pair-v1.png",
         "wedge-pair-v5.png",
         "wedge-single.png",
     ]
-    assert capsys.readouterr().out.count("wrote") == 20
+    assert capsys.readouterr().out.count("wrote") == 27
