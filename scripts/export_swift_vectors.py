@@ -140,6 +140,134 @@ def separate_vectors() -> dict[str, Any]:
     }
 
 
+def composite_vectors() -> dict[str, Any]:
+    from openquad.composite import PRESETS, composite
+
+    rng = np.random.default_rng(5)
+    image = rng.integers(0, 65536, (4, 64)).astype(np.uint16)
+    image[0] = np.rint(np.linspace(0, 65535, 64)).astype(np.uint16)
+    return {
+        "height": 4,
+        "width": 64,
+        "image": _ints(image),
+        "presets": {
+            name: {
+                "layers": [
+                    {
+                        "name": layer.name,
+                        "colour": list(layer.colour),
+                        "tone": {
+                            "limit": layer.tone.limit,
+                            "start": layer.tone.start,
+                            "peak": layer.tone.peak,
+                            "end": layer.tone.end,
+                            "shape": layer.tone.shape,
+                        },
+                    }
+                    for layer in layers
+                ],
+                "rgb": _ints(composite(image, layers)),
+            }
+            for name, layers in PRESETS.items()
+        },
+    }
+
+
+def negative_vectors() -> dict[str, Any]:
+    from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, ink_to_rgb, make_negative
+
+    photo = np.tile(np.rint(np.linspace(0, 65535, 12)).astype(np.uint16), (10, 1))
+    photo[3, 4] = 1234
+    cases: list[tuple[str, bool, float, bool, float]] = [
+        ("black", False, 0.0, True, 100.0),
+        ("green", False, 0.2, True, 100.0),
+        ("orange", True, 0.2, True, 100.0),
+        ("red", False, 0.05, False, 100.0),
+    ]
+    coverage = np.linspace(0.0, 1.0, 101)
+    rendered = []
+    for colour, mirror, edge, mark, dpi in cases:
+        settings = NegativeSettings(colour=colour, mirror=mirror, safe_edge=edge, mark=mark)
+        negative = make_negative(photo, settings, dpi)
+        rendered.append(
+            {
+                "colour": colour,
+                "mirror": mirror,
+                "safe_edge": edge,
+                "mark": mark,
+                "dpi": dpi,
+                "shape": list(negative.shape),
+                "rgb": _ints(negative),
+            }
+        )
+    return {
+        "colours": {name: list(rgb) for name, rgb in NEGATIVE_COLOURS.items()},
+        "coverage": _floats(coverage),
+        "ink_to_rgb": {
+            name: _ints(ink_to_rgb(coverage, rgb)) for name, rgb in NEGATIVE_COLOURS.items()
+        },
+        "photo": {"height": 10, "width": 12, "pixels": _ints(photo)},
+        "cases": rendered,
+    }
+
+
+def paper_vectors() -> dict[str, Any]:
+    from openquad.negative import negative_ppi
+    from openquad.paper import PAPER_SIZES, fit_ppi
+
+    sizes = [(3008, 4032), (4000, 2000), (300, 400), (850, 1100)]
+    return {
+        "papers": {name: list(size) for name, size in PAPER_SIZES.items()},
+        "fit": [
+            {"width": w, "height": h, "paper": paper, "ppi": fit_ppi(w, h, paper)}
+            for w, h in sizes
+            for paper in ("Letter", "A4", "4x6")
+        ],
+        "negative": [
+            {
+                "width": w,
+                "height": h,
+                "paper": "Letter",
+                "edge": edge,
+                "ppi": negative_ppi(w, h, "Letter", edge, 0.5),
+            }
+            for w, h in sizes
+            for edge in (0.0, 0.25, 0.5)
+        ],
+    }
+
+
+def calibration_vectors() -> dict[str, Any]:
+    from openquad.chart import ProcessCurve
+    from openquad.greybalance import load_calibration
+
+    working = ROOT / "calibration-data" / "canon-mg3600-plain" / "canon-plain.oqcal"
+    calibration = load_calibration(working)
+    rng = np.random.default_rng(9)
+    rgb = rng.integers(0, 65536, (50, 3)).astype(np.uint16)
+    levels = np.rint(np.linspace(0, 65535, 21)).astype(np.uint16)
+    process_levels = np.rint(np.linspace(0, 65535, 257)).astype(np.uint16)
+    process_curve = np.rint(65535 * (process_levels / 65535.0) ** 1.3).astype(np.uint16)
+    process = ProcessCurve(
+        process_levels,
+        process_curve,
+        colour="green",
+        film="office",
+        created="2026-10-24T00:00:00+00:00",  # fixed, so exports are reproducible
+    )
+    grey = rng.integers(0, 65536, 200).astype(np.uint16)
+    return {
+        "oqcal_text": working.read_text(encoding="utf-8"),
+        "rgb": _ints(rgb),
+        "applied": _ints(calibration.apply(rgb)),
+        "levels": _ints(levels),
+        "sent_for": _ints(calibration.sent_for(levels)),
+        "oqproc_text": process.to_json(),
+        "grey": _ints(grey),
+        "process_applied": _ints(process.apply(grey)),
+    }
+
+
 def export(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
@@ -148,6 +276,10 @@ def export(directory: Path) -> list[Path]:
         ("quadfile", quadfile_vectors()),
         ("curves", curves_vectors()),
         ("separate", separate_vectors()),
+        ("composite", composite_vectors()),
+        ("negative", negative_vectors()),
+        ("paper", paper_vectors()),
+        ("calibration", calibration_vectors()),
     ):
         path = directory / f"{name}.json"
         path.write_text(json.dumps(data, separators=(",", ":")) + "\n", encoding="utf-8")
