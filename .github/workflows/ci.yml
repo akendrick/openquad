@@ -46,4 +46,4 @@ jobs:
       - run: swift --version
       - run: swift test --package-path swift/OpenQuadCore
       - run: swift test --package-path swift/OpenQuadApp
-      - run: swift/build-app.sh
+      - run: swift/sign-app.sh  # builds the app and signs it ad hoc (no secrets in CI)
