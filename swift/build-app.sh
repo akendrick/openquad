@@ -1,11 +1,13 @@
 #!/bin/sh
-# Build OpenQuad.app (unsigned, for trying the app; signing and notarization come later).
+# Build OpenQuad.app (unsigned; swift/sign-app.sh signs it). Version 0.1.0 beta 1.
 #
 #     swift/build-app.sh            -> swift/build/OpenQuad.app
 set -eu
 here=$(cd "$(dirname "$0")" && pwd)
-swift build -c release --package-path "$here/OpenQuadApp"
-binary=$(swift build -c release --package-path "$here/OpenQuadApp" --show-bin-path)/OpenQuad
+# Universal: runs on Apple silicon and Intel Macs.
+build="swift build -c release --arch arm64 --arch x86_64 --package-path $here/OpenQuadApp"
+$build
+binary=$($build --show-bin-path)/OpenQuad
 app="$here/build/OpenQuad.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -25,8 +27,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleExecutable</key><string>OpenQuad</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.0.1</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key><string>0.1.0b1</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>

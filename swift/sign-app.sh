@@ -19,7 +19,7 @@ identity="${OPENQUAD_SIGN_IDENTITY:--}"
 profile="${OPENQUAD_NOTARY_PROFILE:-}"
 
 "$here/build-app.sh"
-version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$app/Contents/Info.plist")
+version=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$app/Contents/Info.plist")
 
 if [ "$identity" = "-" ]; then
     echo "signing ad hoc (set OPENQUAD_SIGN_IDENTITY to a Developer ID to distribute)"

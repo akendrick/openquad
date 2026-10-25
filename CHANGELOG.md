@@ -5,7 +5,26 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Added (Phase 7: digital negatives for carbon printing)
+## [0.1.0-beta.1] - 2026-10-25
+
+First beta for testers: a native Mac app alongside the Python tools.
+
+### Added (Mac app, Phase 8)
+- **OpenQuad.app** (SwiftUI, macOS 14+, universal): print window (open a photo, neutral or toned,
+  calibration, page and size, live preview, 16-bit print file), printing through the macOS print panel
+  at exact size or straight to a CUPS printer (`lp`), and digital negatives.
+- Printer calibration wizard (comparison page, eSCL scan, grey balance, tone), blocking test, and
+  process calibration wizard, sharing run files with the Python version.
+- Calibration library: saved calibrations per printer and paper in a dropdown; choosing a printer
+  picks its calibration.
+- How to Use OpenQuad guide (first launch, Help menu), app icon, signing and notarization script.
+- The Swift core (`swift/OpenQuadCore`) reproduces the Python core exactly, checked against
+  exported test vectors (real Canon scans and carbon prints) in CI.
+
+### Changed
+- Version 0.1.0b1 (beta).
+
+### Added (Phase 7: digital negatives for carbon printing, Python)
 - `openquad negative`: a photo as a digital negative: inverted, black or a UV-blocking colour
   (green, orange, yellow, red, olive), optional mirror, opaque safe edge (0.25 in) with an orientation
   F that flips with the image; `--fit` sizes photo plus safe edge to the page.

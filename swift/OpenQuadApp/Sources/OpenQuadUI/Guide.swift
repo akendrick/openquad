@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 2
+    public static let version = 3
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -21,7 +21,9 @@ public struct GuideView: View {
                 + "and makes digital negatives for contact printing (carbon transfer).",
              steps: ["Open a photo, choose how it should print, and print.",
                      "Calibrate your printer once, with its scanner, so greys print neutral and evenly spaced.",
-                     "For carbon: find the best negative colour, then calibrate the process."]),
+                     "For carbon: find the best negative colour, then calibrate the process.",
+                     "This is a beta. Please report anything that goes wrong, or reads unclearly, at "
+                        + "github.com/akendrick/openquad/issues."]),
         Page(symbol: "photo", title: "Print a photo",
              text: "Everything is on the left; the preview on the right shows how the print should look.",
              steps: ["Open Photo… (⌘O): greyscale or colour, any size. Colour photos are converted to grey.",
