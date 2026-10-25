@@ -2,7 +2,7 @@
 //
 //     OpenQuad                          the app
 //     OpenQuad --snapshot out.png [--photo PHOTO] [--negative]
-//     OpenQuad --snapshot out.png --wizard calibration|process [--scan SCAN]
+//     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN]
 //                                       draw the window to a PNG and quit (for checks)
 
 import AppKit
@@ -34,6 +34,10 @@ struct OpenQuadApp: App {
         .defaultSize(width: 1100, height: 720)
         .commands {
             CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .help) {
+                Button("How to Use OpenQuad") { NotificationCenter.default.post(name: GuideView.showNotification, object: nil) }
+                    .keyboardShortcut("?")
+            }
         }
     }
 }
@@ -60,7 +64,9 @@ enum Snapshot {
     }
 
     /// The print window, or (for a snapshot) one of the wizards, filled in from a scan.
-    static func content(_ model: AppModel) -> AnyView { wizard ?? AnyView(ContentView(model: model)) }
+    static func content(_ model: AppModel) -> AnyView {
+        wizard ?? AnyView(ContentView(model: model, guideOnLaunch: value("--snapshot") == nil))
+    }
 
     /// Built once: the scene's body is evaluated again on every change.
     static let wizard: AnyView? = makeWizard()
@@ -83,6 +89,12 @@ enum Snapshot {
             wizard.printed("printed elsewhere")
             if let scan { wizard.scanAndRead(file: scan) }
             return AnyView(ProcessWizardView(model: wizard) { _ in })
+        case "blocking":
+            let test = BlockingTestModel(scannerHost: "876298000000.local:80", find: { [] })
+            if let scan { test.read(file: scan) }
+            return AnyView(BlockingTestView(model: test) { _ in })
+        case "guide":
+            return AnyView(GuideView())
         default:
             return nil
         }

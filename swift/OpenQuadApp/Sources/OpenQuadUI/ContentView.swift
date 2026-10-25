@@ -11,8 +11,16 @@ public struct ContentView: View {
     @State private var ppiText = ""
     @State private var calibrationWizard: CalibrationWizardModel?
     @State private var processWizard: ProcessWizardModel?
+    @State private var blockingTest: BlockingTestModel?
+    @State private var showGuide = false
+    @AppStorage("guideSeen") private var guideSeen = 0
 
-    public init(model: AppModel) { self.model = model }
+    let guideOnLaunch: Bool
+
+    public init(model: AppModel, guideOnLaunch: Bool = true) {
+        self.model = model
+        self.guideOnLaunch = guideOnLaunch
+    }
 
     public var body: some View {
         HSplitView {
@@ -27,6 +35,21 @@ public struct ContentView: View {
         }
         .sheet(item: $processWizard) { wizard in
             ProcessWizardView(model: wizard) { model.finishProcess($0, scannerHost: wizard.scannerHost) }
+        }
+        .sheet(item: $blockingTest) { test in
+            BlockingTestView(model: test) { model.useBlockingColour($0, scannerHost: test.scannerHost) }
+        }
+        .sheet(isPresented: $showGuide) { GuideView { guideSeen = GuideView.version } }
+        .toolbar {
+            ToolbarItem {
+                Button { showGuide = true } label: { Label("How to Use OpenQuad", systemImage: "questionmark.circle") }
+                    .help("How to use OpenQuad")
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: GuideView.showNotification)) { _ in showGuide = true }
+        .onAppear {
+            model.loadPrinters()
+            if guideOnLaunch && guideSeen < GuideView.version { showGuide = true }  // first launch: walk through the app
         }
     }
 
@@ -52,6 +75,13 @@ public struct ContentView: View {
                     if model.session.negative { negativeControls } else { printControls }
                 }
                 Section("Page") {
+                    Picker("Printer", selection: Binding(get: { model.session.printer }, set: { model.setPrinter($0) })) {
+                        Text("Choose in the print panel").tag(String?.none)
+                        ForEach(model.printers, id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ")).tag(String?.some($0)) }
+                        if let printer = model.session.printer, !model.printers.contains(printer) {
+                            Text(printer.replacingOccurrences(of: "_", with: " ")).tag(String?.some(printer))
+                        }
+                    }
                     Picker("Paper", selection: Binding(get: { model.session.paper }, set: { model.setPaper($0) })) {
                         ForEach(paperOrder, id: \.self) { Text($0).tag($0) }
                     }
@@ -65,6 +95,12 @@ public struct ContentView: View {
                 }
             }
             .formStyle(.grouped)
+            if let status = model.status {
+                Text(status)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
+            }
             if let error = model.error {
                 Text(error)
                     .font(.callout)
@@ -102,6 +138,7 @@ public struct ContentView: View {
         fileRow("Process curve", model.session.processPath, types: ["oqproc"],
                 choose: { model.setProcess($0) }, clear: { model.setProcess(nil) })
         Button("Calibrate a Process…") { processWizard = model.processWizard() }
+        Button("Find the Best Blocking Colour…") { blockingTest = model.blockingTest() }
         Toggle("Mirror (flip left to right)", isOn: Binding(get: { model.session.mirror }, set: { model.setMirror($0) }))
         Stepper(value: Binding(get: { model.session.safeEdge }, set: { model.setSafeEdge($0) }), in: 0...2, step: 0.05) {
             LabeledContent("Safe edge", value: String(format: "%.2f in", model.session.safeEdge))
@@ -156,6 +193,12 @@ public struct ContentView: View {
     }
 
     private func printPhoto() {
+        if model.session.printer != nil {
+            // Straight to the printer (lp), as calibrations made with the Python app were printed.
+            guard confirm("Print?", model.summary.joined(separator: "\n")) else { return }
+            Task { await model.printDirect() }
+            return
+        }
         Task {
             guard let (image, width, height, paper, title) = await model.printRequest(),
                   let operation = NativePrint.operation(for: image, widthInches: width, heightInches: height,

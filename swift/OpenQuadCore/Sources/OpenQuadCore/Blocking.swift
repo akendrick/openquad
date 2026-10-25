@@ -172,3 +172,39 @@ public enum Blocking {
                               paper: percentile(map.values, [99])[0], edge: edge, white: white)
     }
 }
+
+extension Blocking {
+    /// The test sheet as a negative (clear film = 65535): an opaque marker, then for each
+    /// colour a full-strength patch and an 11-step wedge, inside a black safe edge.
+    /// Mirrors openquad/blocking.py blocking_sheet; the colour names are drawn with the
+    /// system font (Python uses Pillow's), so `labels: false` gives the identical sheet.
+    public static func sheet(layout: BlockingLayout = BlockingLayout(), dpi: Double = 300, mirror: Bool = false,
+                             safeEdge: Double = 0.25, labels: Bool = true) -> RGBImage {
+        let height = pyRound(layout.height * dpi), width = pyRound(layout.width * dpi)
+        var pixels = [UInt16](repeating: UInt16(maxValue), count: width * height * 3)
+        func fill(_ box: (Double, Double, Double, Double), _ rgb: (UInt16, UInt16, UInt16)) {
+            for y in pySlice(pyRound(box.1 * dpi), pyRound(box.3 * dpi), height) {
+                for x in pySlice(pyRound(box.0 * dpi), pyRound(box.2 * dpi), width) {
+                    let i = (y * width + x) * 3
+                    (pixels[i], pixels[i + 1], pixels[i + 2]) = rgb
+                }
+            }
+        }
+        fill(layout.markerBox(), (0, 0, 0))  // opaque marker
+        for (row, name) in layout.colours.enumerated() {
+            let colour = Negative.colours[name]!
+            fill(layout.fullBox(row), Negative.inkToRGB(1.0, colour))
+            for step in 0..<BlockingLayout.steps {  // 100% next to the full patch
+                fill(layout.stepBox(row, step), Negative.inkToRGB(1.0 - Double(step) / Double(BlockingLayout.steps - 1), colour))
+            }
+        }
+        if labels {
+            let mask = TextMask.draw(layout.colours.enumerated().map { row, name in
+                (name, Double(pyRound(layout.gap * dpi)), Double(pyRound((layout.rowTop(row) + layout.rowHeight * 0.25) * dpi)))
+            }, size: Double(max(8, pyRound(layout.rowHeight * dpi * 0.4))), width: width, height: height)
+            for (i, on) in mask.enumerated() where on { (pixels[i * 3], pixels[i * 3 + 1], pixels[i * 3 + 2]) = (0, 0, 0) }
+        }
+        return Negative.addSafeEdge(RGBImage(width: width, height: height, pixels: pixels),
+                                    settings: NegativeSettings(mirror: mirror, safeEdge: safeEdge), dpi: dpi)
+    }
+}

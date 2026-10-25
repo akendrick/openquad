@@ -907,6 +907,17 @@ def wizards_vectors(directory: Path) -> dict[str, Any]:
         results.append({"worst": float(errors.max()), "mean": float(errors.mean()),
                         "white": reading.white, "black": reading.black,
                         "json": reading_to_json(reading)})  # fmt: skip
+    import openquad.blocking as blocking
+
+    labels = blocking._draw_labels
+    blocking._draw_labels = lambda sheet, layout, dpi: None
+    try:  # Swift draws the colour names with the system font; compare everything else
+        renders["blocking_sheet"] = _digest(blocking.blocking_sheet(dpi=50))
+        renders["blocking_sheet_mirrored"] = _digest(
+            blocking.blocking_sheet(dpi=60, mirror=True, safe_edge=0.3)
+        )
+    finally:
+        blocking._draw_labels = labels
     return {
         "identity_levels": _ints(identity.levels),
         "identity_curves": _ints(identity.curves),
