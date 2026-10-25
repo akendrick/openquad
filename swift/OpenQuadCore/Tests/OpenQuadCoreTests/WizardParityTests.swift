@@ -77,6 +77,14 @@ struct WizardParity {
         let page = Chart.page(colours: ["green", "orange"], processes: [nil, darker], dpi: 60)
         check("chart_page", [page.height, page.width, 3], page.pixels)
 
+        let sheet = Blocking.sheet(dpi: 50, labels: false)
+        check("blocking_sheet", [sheet.height, sheet.width, 3], sheet.pixels)
+        let mirrored = Blocking.sheet(dpi: 60, mirror: true, safeEdge: 0.3, labels: false)
+        check("blocking_sheet_mirrored", [mirrored.height, mirrored.width, 3], mirrored.pixels)
+        let labelled = Blocking.sheet(dpi: 50)
+        let inked = zip(labelled.pixels, sheet.pixels).filter { $0 != $1 }.count
+        #expect(inked > 0 && labelled.pixels.count == sheet.pixels.count)  // the names are drawn, nothing else changes
+
         let identity = Calibration.identity()
         #expect(identity.levels.map(Int.init) == ints(v["identity_levels"]))
         #expect(identity.curves.flatMap { $0 }.map(Int.init) == ints(v["identity_curves"]))

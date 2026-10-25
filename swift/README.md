@@ -24,6 +24,15 @@ implementation in `src/openquad`, which stays the reference.
   - **Calibrate a Process…** prints a page of process charts on film (or you print it
     elsewhere), scans the contact print, reads every chart and refines the curves.
 
+  - **Find the Best Blocking Colour…** (in negative mode) prints the blocking test sheet,
+    reads a scan of the contact print (any way up, tilted or mirrored) and sets the best
+    colour for negatives.
+
+  Print… uses the macOS print panel, or, when a printer is chosen under Page, prints
+  straight to it through CUPS (`lp`, as the Python app does) after showing a summary.
+  **How to Use OpenQuad** (shown on first launch, and in the Help menu and toolbar) walks
+  through printing, calibrating, negatives, the blocking test and process calibration.
+
   Runs are kept in `~/Library/Application Support/OpenQuad/calibrations` and
   `processes`, with the same `run.json` as the Python app, so either app can continue a
   run.

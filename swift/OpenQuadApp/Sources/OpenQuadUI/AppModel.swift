@@ -24,6 +24,10 @@ public final class AppModel {
     public private(set) var preview: CGImage?
     public private(set) var busy = false
     public var error: String?
+    /// The last thing that happened (e.g. a print job sent), for the status line.
+    public var status: String?
+    /// CUPS printers on this Mac, for printing without the print panel.
+    public private(set) var printers: [String] = []
     let settingsURL: URL
     private var previewToken = 0
 
@@ -31,6 +35,14 @@ public final class AppModel {
         self.settingsURL = settingsURL
         settings = AppSettings.load(settingsURL)
         restore()
+    }
+
+    /// Look up the CUPS printers (off the main thread; none if CUPS isn't there).
+    public func loadPrinters(_ list: @escaping @Sendable () throws -> [String] = { try Printing.listPrinters() }) {
+        Task {
+            let found = await Task.detached { (try? list()) ?? [] }.value
+            printers = found
+        }
     }
 
     private func restore() {
@@ -125,6 +137,13 @@ public final class AppModel {
         refreshPreview()
     }
 
+    /// A CUPS printer to print to directly, or nil to choose in the macOS print panel.
+    public func setPrinter(_ name: String?) {
+        session.printer = name
+        settings.printer = name
+        try? settings.save(settingsURL)
+    }
+
     public func setFit(_ on: Bool) {
         session.fit = on
         refreshPreview()
@@ -135,7 +154,24 @@ public final class AppModel {
         refreshPreview()
     }
 
-    // MARK: the calibration wizards
+    // MARK: the blocking test and the calibration wizards
+
+    public func blockingTest() -> BlockingTestModel { BlockingTestModel(scannerHost: settings.scannerHost ?? "") }
+
+    /// Make negatives in the colour the blocking test found best.
+    public func useBlockingColour(_ colour: String, scannerHost: String) {
+        if !scannerHost.isEmpty { settings.scannerHost = scannerHost }
+        session.setMode(.negative)
+        if let process = session.process, process.colour != colour {
+            error = "The process curve is for \(process.colour) negatives; clear it to use \(colour)."
+        } else {
+            attempt {
+                try session.setNegativeColour(colour)
+                remember()
+            }
+        }
+        refreshPreview()
+    }
 
     public func calibrationWizard() -> CalibrationWizardModel {
         CalibrationWizardModel(folder: AppSettings.dataDirectory().appendingPathComponent("calibrations"), paper: session.paper,
@@ -213,6 +249,26 @@ public final class AppModel {
             error = nil
         } catch {
             self.error = String(describing: error)
+        }
+    }
+
+    /// Print straight to the chosen CUPS printer (lp), as the Python app does; the job id.
+    public func printDirect(runner: @escaping Printing.Runner = Printing.runCommand) async -> String? {
+        guard canPrint else { return nil }
+        busy = true
+        defer { busy = false }
+        let snapshot = session
+        nonisolated(unsafe) let runner = runner
+        do {
+            let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("openquad-print-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+            let job = try await Task.detached(priority: .userInitiated) { try snapshot.print(scratch: scratch, runner: runner) }.value
+            status = "Sent to \(snapshot.printer ?? "the printer"): job \(job)."
+            error = nil
+            return job
+        } catch {
+            self.error = String(describing: error)
+            return nil
         }
     }
 
