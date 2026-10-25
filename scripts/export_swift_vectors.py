@@ -738,6 +738,104 @@ def devices_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
     }, written
 
 
+def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
+    """Loading photos of every kind, and what a print session renders and reports."""
+    import tifffile
+    from PIL import Image
+
+    from openquad.photo import load_photo
+    from openquad.session import PrintSession
+
+    rng = np.random.default_rng(17)
+    ramp = np.tile(np.linspace(0, 255, 24), (18, 1))
+    written = []
+
+    def save(name: str, image: Any, **kwargs: Any) -> None:
+        path = directory / name
+        image.save(path, **kwargs)
+        written.append(path)
+
+    grey8 = ramp.astype(np.uint8)
+    save("photo-grey.png", Image.fromarray(grey8, "L"), dpi=(300, 300))
+    noisy = np.clip(ramp[..., None] + rng.integers(-1, 2, (18, 24, 3)), 0, 255).astype(np.uint8)
+    save("photo-rgb-grey.png", Image.fromarray(noisy, "RGB"))
+    colour = rng.integers(0, 256, (18, 24, 3)).astype(np.uint8)
+    save("photo-colour.png", Image.fromarray(colour, "RGB"), dpi=(240, 240))
+    rgba = np.dstack([noisy, np.full((18, 24), 255, np.uint8)])
+    rgba[:4, :, 3] = 0  # a transparent band, as left by resizing a canvas
+    rgba[:, -3:, 3] = 0
+    rgba[8:12, 5:9, 3] = 128  # partly transparent: goes onto paper white
+    save("photo-rgba.png", Image.fromarray(rgba, "RGBA"))
+    la = np.dstack([grey8, np.where(ramp > 128, 255, 60).astype(np.uint8)])
+    save("photo-la.png", Image.fromarray(la, "LA"))
+    save("photo-palette.png", Image.fromarray(colour, "RGB").quantize(16))
+    tiff16 = (np.tile(np.linspace(0, 65535, 24), (18, 1))).astype(np.uint16)
+    path = directory / "photo-grey16.tif"
+    tifffile.imwrite(path, tiff16, photometric="minisblack", resolution=(360, 360),
+                     resolutionunit="INCH")  # fmt: skip
+    written.append(path)
+    rgba16 = np.dstack([np.stack([tiff16] * 3, -1), np.full((18, 24), 65535, np.uint16)])
+    rgba16[:, :2, 3] = 0
+    rgba16[:, :2, :3] = 0
+    path = directory / "photo-rgba16.tif"
+    tifffile.imwrite(path, rgba16, photometric="rgb", extrasamples=["unassalpha"])
+    written.append(path)
+
+    photos = []
+    for path in written:
+        photo = load_photo(path)
+        photos.append({"file": path.name, "shape": list(photo.pixels.shape),
+                       "pixels": _ints(photo.pixels), "dpi": list(photo.dpi) if photo.dpi else None,
+                       "converted": photo.converted, "cropped": photo.cropped})  # fmt: skip
+
+    calibration = ROOT / "calibration-data" / "canon-mg3600-plain" / "canon-plain.oqcal"
+    process = directory / "session-process.oqproc"
+    from openquad.chart import ProcessCurve
+
+    levels = np.rint(np.linspace(0, 65535, 257)).astype(np.uint16)
+    curve = np.rint(65535 * (levels / 65535.0) ** 0.8).astype(np.uint16)
+    process.write_text(
+        ProcessCurve(levels, curve, colour="orange", created="2026-10-24T00:00:00+00:00").to_json()
+        + "\n"
+    )
+    written.append(process)
+    configurations: list[dict[str, Any]] = [
+        {"photo": "photo-grey16.tif"},
+        {"photo": "photo-grey16.tif", "preset": "black-red", "calibration": True, "paper": "4x6"},
+        {"photo": "photo-grey.png", "fit": False, "ppi": 12.5},
+        {"photo": "photo-grey.png", "fit": False},
+        {"photo": "photo-rgb-grey.png", "fit": False},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 40.0,
+         "negative_colour": "green", "mirror": True, "safe_edge": 0.25},
+        {"photo": "photo-grey16.tif", "mode": "negative", "process": True, "safe_edge": 0.1},
+    ]  # fmt: skip
+    sessions = []
+    for config in configurations:
+        session = PrintSession()
+        session.open(directory / config["photo"])
+        session.set_preset(config.get("preset", "neutral"))
+        if config.get("calibration"):
+            session.set_calibration(calibration)
+        session.set_paper(config.get("paper", "Letter"))
+        session.fit = config.get("fit", True)
+        session.ppi = config.get("ppi")
+        session.set_mode(config.get("mode", "print"))
+        if config.get("process"):
+            session.set_process(process)
+        elif "negative_colour" in config:
+            session.set_negative_colour(config["negative_colour"])
+        session.mirror = config.get("mirror", False)
+        session.safe_edge = config.get("safe_edge", 0.25)
+        session.printer = "Canon_MG3600_series"
+        rendered = session.render(session._photo().pixels)
+        sessions.append({**config, "ppi_used": session.effective_ppi(),
+                         "size": list(session.size_inches()), "fits": session.fits_on_paper(),
+                         "summary": session.summary(), "notes": session.notes,
+                         "rendered_shape": list(rendered.shape),
+                         "rendered": _ints(rendered)})  # fmt: skip
+    return {"photos": photos, "calibration": calibration.read_text(), "sessions": sessions}, written
+
+
 def export(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
@@ -764,7 +862,11 @@ def export(directory: Path) -> list[Path]:
     devices, files = devices_vectors(directory)
     devices_path = directory / "devices.json"
     devices_path.write_text(json.dumps(devices, separators=(",", ":")) + "\n", encoding="utf-8")
-    return [*written, path, reading_path, devices_path, *images, *prints, *files]
+    sessions, photos = session_vectors(directory)
+    session_path = directory / "session.json"
+    session_path.write_text(json.dumps(sessions, separators=(",", ":")) + "\n", encoding="utf-8")
+    return [*written, path, reading_path, devices_path, session_path, *images, *prints, *files,
+            *photos]  # fmt: skip
 
 
 def main(argv: list[str]) -> None:

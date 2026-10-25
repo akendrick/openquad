@@ -45,3 +45,5 @@ jobs:
       - uses: actions/checkout@v7
       - run: swift --version
       - run: swift test --package-path swift/OpenQuadCore
+      - run: swift test --package-path swift/OpenQuadApp
+      - run: swift/build-app.sh

@@ -8,10 +8,16 @@ implementation in `src/openquad`, which stays the reference.
   `.oqproc` process curves, building grey balance, linearization and process curves
   from measurements, reading scans (grey-balance wedges, the blocking test and
   process charts), eSCL scanning and scanner discovery, CUPS `lp` printing, and
-  16-bit TIFFs with resolution and ICC profile). The whole Python core is now ported;
-  next is the SwiftUI app with the native print dialog.
-  Open `OpenQuadCore/Package.swift` in Xcode, or run
+  16-bit TIFFs with resolution and ICC profile, photo loading, the print session and
+  settings). Open `OpenQuadCore/Package.swift` in Xcode, or run
   `swift test --package-path swift/OpenQuadCore`.
+- `OpenQuadApp/`: the Mac app (SwiftUI). Open `OpenQuadApp/Package.swift` in Xcode and
+  run the OpenQuad scheme, or build an app bundle with `swift/build-app.sh`
+  (`swift/build/OpenQuad.app`, unsigned for now). The print window opens a photo, tones
+  it or makes a digital negative, sets the page, previews, saves the 16-bit print file,
+  and prints through the standard macOS print panel at the exact print size. Settings
+  are shared with the Python app (`~/Library/Application Support/OpenQuad/settings.json`);
+  toning is never remembered. The calibration wizards come next.
 - **Parity:** `scripts/export_swift_vectors.py` writes test vectors (inputs and the
   Python outputs) to `OpenQuadCore/Tests/OpenQuadCoreTests/Vectors/`. Each Swift module
   must reproduce them before it is accepted. A Python test fails if the committed vectors
@@ -21,6 +27,11 @@ Scans used as vectors are real Canon and carbon prints (and simulated charts), r
 and stored as lossless PNGs, so Swift decodes exactly the pixels Python measured. JPEG
 decoders differ slightly between Pillow and ImageIO, so a JPEG scan reads within about
 a level of the Python result rather than bit for bit.
+
+**Calibrations and the print panel:** the Canon calibration was made by printing through
+`lp`. The macOS print panel may colour-manage differently, so check a print made through
+the panel against the calibration before relying on it (`Printing.send` keeps the `lp`
+path available).
 
 Regenerate the vectors after an intended change in the Python core:
 
