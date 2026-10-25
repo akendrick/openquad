@@ -29,7 +29,7 @@ struct OpenQuadApp: App {
     @State private var model = Snapshot.model()
 
     var body: some Scene {
-        Window("OpenQuad", id: "print") {
+        Window("OpenQuad (Beta)", id: "print") {
             Snapshot.content(model)
         }
         .defaultSize(width: 1100, height: 720)

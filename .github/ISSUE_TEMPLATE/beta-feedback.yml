@@ -1,0 +1,46 @@
+name: Beta feedback
+description: Something went wrong, looked wrong, or was unclear in the OpenQuad beta.
+title: "[beta] "
+labels: ["beta"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for testing OpenQuad! A few details help a lot.
+  - type: dropdown
+    id: part
+    attributes:
+      label: Which part?
+      options:
+        - Printing a photo
+        - Printer calibration wizard
+        - Digital negatives
+        - Blocking test
+        - Process calibration (carbon)
+        - Installing or opening the app
+        - The How to Use guide
+        - Python command line or desktop app
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+      description: Steps to get there, and any error message shown.
+    validations:
+      required: true
+  - type: input
+    id: mac
+    attributes:
+      label: Mac and macOS version
+      placeholder: e.g. MacBook Air M2, macOS 15.1
+  - type: input
+    id: printer
+    attributes:
+      label: Printer, paper and scanner
+      placeholder: e.g. Canon PIXMA MG3600, Letter plain paper, its own scanner
+  - type: textarea
+    id: files
+    attributes:
+      label: Screenshots, scans or files
+      description: Drag them in. A zip of ~/Library/Application Support/OpenQuad helps with calibration problems.

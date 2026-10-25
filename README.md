@@ -1,38 +1,88 @@
 # OpenQuad
 
-Open-source monochrome and multi-layer colour inkjet printing, in the spirit of QuadToneRIP.
+> [!WARNING]
+> **Beta: work in progress.** OpenQuad 0.1.0 beta 1 is an early test release. It works on the
+> hardware it was developed with (a Canon PIXMA MG3600 and its built-in scanner), but it hasn't been
+> tried widely yet. Expect rough edges, and please
+> [report what you find](https://github.com/akendrick/openquad/issues/new/choose).
 
-OpenQuad splits a 16-bit greyscale image into per-ink channels using `.quad`-compatible curves
-and prints through libgutenprint's raw ink mode. It can also layer colour tones (for example a
-black + red duotone) to emulate printing from several stacked negatives on an ordinary colour
-inkjet.
+Open-source black-and-white and toned inkjet printing, and digital negatives for carbon transfer, in
+the spirit of QuadToneRIP. OpenQuad calibrates an ordinary inkjet printer with its own scanner so
+greys print neutral and evenly spaced, adds optional duotone toning, and makes UV-blocking digital
+negatives with process calibration (ChartThrob-style charts) for contact printing.
 
-**Status (Oct 2026):** usable for colour-inkjet printing. Toning (neutral by default; black + red and
-other presets on request), scan-based grey balance and tone linearization work end to end on a Canon
-PIXMA MG3600, from the command line or the desktop app's print window. The raw-ink (QuadToneRIP-style)
-path needs a Gutenprint-supported printer and isn't built yet. Hardware results:
-[docs/hardware-tests.md](docs/hardware-tests.md).
+It comes as a **Mac app** (beta) and as a **Python command-line tool and desktop app**, which share
+calibration files and settings.
 
-## Desktop app
+## Download the beta (Mac app)
+
+1. Download **OpenQuad-0.1.0b1.zip** from the
+   [latest pre-release](https://github.com/akendrick/openquad/releases) and unzip it.
+2. Move **OpenQuad.app** to your Applications folder.
+3. The beta isn't notarized by Apple yet, so the first time you open it macOS will refuse. Open it
+   anyway: double-click it once, then go to **System Settings ▸ Privacy & Security** and click
+   **Open Anyway** next to OpenQuad. Or, in Terminal:
+   `xattr -dr com.apple.quarantine /Applications/OpenQuad.app`
+
+Needs macOS 14 (Sonoma) or later, on Apple silicon or Intel. A short **How to Use OpenQuad** guide
+opens on first launch (and later from **Help** or the **?** button).
+
+### What to try
+
+- **Print a photo:** open a photo, leave toning neutral or choose a duotone, and print through the
+  macOS print panel or straight to a printer. Does the print match the preview, and come out at the
+  size it says?
+- **Calibrate your printer**, if it has a network (AirScan / eSCL) scanner: Calibrate This Printer…
+  prints a test page, scans it and corrects colour casts and tone. How many rounds did it take, and
+  did the goals get met?
+- **Digital negatives:** make a negative and try the blocking test and process calibration, if you
+  contact print (carbon, or another UV process).
+- **The guide:** is anything unclear or missing?
+
+### Reporting problems
+
+Use the [beta feedback form](https://github.com/akendrick/openquad/issues/new?template=beta-feedback.yml).
+Say which Mac, macOS version, printer and paper you used, and attach a screenshot or scan if it helps.
+The app keeps its calibration runs, scans and measurements in
+`~/Library/Application Support/OpenQuad`, which you can zip up and attach as well.
+
+### Known limitations
+
+- **Not notarized:** see the install steps above.
+- **Tested hardware:** only a Canon PIXMA MG3600 (Letter, plain paper) and its scanner so far. Other
+  printers should work through the macOS print panel or CUPS. Scanning needs an eSCL scanner on the
+  network; any scanner works through "Read a Scan File".
+- **Print panel vs `lp`:** the Canon calibration was made printing straight to the printer (`lp`). A
+  calibration made through the macOS print panel should be used through the panel (the wizard records
+  which, and the app matches it).
+- **Carbon:** the process calibration has been checked on simulated prints and the blocking test on
+  real carbon prints, but not a full process calibration on real tissue yet.
+- **QuadToneRIP-style raw-ink printing** (per-ink channels through Gutenprint) isn't built yet. The
+  beta prints through the normal printer driver.
+
+## Status
+
+| Part | State |
+| --- | --- |
+| Mac app (SwiftUI): print window, toning, digital negatives, print panel or direct printing | beta |
+| Printer calibration wizard (grey balance, tone), calibration library per printer | beta, tested on Canon MG3600 |
+| Blocking test and process calibration wizards (carbon) | beta, partly tested |
+| Python CLI and desktop app (PySide6) | working; the reference implementation |
+| Raw-ink QuadToneRIP-style path | not built |
+
+Hardware results: [docs/hardware-tests.md](docs/hardware-tests.md). Calibration data from real prints
+and scans: [calibration-data/](calibration-data/). Mac app details: [swift/README.md](swift/README.md).
+Screenshots: [docs/screenshots/](docs/screenshots/).
+
+## Python tools (command line and desktop app)
 
 ```bash
 uv sync --extra ui
-uv run openquad-app
+uv run openquad-app          # the PySide6 desktop app
+uv run openquad --help       # the command line
 ```
 
-Open a photo, pick toning (neutral unless you choose otherwise), calibration, printer and paper; the
-preview shows the toned result; Print asks for confirmation first.
-
-**Output → Digital negative** makes negatives instead: pick the ink colour (or a process curve, which
-sets it), mirror and safe edge; the preview shows the negative as it will look on the film; **Save
-negative** writes the file to print from GIMP. Its **Calibrate…** opens the process wizard (chart page,
-contact print, scan, refine).
-
-**Calibrate…** opens the calibration wizard: print a comparison page, put it face down on the
-scanner, scan and measure, and follow the suggested step (improve grey balance, or even out tone)
-until both goals are met. Then **Use this calibration**.
-
-## Usage
+### Usage
 
 ```bash
 openquad target -o wedge.tif                       # 21-step greyscale wedge, 300 dpi
@@ -74,7 +124,7 @@ A calibration is only valid for the printer, paper and driver settings it was ma
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
 `--ppi`, `--copies` and `--option NAME=VALUE` (driver options) to change that.
 
-## Digital negatives (carbon printing)
+### Digital negatives (carbon printing)
 
 Print negatives on **inkjet-coated** transparency film (plain or laser film won't hold the ink):
 
@@ -107,7 +157,13 @@ uv sync
 uv run pytest
 uv run ruff check . && uv run mypy
 uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+swift test --package-path swift/OpenQuadCore     # the Swift core, checked against Python
+swift test --package-path swift/OpenQuadApp      # the Mac app
+swift/sign-app.sh                                # build swift/build/OpenQuad.app
 ```
+
+The Swift core is matched against the Python reference with test vectors
+(`scripts/export_swift_vectors.py`); CI runs both on every push.
 
 ## Licence
 
