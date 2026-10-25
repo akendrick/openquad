@@ -6,8 +6,10 @@ implementation in `src/openquad`, which stays the reference.
 - `OpenQuadCore/`: Swift package with the core (colour maths, `.quad` files, curves,
   separation, colour layers, digital negatives, paper fitting, `.oqcal` calibrations and
   `.oqproc` process curves, building grey balance, linearization and process curves
-  from measurements, and reading scans: grey-balance wedges, the blocking test and
-  process charts; still to port: eSCL scanning and printing).
+  from measurements, reading scans (grey-balance wedges, the blocking test and
+  process charts), eSCL scanning and scanner discovery, CUPS `lp` printing, and
+  16-bit TIFFs with resolution and ICC profile). The whole Python core is now ported;
+  next is the SwiftUI app with the native print dialog.
   Open `OpenQuadCore/Package.swift` in Xcode, or run
   `swift test --package-path swift/OpenQuadCore`.
 - **Parity:** `scripts/export_swift_vectors.py` writes test vectors (inputs and the

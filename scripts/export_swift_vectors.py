@@ -582,6 +582,162 @@ def _reading(reading: Any) -> dict[str, Any]:
     }
 
 
+TIFF_CASES = (
+    ("grey16.tif", "uint16", "minisblack", (300.0, 300.0), "INCH"),
+    ("grey8.tif", "uint8", "minisblack", None, None),
+    ("grey16-white.tif", "uint16", "miniswhite", (240.0, 240.0), "INCH"),
+    ("grey16-cm.tif", "uint16", "minisblack", (118.0, 118.0), "CENTIMETER"),
+    ("grey16-nounit.tif", "uint16", "minisblack", (72.0, 72.0), "NONE"),
+)
+
+
+def devices_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
+    """Scanner (eSCL) and printer (CUPS lp) behaviour, and TIFF files for image I/O."""
+    import tifffile
+
+    from openquad.escl import (
+        ScanError,
+        ScanSettings,
+        parse_avahi,
+        parse_dns_sd_browse,
+        parse_dns_sd_resolve,
+        scan,
+    )
+    from openquad.imageio import load_grey, read_dpi, save_rgb
+    from openquad.printing import PrintError, PrintJob, list_printers, send
+
+    settings = [
+        {"dpi": 300, "width": 2550, "height": 3300, "intent": "Document"},
+        {"dpi": 600, "width": 1275, "height": 1650, "intent": "Photo"},
+        {"dpi": 75, "width": 100, "height": 200, "intent": "Preview"},
+    ]
+    for entry in settings:
+        entry["xml"] = ScanSettings(**entry).xml().decode()  # type: ignore[arg-type]
+
+    jpeg = b"\xff\xd8\xff\xe0fake-jpeg"
+    scenarios: list[tuple[str, str, list[tuple[int, str, str]]]] = [
+        ("ok", "876298000000.local:80",
+         [(201, "http://876298000000.local/eSCL/ScanJobs/42", ""), (200, "", "jpeg"),
+          (200, "", "")]),
+        ("busy", "http://192.168.1.20:8080/",
+         [(503, "", ""), (503, "", ""), (201, "/eSCL/ScanJobs/7/", ""), (503, "", ""),
+          (200, "", "jpeg"), (200, "", "")]),
+        ("refused", "scanner.local", [(409, "", "<error>it's busy</error>")]),
+        ("no-image", "scanner.local", [(201, "ScanJobs/9", ""), (500, "", "oops"), (-1, "", "")]),
+        ("never-free", "scanner.local", [(503, "", "")] * 10),
+    ]  # fmt: skip
+    scans = []
+    for name, host, responses in scenarios:
+        queue = list(responses)
+        calls: list[dict[str, Any]] = []
+        sleeps: list[float] = []
+
+        def fetch(method: str, url: str, body: bytes | None) -> tuple[int, str, bytes]:
+            calls.append({"method": method, "url": url, "body": body.decode() if body else None})  # noqa: B023
+            status, location, payload = queue.pop(0)  # noqa: B023
+            if status == -1:
+                raise ScanError("gone")
+            return status, location, jpeg if payload == "jpeg" else payload.encode()
+
+        output = directory / "scan-output.jpg"
+        try:
+            scan(host, output, fetch=fetch, sleep=sleeps.append)
+            result: dict[str, Any] = {"image": output.read_bytes().hex()}
+            output.unlink()
+        except ScanError as exc:
+            result = {"error": str(exc)}
+        scans.append({"name": name, "host": host, "responses": responses, "calls": calls,
+                      "sleeps": sleeps, **result})  # fmt: skip
+
+    avahi = (
+        "+;en0;IPv4;Canon\\032MG3600\\032series;_uscan._tcp;local\n"
+        "=;en0;IPv4;Canon\\032MG3600\\032series;_uscan._tcp;local;876298000000.local;"
+        '192.168.1.20;80;"rs=eSCL"\n'
+    )
+    columns = "Timestamp     A/R    Flags  if Domain               Service Type         "
+    add = "20:29:23.021  Add        2  11 local.               "
+    browse = (
+        "Browsing for _uscan._tcp.local.\n"
+        f"{columns}Instance Name\n"
+        f"{add}_uscan._tcp.         Canon MG3600 series\n"
+        f"{add}_uscan._tcp.         Canon MG3600 series\n"
+        f"{add}_ipp._tcp.           Other\n"
+    )
+    resolve = (
+        "20:29:43.311  Canon\\032MG3600\\032series._uscan._tcp.local. can be reached at "
+        "876298000000.local.:80 (interface 11)\n"
+    )
+    discovery = {
+        "avahi": avahi,
+        "avahi_found": [list(x) for x in parse_avahi(avahi)],
+        "browse": browse,
+        "browse_found": parse_dns_sd_browse(browse),
+        "resolve": resolve,
+        "resolve_found": parse_dns_sd_resolve(resolve),
+        "resolve_odd": parse_dns_sd_resolve("x can be reached at somewhere (if 1)"),
+    }
+
+    jobs = []
+    for kwargs in (
+        {},
+        {"ppi": 341.5, "copies": 2, "paper": "4x6"},
+        {"ppi": 342.5, "title": "Negative: green"},
+        {"options": (("MediaType", "photographic-glossy"), ("print-quality", "5"))},
+    ):
+        job = PrintJob(Path("/tmp/openquad/neg.tif"), "Canon_MG3600_series", **kwargs)
+        entry = {k: v for k, v in kwargs.items() if k != "options"}
+        entry["options"] = [list(o) for o in job.options]
+        entry["command"] = job.command()
+        jobs.append(entry)
+
+    written = []
+    rng = np.random.default_rng(13)
+    tiffs = []
+    for name, dtype, photometric, resolution, unit in TIFF_CASES:
+        top = 65535 if dtype == "uint16" else 255
+        pixels = rng.integers(0, top + 1, (5, 7)).astype(dtype)
+        path = directory / name
+        tifffile.imwrite(path, pixels, photometric=photometric, resolution=resolution,
+                         resolutionunit=unit)  # fmt: skip
+        written.append(path)
+        grey = load_grey(path)
+        tiffs.append({"file": name, "pixels": _ints(grey.pixels), "shape": list(grey.pixels.shape),
+                      "dpi": list(grey.dpi) if grey.dpi else None})  # fmt: skip
+
+    class Done:
+        def __init__(self, code: int, out: str, err: str = "") -> None:
+            self.returncode, self.stdout, self.stderr = code, out, err
+
+    sent = []
+    target = directory / "grey8.tif"
+    for code, out, err in ((0, "request id is Canon_MG3600_series-3144 (1 file(s))\n", ""),
+                           (1, "", "lp: The printer or class does not exist.\n"),
+                           (0, "queued\n", "")):  # fmt: skip
+        job = PrintJob(target, "Canon_MG3600_series")
+        try:
+            outcome: dict[str, Any] = {"id": send(job, lambda c: Done(code, out, err))}  # type: ignore[arg-type,return-value]  # noqa: B023
+        except PrintError as exc:
+            outcome = {"error": str(exc)}
+        sent.append({"code": code, "stdout": out, "stderr": err, **outcome})
+    printers = list_printers(lambda c: Done(0, "Canon_MG3600_series\nPDF\n\n"))  # type: ignore[arg-type,return-value]
+
+    rgb = rng.integers(0, 65536, (4, 6, 3)).astype(np.uint16)
+    path = directory / "rgb16.tif"
+    save_rgb(path, rgb, dpi=(200.0, 200.0))
+    written.append(path)
+    rgb_file = {"file": path.name, "pixels": _ints(rgb), "dpi": list(read_dpi(path) or ())}
+    return {
+        "scan_settings": settings,
+        "scans": scans,
+        "discovery": discovery,
+        "jobs": jobs,
+        "send": sent,
+        "printers": printers,
+        "tiffs": tiffs,
+        "rgb_tiff": rgb_file,
+    }, written
+
+
 def export(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
@@ -605,7 +761,10 @@ def export(directory: Path) -> list[Path]:
     read, prints = reading_vectors(directory)
     reading_path = directory / "reading.json"
     reading_path.write_text(json.dumps(read, separators=(",", ":")) + "\n", encoding="utf-8")
-    return [*written, path, reading_path, *images, *prints]
+    devices, files = devices_vectors(directory)
+    devices_path = directory / "devices.json"
+    devices_path.write_text(json.dumps(devices, separators=(",", ":")) + "\n", encoding="utf-8")
+    return [*written, path, reading_path, devices_path, *images, *prints, *files]
 
 
 def main(argv: list[str]) -> None:
