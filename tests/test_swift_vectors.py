@@ -93,5 +93,6 @@ def test_main_writes_all_files(tmp_path: Path, capsys) -> None:  # type: ignore[
         "wedge-pair-v1.png",
         "wedge-pair-v5.png",
         "wedge-single.png",
+        "wizards.json",
     ]
-    assert capsys.readouterr().out.count("wrote") == 37
+    assert capsys.readouterr().out.count("wrote") == 38

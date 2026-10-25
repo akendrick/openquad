@@ -2,6 +2,7 @@
 //
 //     OpenQuad                          the app
 //     OpenQuad --snapshot out.png [--photo PHOTO] [--negative]
+//     OpenQuad --snapshot out.png --wizard calibration|process [--scan SCAN]
 //                                       draw the window to a PNG and quit (for checks)
 
 import AppKit
@@ -28,7 +29,7 @@ struct OpenQuadApp: App {
 
     var body: some Scene {
         Window("OpenQuad", id: "print") {
-            ContentView(model: model)
+            Snapshot.content(model)
         }
         .defaultSize(width: 1100, height: 720)
         .commands {
@@ -58,9 +59,39 @@ enum Snapshot {
         return model
     }
 
+    /// The print window, or (for a snapshot) one of the wizards, filled in from a scan.
+    static func content(_ model: AppModel) -> AnyView { wizard ?? AnyView(ContentView(model: model)) }
+
+    /// Built once: the scene's body is evaluated again on every change.
+    static let wizard: AnyView? = makeWizard()
+
+    static func makeWizard() -> AnyView? {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("openquad-snapshot-runs")
+        let scan = value("--scan").map { URL(fileURLWithPath: $0) }
+        switch value("--wizard") {
+        case "calibration":
+            let wizard = CalibrationWizardModel(folder: folder, paper: "Letter", scannerHost: "876298000000.local:80",
+                                                starting: nil, startingName: nil, find: { [] })
+            wizard.name = "canon-letter-plain"
+            wizard.start()
+            wizard.printed("print panel")
+            if let scan { wizard.scanAndMeasure(file: scan) }
+            return AnyView(CalibrationWizardView(model: wizard) { _ in })
+        case "process":
+            let wizard = ProcessWizardModel(folder: folder, scannerHost: "876298000000.local:80", find: { [] })
+            wizard.start()
+            wizard.printed("printed elsewhere")
+            if let scan { wizard.scanAndRead(file: scan) }
+            return AnyView(ProcessWizardView(model: wizard) { _ in })
+        default:
+            return nil
+        }
+    }
+
     static func takeIfAsked() {
         guard let output = value("--snapshot") else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+        let wait = value("--wizard") == nil ? 2.5 : 8.0  // let a wizard finish reading its scan
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
             guard let view = NSApp.windows.first(where: { $0.isVisible })?.contentView,
                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
                 FileHandle.standardError.write(Data("no window to snapshot\n".utf8))

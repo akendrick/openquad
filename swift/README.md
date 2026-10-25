@@ -17,7 +17,16 @@ implementation in `src/openquad`, which stays the reference.
   it or makes a digital negative, sets the page, previews, saves the 16-bit print file,
   and prints through the standard macOS print panel at the exact print size. Settings
   are shared with the Python app (`~/Library/Application Support/OpenQuad/settings.json`);
-  toning is never remembered. The calibration wizards come next.
+  toning is never remembered.
+  Two calibration wizards open from the print window:
+  - **Calibrate This Printer…** prints a comparison page, scans it (eSCL), measures it,
+    then improves grey balance or evens out tone until both goals are met.
+  - **Calibrate a Process…** prints a page of process charts on film (or you print it
+    elsewhere), scans the contact print, reads every chart and refines the curves.
+
+  Runs are kept in `~/Library/Application Support/OpenQuad/calibrations` and
+  `processes`, with the same `run.json` as the Python app, so either app can continue a
+  run.
 - **Parity:** `scripts/export_swift_vectors.py` writes test vectors (inputs and the
   Python outputs) to `OpenQuadCore/Tests/OpenQuadCoreTests/Vectors/`. Each Swift module
   must reproduce them before it is accepted. A Python test fails if the committed vectors

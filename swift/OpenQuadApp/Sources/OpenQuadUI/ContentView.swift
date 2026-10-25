@@ -9,6 +9,8 @@ import UniformTypeIdentifiers
 public struct ContentView: View {
     @Bindable var model: AppModel
     @State private var ppiText = ""
+    @State private var calibrationWizard: CalibrationWizardModel?
+    @State private var processWizard: ProcessWizardModel?
 
     public init(model: AppModel) { self.model = model }
 
@@ -20,6 +22,12 @@ public struct ContentView: View {
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 820, minHeight: 600)
+        .sheet(item: $calibrationWizard) { wizard in
+            CalibrationWizardView(model: wizard) { model.finishCalibration($0, scannerHost: wizard.scannerHost) }
+        }
+        .sheet(item: $processWizard) { wizard in
+            ProcessWizardView(model: wizard) { model.finishProcess($0, scannerHost: wizard.scannerHost) }
+        }
     }
 
     // MARK: the controls
@@ -83,6 +91,7 @@ public struct ContentView: View {
         }
         fileRow("Calibration", model.session.calibrationPath, types: ["oqcal"],
                 choose: { model.setCalibration($0) }, clear: { model.setCalibration(nil) })
+        Button("Calibrate This Printer…") { calibrationWizard = model.calibrationWizard() }
     }
 
     @ViewBuilder private var negativeControls: some View {
@@ -92,6 +101,7 @@ public struct ContentView: View {
         .disabled(model.session.process != nil)  // the process curve decides the colour
         fileRow("Process curve", model.session.processPath, types: ["oqproc"],
                 choose: { model.setProcess($0) }, clear: { model.setProcess(nil) })
+        Button("Calibrate a Process…") { processWizard = model.processWizard() }
         Toggle("Mirror (flip left to right)", isOn: Binding(get: { model.session.mirror }, set: { model.setMirror($0) }))
         Stepper(value: Binding(get: { model.session.safeEdge }, set: { model.setSafeEdge($0) }), in: 0...2, step: 0.05) {
             LabeledContent("Safe edge", value: String(format: "%.2f in", model.session.safeEdge))
