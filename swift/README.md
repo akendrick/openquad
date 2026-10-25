@@ -37,6 +37,24 @@ and stored as lossless PNGs, so Swift decodes exactly the pixels Python measured
 decoders differ slightly between Pillow and ImageIO, so a JPEG scan reads within about
 a level of the Python result rather than bit for bit.
 
+## Signing and notarization
+
+`swift/sign-app.sh` builds `OpenQuad.app` and signs it with the hardened runtime. With no
+settings it signs ad hoc, which runs on the Mac that built it (CI does this on every
+push). To give the app to other people it must be signed with a **Developer ID
+Application** certificate (Apple Developer Program) and notarized by Apple:
+
+1. Install the Developer ID Application certificate in your login keychain.
+2. Store notary credentials once (asks for an app-specific password):
+   `xcrun notarytool store-credentials openquad-notary --apple-id APPLE_ID --team-id TEAMID`
+3. Run
+   `OPENQUAD_SIGN_IDENTITY="Developer ID Application: NAME (TEAMID)" OPENQUAD_NOTARY_PROFILE=openquad-notary swift/sign-app.sh`
+
+The script signs, notarizes and staples the app, then makes, signs, notarizes and
+staples `swift/build/OpenQuad-VERSION.dmg`. The identity and credentials stay in your
+keychain and environment; nothing secret goes in the repository. The app is not
+sandboxed: it runs `lp`, `lpstat` and `dns-sd` and talks to the scanner over the network.
+
 **Calibrations and the print panel:** the Canon calibration was made by printing through
 `lp`. The macOS print panel may colour-manage differently, so check a print made through
 the panel against the calibration before relying on it (`Printing.send` keeps the `lp`
