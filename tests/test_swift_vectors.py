@@ -76,12 +76,22 @@ def test_main_writes_all_files(tmp_path: Path, capsys) -> None:  # type: ignore[
         "measure.json",
         "negative.json",
         "paper.json",
+        "photo-colour.png",
+        "photo-grey.png",
+        "photo-grey16.tif",
+        "photo-la.png",
+        "photo-palette.png",
+        "photo-rgb-grey.png",
+        "photo-rgba.png",
+        "photo-rgba16.tif",
         "quadfile.json",
         "reading.json",
         "rgb16.tif",
         "separate.json",
+        "session-process.oqproc",
+        "session.json",
         "wedge-pair-v1.png",
         "wedge-pair-v5.png",
         "wedge-single.png",
     ]
-    assert capsys.readouterr().out.count("wrote") == 27
+    assert capsys.readouterr().out.count("wrote") == 37
