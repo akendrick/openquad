@@ -836,6 +836,86 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
     return {"photos": photos, "calibration": calibration.read_text(), "sessions": sessions}, written
 
 
+def _digest(pixels: Any) -> dict[str, Any]:
+    """Shape and SHA-256 of a uint16 image (little-endian), for images too big to list."""
+    import hashlib
+
+    array = np.ascontiguousarray(pixels, dtype="<u2")
+    return {"shape": list(array.shape), "sha256": hashlib.sha256(array.tobytes()).hexdigest()}
+
+
+def wizards_vectors(directory: Path) -> dict[str, Any]:
+    """What the calibration wizards print, save and judge."""
+    from openquad.calibrate import assess
+    from openquad.chart import (
+        ChartLayout,
+        ChartReading,
+        ProcessCurve,
+        chart_negative,
+        chart_page,
+        chart_photo,
+        reading_to_json,
+        tone_errors,
+    )
+    from openquad.greybalance import Calibration, comparison_page, load_calibration
+    from openquad.measure import Measurement
+    from openquad.targets import framed_target
+
+    data = ROOT / "calibration-data" / "canon-mg3600-plain"
+    canon = load_calibration(data / "canon-plain.oqcal")
+    identity = Calibration.identity()
+    levels = np.rint(np.linspace(0, 65535, 257)).astype(np.uint16)
+    green = ProcessCurve(levels, np.rint(65535 * (levels / 65535.0) ** 1.2).astype(np.uint16))
+    darker = ProcessCurve(
+        np.array([0, 65535], dtype=np.uint16), np.array([0, 32768], dtype=np.uint16), "orange"
+    )
+    renders = {
+        "framed_target": _digest(framed_target(dpi=50)),
+        "comparison_identity": _digest(comparison_page(identity, 50)),
+        "comparison_canon": _digest(comparison_page(canon, 50)),
+        "chart_photo": _digest(chart_photo(dpi=50)),
+        "chart_photo_compact_2": _digest(chart_photo(ChartLayout.compact(), 50, index=2)),
+        "chart_negative": _digest(chart_negative("green", green, mirror=True, dpi=50)),
+        "chart_page": _digest(chart_page(["green", "orange"], [None, darker], dpi=60)),
+    }
+
+    assessments = []
+    for session, prefix in (("2026-10-20", "m4"), ("2026-10-20", "m6"), ("2026-10-22", "m8")):
+        texts = [(data / session / f"{prefix}-{kind}.json").read_text() for kind in
+                 ("uncorrected", "corrected")]  # fmt: skip
+        plain, corrected = (Measurement.from_json(t) for t in texts)
+        result = assess(plain, corrected)
+        assessments.append({
+            "uncorrected": texts[0], "corrected": texts[1],
+            "worst_cast": result.worst_cast, "mean_cast": result.mean_cast,
+            "worst_tone": result.worst_tone, "mean_tone": result.mean_tone,
+            "uncorrected_cast": result.uncorrected_cast, "next_step": result.next_step,
+            "summary": result.summary(), "measurement_json": corrected.to_json(),
+        })  # fmt: skip
+
+    reading_data = json.loads((directory / "reading.json").read_text())
+    results = []
+    for entry in reading_data["page"]["readings"]:
+        reading = ChartReading(
+            levels=np.array(entry["levels"], dtype=np.uint16),
+            lightness=np.array(entry["lightness"]),
+            strip=np.array(entry["strip"]),
+            orientation=entry["orientation"],
+            paper=entry["paper"],
+        )
+        errors = np.abs(tone_errors(reading))
+        results.append({"worst": float(errors.max()), "mean": float(errors.mean()),
+                        "white": reading.white, "black": reading.black,
+                        "json": reading_to_json(reading)})  # fmt: skip
+    return {
+        "identity_levels": _ints(identity.levels),
+        "identity_curves": _ints(identity.curves),
+        "renders": renders,
+        "assessments": assessments,
+        "chart_results": results,
+    }
+
+
 def export(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
@@ -865,8 +945,12 @@ def export(directory: Path) -> list[Path]:
     sessions, photos = session_vectors(directory)
     session_path = directory / "session.json"
     session_path.write_text(json.dumps(sessions, separators=(",", ":")) + "\n", encoding="utf-8")
-    return [*written, path, reading_path, devices_path, session_path, *images, *prints, *files,
-            *photos]  # fmt: skip
+    wizards_path = directory / "wizards.json"
+    wizards_path.write_text(
+        json.dumps(wizards_vectors(directory), separators=(",", ":")) + "\n", encoding="utf-8"
+    )
+    return [*written, path, reading_path, devices_path, session_path, wizards_path, *images,
+            *prints, *files, *photos]  # fmt: skip
 
 
 def main(argv: list[str]) -> None:

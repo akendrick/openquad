@@ -135,6 +135,29 @@ public final class AppModel {
         refreshPreview()
     }
 
+    // MARK: the calibration wizards
+
+    public func calibrationWizard() -> CalibrationWizardModel {
+        CalibrationWizardModel(folder: AppSettings.dataDirectory().appendingPathComponent("calibrations"), paper: session.paper,
+                               scannerHost: settings.scannerHost ?? "", starting: session.calibration,
+                               startingName: session.calibrationPath?.lastPathComponent)
+    }
+
+    public func processWizard() -> ProcessWizardModel {
+        ProcessWizardModel(folder: AppSettings.dataDirectory().appendingPathComponent("processes"),
+                           scannerHost: settings.scannerHost ?? "")
+    }
+
+    public func finishCalibration(_ path: URL, scannerHost: String) {
+        if !scannerHost.isEmpty { settings.scannerHost = scannerHost }
+        setCalibration(path)
+    }
+
+    public func finishProcess(_ path: URL, scannerHost: String) {
+        if !scannerHost.isEmpty { settings.scannerHost = scannerHost }
+        setProcess(path)
+    }
+
     // MARK: what the window shows
 
     public var photoDescription: String {
