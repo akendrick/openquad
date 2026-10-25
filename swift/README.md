@@ -28,6 +28,13 @@ implementation in `src/openquad`, which stays the reference.
     reads a scan of the contact print (any way up, tilted or mirrored) and sets the best
     colour for negatives.
 
+  **Calibration** is a list of saved calibrations, labelled from what each file records
+  (for example *Canon MG3600 · Letter plain · 22 Oct 2026*): every wizard result, plus
+  files added with Import…, all kept under `~/Library/Application Support/OpenQuad/calibrations`.
+  Choosing a printer under Page picks its newest calibration for that paper (and never
+  keeps one made for a different printer). The wizard asks which printer, paper type and
+  print method it is calibrating, so results label and match properly.
+
   Print… uses the macOS print panel, or, when a printer is chosen under Page, prints
   straight to it through CUPS (`lp`, as the Python app does) after showing a summary.
   **How to Use OpenQuad** (shown on first launch, and in the Help menu and toolbar) walks

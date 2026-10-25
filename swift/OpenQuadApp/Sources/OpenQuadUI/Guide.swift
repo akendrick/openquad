@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 1
+    public static let version = 2
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -26,7 +26,8 @@ public struct GuideView: View {
              text: "Everything is on the left; the preview on the right shows how the print should look.",
              steps: ["Open Photo… (⌘O): greyscale or colour, any size. Colour photos are converted to grey.",
                      "Output: Print. Toning stays Neutral unless you choose a duotone; it's never remembered.",
-                     "Calibration: choose your printer's .oqcal file (or make one, next page).",
+                     "Calibration: pick one of your saved calibrations (Import… adds a file). Choosing a printer "
+                        + "under Page picks its newest calibration for that paper.",
                      "Page: paper, Fit to page, or turn Fit off and give a resolution. Print size shows the result.",
                      "Print… (⌘P). With \"Choose in the print panel\" the macOS panel opens: pick the printer and the "
                         + "same quality settings every time. Or pick a printer to print straight to it.",
@@ -34,11 +35,13 @@ public struct GuideView: View {
         Page(symbol: "slider.horizontal.3", title: "Calibrate your printer",
              text: "Calibrate This Printer… (under Calibration) prints a test page with two step wedges, scans it and "
                 + "measures every step.",
-             steps: ["Start, then 1. Print Comparison Page… on the paper you'll use.",
+             steps: ["Choose the printer, paper, paper type and how you'll print (straight to the printer or "
+                        + "through the print panel), then Start and 1. Print Comparison Page….",
                      "When it's dry, put it face down on the scanner glass and choose 2. Scan and Measure "
                         + "(Find looks for the scanner on the network).",
                      "Follow the advice: Improve Grey Balance while there is a colour cast, then Even Out Tone.",
-                     "Repeat until both goals are met (cast under 3, tone within 2 L*), then Use This Calibration.",
+                     "Repeat until both goals are met (cast under 3, tone within 2 L*), then Use This Calibration: "
+                        + "it joins your saved calibrations under the printer's name.",
                      "Print the same way every time (same printer, paper and settings) or the calibration won't fit."]),
         Page(symbol: "film", title: "Digital negatives",
              text: "Output: Digital negative turns the photo into a negative for contact printing, in black or a "

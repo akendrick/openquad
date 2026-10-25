@@ -28,13 +28,65 @@ public final class AppModel {
     public var status: String?
     /// CUPS printers on this Mac, for printing without the print panel.
     public private(set) var printers: [String] = []
+    /// Saved calibrations to choose from: the newest of each printer and paper.
+    public private(set) var calibrations: [LibraryEntry] = []
+    public let library: CalibrationLibrary
     let settingsURL: URL
     private var previewToken = 0
 
-    public init(settingsURL: URL = AppSettings.defaultURL()) {
+    public init(settingsURL: URL = AppSettings.defaultURL(), libraryFolder: URL? = nil) {
         self.settingsURL = settingsURL
+        library = CalibrationLibrary(folder: libraryFolder
+            ?? settingsURL.deletingLastPathComponent().appendingPathComponent("calibrations"))
         settings = AppSettings.load(settingsURL)
         restore()
+        refreshLibrary()
+    }
+
+    /// Re-read the calibrations folder (after a wizard or an import).
+    public func refreshLibrary() {
+        var entries = library.latest()
+        if let path = session.calibrationPath, let current = CalibrationLibrary.entry(path),
+           !entries.contains(where: { $0.url == current.url }) {
+            entries.append(current)  // an older version, or a file kept elsewhere
+        }
+        calibrations = entries
+    }
+
+    /// The library entry for the calibration in use, if any.
+    public var currentCalibration: LibraryEntry? {
+        session.calibrationPath.flatMap { path in
+            let resolved = path.resolvingSymlinksInPath()
+            return calibrations.first { $0.url == resolved } ?? CalibrationLibrary.entry(path)
+        }
+    }
+
+    /// Copy a calibration file into the library and use it.
+    public func importCalibration(_ url: URL) {
+        attempt {
+            let entry = try library.importFile(url)
+            try session.setCalibration(entry.url)
+            remember()
+            status = "Added \(entry.label) to your calibrations."
+        }
+        refreshLibrary()
+    }
+
+    /// When printing straight to a printer, use the newest calibration made for it and
+    /// this paper; drop a calibration made for another printer.
+    func matchCalibration() {
+        guard let printer = session.printer else { return }
+        if let match = library.match(printer: printer, paper: session.paper) {
+            if match.url != session.calibrationPath?.resolvingSymlinksInPath() {
+                attempt { try session.setCalibration(match.url) }
+                status = "Using \(match.label) for this printer."
+            }
+        } else if let current = session.calibration, current.printer != printer {
+            attempt { try session.setCalibration(nil) }
+            status = "No calibration for \(LibraryEntry.printerName(printer)) on \(session.paper) yet: it will print uncorrected."
+        }
+        remember()
+        refreshLibrary()
     }
 
     /// Look up the CUPS printers (off the main thread; none if CUPS isn't there).
@@ -96,6 +148,7 @@ public final class AppModel {
             try session.setCalibration(url)
             remember()
         }
+        refreshLibrary()
     }
 
     public func setMode(_ mode: OutputMode) {
@@ -134,6 +187,7 @@ public final class AppModel {
             try session.setPaper(paper)
             remember()
         }
+        matchCalibration()
         refreshPreview()
     }
 
@@ -142,6 +196,7 @@ public final class AppModel {
         session.printer = name
         settings.printer = name
         try? settings.save(settingsURL)
+        matchCalibration()
     }
 
     public func setFit(_ on: Bool) {
@@ -174,9 +229,9 @@ public final class AppModel {
     }
 
     public func calibrationWizard() -> CalibrationWizardModel {
-        CalibrationWizardModel(folder: AppSettings.dataDirectory().appendingPathComponent("calibrations"), paper: session.paper,
-                               scannerHost: settings.scannerHost ?? "", starting: session.calibration,
-                               startingName: session.calibrationPath?.lastPathComponent)
+        CalibrationWizardModel(folder: library.folder, paper: session.paper, scannerHost: settings.scannerHost ?? "",
+                               starting: session.calibration, startingName: currentCalibration?.label,
+                               printers: printers, printer: session.printer ?? printers.first ?? "")
     }
 
     public func processWizard() -> ProcessWizardModel {
@@ -187,6 +242,7 @@ public final class AppModel {
     public func finishCalibration(_ path: URL, scannerHost: String) {
         if !scannerHost.isEmpty { settings.scannerHost = scannerHost }
         setCalibration(path)
+        if let entry = currentCalibration { status = "Using \(entry.label)." }
     }
 
     public func finishProcess(_ path: URL, scannerHost: String) {

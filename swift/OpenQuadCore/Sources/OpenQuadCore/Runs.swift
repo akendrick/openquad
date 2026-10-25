@@ -121,15 +121,18 @@ public final class CalibrationRun: @unchecked Sendable {
     }
 
     /// A new run in `folder`, starting from `starting` (default: no correction).
+    /// `paperLabel` (e.g. "Letter plain") names the paper in the calibration files; the
+    /// run itself keeps `paper` as the page size it prints on.
     public static func start(folder: URL, name: String, printer: String, paper: String = "Letter", scannerHost: String = "",
-                             starting: Calibration? = nil, settings: String = defaultSettings) throws -> CalibrationRun {
+                             starting: Calibration? = nil, settings: String = defaultSettings,
+                             paperLabel: String? = nil) throws -> CalibrationRun {
         guard validRunName(name) else { throw RunError(description: "invalid calibration name \(pyRepr(name))") }
         let run = CalibrationRun(folder: folder, name: name.trimmingCharacters(in: .whitespaces), printer: printer,
                                  paper: paper, scannerHost: scannerHost, rounds: [])
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let base = starting ?? .identity()
-        let calibration = try Calibration(levels: base.levels, curves: base.curves, printer: printer, paper: paper,
-                                          settings: base.settings.isEmpty ? settings : base.settings,
+        let calibration = try Calibration(levels: base.levels, curves: base.curves, printer: printer,
+                                          paper: paperLabel ?? paper, settings: base.settings.isEmpty ? settings : base.settings,
                                           created: ISO8601DateFormatter().string(from: Date()))
         try run.newRound(calibration)
         return run
@@ -250,7 +253,7 @@ public final class CalibrationRun: @unchecked Sendable {
         switch action {
         case "grey balance":
             next = try GreyBalance.build(measurement, damping: damping, shadowDamping: shadowDamping, printer: printer,
-                                         paper: paper, settings: current.settings)
+                                         paper: current.paper.isEmpty ? paper : current.paper, settings: current.settings)
         case "linearize":
             next = try Linearize.linearize(current, measurement)
         default:
