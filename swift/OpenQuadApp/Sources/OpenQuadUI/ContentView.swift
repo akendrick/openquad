@@ -125,9 +125,22 @@ public struct ContentView: View {
         Picker("Toning", selection: Binding(get: { model.session.preset }, set: { model.setPreset($0) })) {
             ForEach(presetLabels, id: \.0) { Text($0.1).tag($0.0) }
         }
-        fileRow("Calibration", model.session.calibrationPath, types: ["oqcal"],
-                choose: { model.setCalibration($0) }, clear: { model.setCalibration(nil) })
-        Button("Calibrate This Printer…") { calibrationWizard = model.calibrationWizard() }
+        Picker("Calibration", selection: Binding(get: { model.currentCalibration?.url }, set: { model.setCalibration($0) })) {
+            Text("None (uncorrected)").tag(URL?.none)
+            ForEach(model.calibrations) { entry in Text(entry.label).tag(URL?.some(entry.url)) }
+        }
+        if let current = model.currentCalibration {
+            Text(current.settings)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        HStack {
+            Button("Import…") {
+                if let url = Self.askOpen(types: [UTType(filenameExtension: "oqcal")].compactMap { $0 }) { model.importCalibration(url) }
+            }
+            Button("Calibrate This Printer…") { calibrationWizard = model.calibrationWizard() }
+        }
     }
 
     @ViewBuilder private var negativeControls: some View {

@@ -1,11 +1,12 @@
 // OpenQuad for macOS.
 //
 //     OpenQuad                          the app
-//     OpenQuad --snapshot out.png [--photo PHOTO] [--negative]
+//     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN]
 //                                       draw the window to a PNG and quit (for checks)
 
 import AppKit
+import OpenQuadCore
 import OpenQuadUI
 import SwiftUI
 
@@ -57,9 +58,11 @@ enum Snapshot {
         // A throwaway settings file, so snapshots never change the user's settings.
         let settings = FileManager.default.temporaryDirectory.appendingPathComponent("openquad-snapshot-settings.json")
         try? FileManager.default.removeItem(at: settings)
-        let model = AppModel(settingsURL: settings)
+        // The real calibrations, so the snapshot shows what this Mac has.
+        let model = AppModel(settingsURL: settings, libraryFolder: AppSettings.dataDirectory().appendingPathComponent("calibrations"))
         if let photo = value("--photo") { model.openPhoto(URL(fileURLWithPath: photo)) }
         if arguments.contains("--negative") { model.setMode(.negative) }
+        if let printer = value("--printer") { model.setPrinter(printer) }
         return model
     }
 
@@ -77,8 +80,8 @@ enum Snapshot {
         switch value("--wizard") {
         case "calibration":
             let wizard = CalibrationWizardModel(folder: folder, paper: "Letter", scannerHost: "876298000000.local:80",
-                                                starting: nil, startingName: nil, find: { [] })
-            wizard.name = "canon-letter-plain"
+                                                starting: nil, startingName: nil, printers: ["Canon_MG3600_series"],
+                                                printer: "Canon_MG3600_series", find: { [] })
             wizard.start()
             wizard.printed("print panel")
             if let scan { wizard.scanAndMeasure(file: scan) }

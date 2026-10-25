@@ -31,8 +31,12 @@ struct WizardTests {
 
     @Test func printerCalibrationRound() async throws {
         let model = CalibrationWizardModel(folder: folder, paper: "Letter", scannerHost: "", starting: nil, startingName: nil,
-                                           find: { [("Canon MG3600 series", "876298000000.local:80")] })
-        #expect(model.name == "printer-letter-plain" && !model.started)
+                                           printers: [], printer: "", find: { [("Canon MG3600 series", "876298000000.local:80")] })
+        #expect(model.runName == "printer-letter-plain" && !model.started && model.method == .panel)
+        model.start()
+        #expect(!model.started && model.error == "Choose the printer you're calibrating.")
+        model.printer = "Canon_MG3600_series"
+        #expect(model.runName == "canon-mg3600-letter-plain" && model.paperLabel == "Letter plain")
         model.findScanners()
         try await waitUntilIdle(model)
         #expect(model.scannerHost == "876298000000.local:80")
@@ -52,8 +56,25 @@ struct WizardTests {
         #expect(model.error == nil)
         #expect(model.measured && model.corrected != nil && model.result.contains("Colour cast"))
         model.improve("grey balance")
-        #expect(model.run?.current.version == 1 && model.result.hasPrefix("Built printer-letter-plain-v1.oqcal"))
-        #expect(model.canUse && model.calibrationPath?.lastPathComponent == "printer-letter-plain-v1.oqcal")
+        #expect(model.run?.current.version == 1 && model.result.hasPrefix("Built canon-mg3600-letter-plain-v1.oqcal"))
+        #expect(model.canUse && model.calibrationPath?.lastPathComponent == "canon-mg3600-letter-plain-v1.oqcal")
+        // (A perfect digital page needs no correction, so the library itself would leave this one out.)
+        let made = try Calibration.decode(Data(contentsOf: try #require(model.calibrationPath)))
+        #expect(made.printer == "Canon_MG3600_series" && made.paper == "Letter plain" && made.settings.hasPrefix("macOS print panel"))
+    }
+
+    @Test func printsTheWizardPageStraightToThePrinter() async throws {
+        let model = CalibrationWizardModel(folder: folder, paper: "Letter", scannerHost: "", starting: nil, startingName: nil,
+                                           printers: ["Canon_MG3600_series"], printer: "Canon_MG3600_series", find: { [] })
+        #expect(model.method == .direct)
+        model.start()
+        var command: [String] = []
+        model.printDirect { command = $0; return (0, "request id is Canon_MG3600_series-30 (1 file(s))\n", "") }
+        try await waitUntilIdle(model)
+        #expect(model.printed && model.run?.current.job == "Canon_MG3600_series-30")
+        #expect(command.prefix(3) == ["lp", "-d", "Canon_MG3600_series"] && command.contains("PageSize=Letter"))
+        let settings = try model.run?.calibration().settings
+        #expect(settings?.hasPrefix("default quality, straight to the printer (lp)") == true)
     }
 
     @Test func processCalibrationStart() throws {

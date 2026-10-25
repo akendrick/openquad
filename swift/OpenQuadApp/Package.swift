@@ -14,7 +14,7 @@ let package = Package(
     ],
     targets: [
         .target(name: "OpenQuadUI", dependencies: [.product(name: "OpenQuadCore", package: "OpenQuadCore")]),
-        .executableTarget(name: "OpenQuad", dependencies: ["OpenQuadUI"]),
+        .executableTarget(name: "OpenQuad", dependencies: ["OpenQuadUI", .product(name: "OpenQuadCore", package: "OpenQuadCore")]),
         .testTarget(name: "OpenQuadUITests", dependencies: ["OpenQuadUI"]),
     ]
 )

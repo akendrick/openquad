@@ -95,7 +95,8 @@ public enum GreyBalance {
             row[0] = sent[0][c]  // deepest black stays as sent
             curves.append(runningMax(row.map { clip($0, 0, Double(maxValue)) }).map { UInt16(rint($0)) })
         }
-        return try Calibration(levels: levels, curves: curves, printer: printer, paper: paper, settings: settings)
+        return try Calibration(levels: levels, curves: curves, printer: printer, paper: paper, settings: settings,
+                               created: ISO8601DateFormatter().string(from: Date()))
     }
 }
 
@@ -141,7 +142,8 @@ public enum Linearize {
         let luts = calibration.luts()
         let settings = String((calibration.settings + "; tone linearized").drop { $0 == ";" || $0 == " " })
         return try Calibration(levels: fineGrid(fineLevels), curves: luts.map { lut in tone.map { lut[$0] } },
-                               printer: calibration.printer, paper: calibration.paper, settings: settings)
+                               printer: calibration.printer, paper: calibration.paper, settings: settings,
+                               created: ISO8601DateFormatter().string(from: Date()))
     }
 }
 

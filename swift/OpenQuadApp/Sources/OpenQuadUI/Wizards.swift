@@ -60,11 +60,22 @@ public class WizardModel: Identifiable {
 
 // MARK: - printer calibration
 
+/// How the wizard's pages are printed: the same way photos will be, or the calibration won't fit.
+public enum PrintMethod: String, CaseIterable, Sendable {
+    case direct = "Straight to the printer (lp)"
+    case panel = "Through the macOS print panel"
+}
+
 @MainActor
 @Observable
 public final class CalibrationWizardModel: WizardModel {
     public var name: String
     public var paper: String
+    /// What kind of paper, for the calibration's label ("plain", "matte photo").
+    public var paperType = "plain"
+    /// The CUPS printer being calibrated.
+    public var printer: String
+    public var method: PrintMethod
     public var startFromCurrent: Bool
     public var shadowStrength = 0.5
     public private(set) var run: CalibrationRun?
@@ -72,19 +83,37 @@ public final class CalibrationWizardModel: WizardModel {
     public private(set) var corrected: Measurement?
     public private(set) var assessment: Assessment?
     public private(set) var result = ""
+    public let printers: [String]
     let folder: URL
     let starting: Calibration?
     let startingName: String?
 
     public init(folder: URL, paper: String, scannerHost: String, starting: Calibration?, startingName: String?,
+                printers: [String] = [], printer: String = "",
                 find: @escaping @Sendable () -> [(String, String)] = { ESCL.discover() }) {
         self.folder = folder
         self.paper = paper
         self.starting = starting
         self.startingName = startingName
+        self.printers = printers
+        self.printer = printer
+        method = printer.isEmpty ? .panel : .direct
         startFromCurrent = starting != nil
-        name = "printer-\(paper.lowercased())-plain"
+        name = ""
         super.init(scannerHost: scannerHost, find: find)
+    }
+
+    /// "canon-mg3600-letter-plain" unless a name was typed.
+    public var runName: String {
+        let typed = name.trimmingCharacters(in: .whitespaces)
+        if !typed.isEmpty { return typed }
+        let parts = [LibraryEntry.printerName(printer.isEmpty ? "printer" : printer), paper, paperType]
+        return parts.joined(separator: "-").lowercased().replacingOccurrences(of: " ", with: "-")
+    }
+
+    public var paperLabel: String {
+        let type = paperType.trimmingCharacters(in: .whitespaces)
+        return type.isEmpty ? paper : "\(paper) \(type)"
     }
 
     public var started: Bool { run != nil }
@@ -93,15 +122,32 @@ public final class CalibrationWizardModel: WizardModel {
     public var canUse: Bool { measured || (run?.current.version ?? 0) > 0 }
 
     public func start() {
-        let name = self.name.trimmingCharacters(in: .whitespaces)
+        let printer = self.printer.trimmingCharacters(in: .whitespaces)
+        guard !printer.isEmpty else {
+            error = "Choose the printer you're calibrating."
+            return
+        }
+        let name = runName
+        let how = method == .direct ? "default quality, straight to the printer (lp)" : "macOS print panel"
         do {
             run = try CalibrationRun.start(folder: folder.appendingPathComponent("\(name)-\(Self.timestamp())"), name: name,
-                                           printer: "print panel", paper: paper, scannerHost: scannerHost,
+                                           printer: printer, paper: paper, scannerHost: scannerHost,
                                            starting: startFromCurrent ? starting : nil,
-                                           settings: "macOS print panel; eSCL Document intent")
+                                           settings: "\(how); eSCL Document intent", paperLabel: paperLabel)
+            error = nil
             say("Started \(name) in \(run!.folder.path)")
         } catch {
             self.error = "Couldn't start: \(error)"
+        }
+    }
+
+    /// Print the page straight to the printer (lp); the panel route is in the view.
+    public func printDirect(runner: @escaping Printing.Runner = Printing.runCommand) {
+        guard let run else { return }
+        say("Printing round \(run.current.version) on \(LibraryEntry.printerName(run.printer))…")
+        nonisolated(unsafe) let runner = runner
+        step("print", { try run.printPage(runner: runner) }) { job in
+            self.say("Sent to the printer: job \(job). Let it dry, then scan it.")
         }
     }
 
@@ -341,8 +387,22 @@ public struct CalibrationWizardView: View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Calibrate a printer").font(.title2.bold())
             Form {
-                TextField("Name", text: $model.name).disabled(model.started)
-                Picker("Paper", selection: $model.paper) { ForEach(paperOrder, id: \.self) { Text($0) } }.disabled(model.started)
+                Group {
+                    if model.printers.isEmpty {
+                        TextField("Printer", text: $model.printer, prompt: Text("CUPS queue name, e.g. Canon_MG3600_series"))
+                    } else {
+                        Picker("Printer", selection: $model.printer) {
+                            ForEach(model.printers, id: \.self) { Text(LibraryEntry.printerName($0)).tag($0) }
+                        }
+                    }
+                    Picker("Paper", selection: $model.paper) { ForEach(paperOrder, id: \.self) { Text($0) } }
+                    TextField("Paper type", text: $model.paperType, prompt: Text("plain, matte photo…"))
+                    Picker("Print with", selection: $model.method) {
+                        ForEach(PrintMethod.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    TextField("Name", text: $model.name, prompt: Text(model.runName))
+                }
+                .disabled(model.started)
                 ScannerRow(model: model)
                 if model.starting != nil {
                     Picker("Start from", selection: $model.startFromCurrent) {
@@ -353,7 +413,7 @@ public struct CalibrationWizardView: View {
                 }
             }
             .formStyle(.grouped)
-            .frame(height: model.starting != nil ? 210 : 170)
+            .frame(height: model.starting != nil ? 360 : 320)
             HStack {
                 Button("Start", action: model.start).disabled(model.started)
                 Button("1. Print Comparison Page…", action: printPage).disabled(!model.started || model.busy)
@@ -393,6 +453,13 @@ public struct CalibrationWizardView: View {
     }
 
     private func printPage() {
+        if model.method == .direct, let run = model.run {
+            if confirm("Print?", "Print a comparison page on \(LibraryEntry.printerName(run.printer)) (\(run.paper))? "
+                       + "It uses one sheet and about a quarter page of ink.") {
+                model.printDirect()
+            }
+            return
+        }
         do {
             guard let request = try model.pageForPrinting() else { return }
             if printWithPanel(request) { model.printed("print panel") }
