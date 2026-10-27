@@ -10,10 +10,12 @@ import SwiftUI
 public struct WedgeChartView: View {
     let uncorrected: Measurement?
     let corrected: Measurement?
+    let round: Int
 
-    public init(uncorrected: Measurement?, corrected: Measurement?) {
+    public init(uncorrected: Measurement?, corrected: Measurement?, round: Int = 1) {
         self.uncorrected = uncorrected
         self.corrected = corrected
+        self.round = round
     }
 
     struct Point: Identifiable {
@@ -21,43 +23,59 @@ public struct WedgeChartView: View {
         let step: Int, value: Double, series: String, faint: Bool
     }
 
+    static let thisRound = ["a* this round (green–red)", "b* this round (blue–yellow)"]
+    static let before = ["a* uncorrected", "b* uncorrected"]
+
     static func casts(_ m: Measurement, faint: Bool) -> [Point] {
-        let order = m.byLevelDescending
-        return order.enumerated().flatMap { step, i in
-            [Point(step: step, value: m.lab[i][1], series: faint ? "a* before" : "a*", faint: faint),
-             Point(step: step, value: m.lab[i][2], series: faint ? "b* before" : "b*", faint: faint)]
+        let names = faint ? before : thisRound
+        return m.byLevelDescending.enumerated().flatMap { step, i in
+            [Point(step: step, value: m.lab[i][1], series: names[0], faint: faint),
+             Point(step: step, value: m.lab[i][2], series: names[1], faint: faint)]
         }
     }
 
     public var body: some View {
         if let corrected {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Colour cast at each grey step").font(.headline)
+                Text("How far each step is from neutral grey: 0 is neutral, positive a* is reddish, negative is greenish, "
+                     + "positive b* is yellowish, negative is bluish. The goal is to stay inside the green band (±3). "
+                     + "Solid lines are this round's corrected wedge; faint lines are the uncorrected wedge on the same page "
+                     + "(the printer's own cast, for comparison).")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Chart {
                     RectangleMark(yStart: .value("goal", -Assessment.castGoal), yEnd: .value("goal", Assessment.castGoal))
                         .foregroundStyle(.green.opacity(0.12))
                     ForEach(Self.casts(corrected, faint: false) + (uncorrected.map { Self.casts($0, faint: true) } ?? [])) { p in
                         LineMark(x: .value("Step", p.step), y: .value("Cast", p.value))
                             .foregroundStyle(by: .value("Series", p.series))
-                            .opacity(p.faint ? 0.35 : 1)
+                            .lineStyle(StrokeStyle(lineWidth: p.faint ? 1 : 2.5, dash: p.faint ? [4, 3] : []))
+                            .opacity(p.faint ? 0.45 : 1)
                     }
                 }
-                .chartForegroundStyleScale(["a*": Color.pink, "b*": Color.blue, "a* before": Color.pink, "b* before": Color.blue])
-                .chartYAxisLabel("colour cast (a*, b*)")
+                .chartForegroundStyleScale(domain: Self.thisRound + Self.before, range: [Color.pink, Color.blue, Color.pink, Color.blue])
+                .chartXAxisLabel("step: white (0) to black (20)")
+                .frame(minHeight: 170)
+
+                Text("Tone at each grey step").font(.headline).padding(.top, 8)
+                Text("How much lighter (+) or darker (−) each step printed than it should, in L* units. The goal is "
+                     + "within ±2 (the green band). Even Out Tone fixes this once the colour cast is under control.")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Chart {
                     RectangleMark(yStart: .value("goal", -Assessment.toneGoal), yEnd: .value("goal", Assessment.toneGoal))
                         .foregroundStyle(.green.opacity(0.12))
                     ForEach(Array(Linearize.toneErrors(corrected).reversed().enumerated()), id: \.offset) { step, error in
-                        LineMark(x: .value("Step", step), y: .value("Tone error", error))
-                            .foregroundStyle(.gray)
-                        PointMark(x: .value("Step", step), y: .value("Tone error", error))
-                            .foregroundStyle(.gray)
+                        LineMark(x: .value("Step", step), y: .value("Tone error", error)).foregroundStyle(.gray)
+                        PointMark(x: .value("Step", step), y: .value("Tone error", error)).foregroundStyle(.gray)
                     }
                 }
-                .chartYAxisLabel("tone error (L*)")
-                .chartXAxisLabel("step (white to black)")
+                .chartXAxisLabel("step: white (0) to black (20)")
+                .chartYAxisLabel("L* off target")
+                .frame(minHeight: 150)
             }
         } else {
-            ContentUnavailableView("No measurement yet", systemImage: "chart.xyaxis.line")
+            ContentUnavailableView("Round \(round): nothing measured yet", systemImage: "chart.xyaxis.line",
+                                   description: Text("The charts appear after the printed page is scanned."))
         }
     }
 }

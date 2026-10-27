@@ -90,16 +90,18 @@ struct BlockingChart: View {
 public struct BlockingTestView: View {
     @Bindable var model: BlockingTestModel
     let use: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
+    let close: () -> Void
 
-    public init(model: BlockingTestModel, use: @escaping (String) -> Void) {
+    public init(model: BlockingTestModel, use: @escaping (String) -> Void, close: @escaping () -> Void = {}) {
         self.model = model
         self.use = use
+        self.close = close
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Find the best blocking colour").font(.title2.bold())
+        WizardScaffold(title: "Find the best blocking colour", log: model.log) {
+            EmptyView()
+        } content: {
             Text("Print the test sheet on film, expose it on your tissue at your usual time, develop it, then scan the print. "
                  + "The best colour blocks UV fully (its full patch prints as white as the process allows) and gives the most "
                  + "distinct steps.")
@@ -110,7 +112,7 @@ public struct BlockingTestView: View {
                 Stepper(value: $model.safeEdge, in: 0...1, step: 0.05) {
                     LabeledContent("Safe edge", value: String(format: "%.2f in", model.safeEdge))
                 }
-                ScannerRow(model: model)
+                LabeledContent("Scanner") { ScannerField(model: model) }
             }
             .formStyle(.grouped)
             .frame(height: 170)
@@ -130,7 +132,7 @@ public struct BlockingTestView: View {
                 if model.busy { ProgressView().controlSize(.small) }
             }
             if let report = model.report {
-                BlockingChart(report: report).frame(minHeight: 240)
+                BlockingChart(report: report).frame(minHeight: 240, maxHeight: .infinity)
                 Text(report.lines().joined(separator: "\n"))
                     .font(.callout.monospaced())
                     .textSelection(.enabled)
@@ -142,18 +144,15 @@ public struct BlockingTestView: View {
             if let error = model.error { Text(error).foregroundStyle(.red) }
             HStack {
                 Spacer()
-                Button("Close") { dismiss() }
+                Button("Close", action: close)
                 Button(model.best.map { "Use \($0.capitalized) for Negatives" } ?? "Use the Best Colour") {
                     if let best = model.best { use(best) }
-                    dismiss()
+                    close()
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(model.best == nil)
             }
-            LogView(lines: model.log)
         }
-        .padding(20)
-        .frame(width: 760)
     }
 
     private func save() {

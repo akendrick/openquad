@@ -2,7 +2,7 @@
 //
 //     OpenQuad                          the app
 //     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE]
-//     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN]
+//     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN] [--run RUN]
 //                                       draw the window to a PNG and quit (for checks)
 //     OpenQuad --scan-test HOST RESULT  scan once from the app (with its own network
 //                                       permissions), write OK or the error to RESULT, quit
@@ -85,9 +85,13 @@ enum Snapshot {
             let wizard = CalibrationWizardModel(folder: folder, paper: "Letter", scannerHost: "876298000000.local:80",
                                                 starting: nil, startingName: nil, printers: ["Canon_MG3600_series"],
                                                 printer: "Canon_MG3600_series", find: { [] })
-            wizard.start()
-            wizard.printed("print panel")
-            if let scan { wizard.scanAndMeasure(file: scan) }
+            if let run = value("--run") {
+                wizard.resume(URL(fileURLWithPath: run))  // a real run, as it was left
+            } else {
+                wizard.start()
+                wizard.printed("print panel")
+                if let scan { wizard.scanAndMeasure(file: scan) }
+            }
             return AnyView(CalibrationWizardView(model: wizard) { _ in })
         case "process":
             let wizard = ProcessWizardModel(folder: folder, scannerHost: "876298000000.local:80", find: { [] })

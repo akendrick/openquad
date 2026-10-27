@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 4
+    public static let version = 5
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -35,17 +35,20 @@ public struct GuideView: View {
                         + "same quality settings every time. Or pick a printer to print straight to it.",
                      "Save Print File… writes the finished 16-bit file to print from another app at 100%."]),
         Page(symbol: "slider.horizontal.3", title: "Calibrate your printer",
-             text: "Calibrate This Printer… (under Calibration) prints a test page with two step wedges, scans it and "
-                + "measures every step.",
-             steps: ["Choose the printer, paper, paper type and how you'll print (straight to the printer or "
-                        + "through the print panel), then Start and 1. Print Comparison Page….",
-                     "When it's dry, put it face down on the scanner glass and choose 2. Scan and Measure "
-                        + "(Find looks for the scanner on the network). The first time, macOS asks to let OpenQuad "
-                        + "find devices on your local network: choose Allow.",
-                     "Follow the advice: Improve Grey Balance while there is a colour cast, then Even Out Tone.",
-                     "Repeat until both goals are met (cast under 3, tone within 2 L*), then Use This Calibration: "
-                        + "it joins your saved calibrations under the printer's name.",
-                     "Print the same way every time (same printer, paper and settings) or the calibration won't fit."]),
+             text: "Calibrate This Printer… opens its own window. Calibration goes in rounds; each round is Print, Scan, "
+                + "Result, and the blue card always says which step you're on and highlights the button for it.",
+             steps: ["Choose the printer, paper (and type), how you'll print and the scanner, then Start. Print the same "
+                        + "way every time, or the calibration won't fit.",
+                     "Print: the comparison page has two wedges, the top one uncorrected (one square), the bottom one "
+                        + "through the calibration being tested (two squares).",
+                     "Scan: when it's dry, put it face down on the glass and choose Scan and Measure. The first time, "
+                        + "macOS asks to let OpenQuad find devices on your network: choose Allow.",
+                     "Result: the card says what to do. Usually Improve Grey Balance first (colour casts), then Even "
+                        + "Out Tone (lightness), printing and scanning again after each to check it.",
+                     "The rounds table shows every round's numbers, so you can see progress. When both goals are met, "
+                        + "Use This Calibration saves it under the printer's name.",
+                     "Stopped halfway? Continue a Previous Run picks up exactly where you left off. Show Log opens "
+                        + "the log at the side."]),
         Page(symbol: "film", title: "Digital negatives",
              text: "Output: Digital negative turns the photo into a negative for contact printing, in black or a "
                 + "colour that blocks UV.",
