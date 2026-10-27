@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build OpenQuad.app (unsigned; swift/sign-app.sh signs it). Version 0.1.0 beta 2.
+# Build OpenQuad.app (unsigned; swift/sign-app.sh signs it). Version 0.1.0 beta 3.
 #
 #     swift/build-app.sh            -> swift/build/OpenQuad.app
 set -eu
@@ -28,10 +28,23 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key><string>0.1.0b2</string>
+  <key>CFBundleVersion</key><string>0.1.0b3</string>
   <key>LSMinimumSystemVersion</key><string>14.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSPrincipalClass</key><string>NSApplication</string>
+  <key>NSLocalNetworkUsageDescription</key>
+  <string>OpenQuad uses your printer's scanner on your network to scan and measure calibration prints.</string>
+  <key>NSBonjourServices</key>
+  <array>
+    <string>_uscan._tcp</string>
+    <string>_uscans._tcp</string>
+    <string>_ipp._tcp</string>
+    <string>_ipps._tcp</string>
+  </array>
+  <key>NSAppTransportSecurity</key>
+  <dict>
+    <key>NSAllowsLocalNetworking</key><true/>
+  </dict>
 </dict>
 </plist>
 PLIST

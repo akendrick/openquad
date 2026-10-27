@@ -5,6 +5,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0-beta.3] - 2026-10-27
+
+### Fixed
+- Mac app: scanning failed with "The Internet connection appears to be offline" (or timed out)
+  because macOS blocked the app from the local network: the app now declares its local network use
+  (NSLocalNetworkUsageDescription, the eSCL / IPP Bonjour services, plain http to local devices
+  only), so macOS asks once. If access is still blocked, the error says where to turn it on.
+- Mac app: `--scan-test HOST RESULT` checks that the app itself can reach a scanner.
+
 ## [0.1.0-beta.2] - 2026-10-27
 
 ### Fixed

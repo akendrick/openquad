@@ -1,7 +1,7 @@
 # OpenQuad
 
 > [!WARNING]
-> **Beta: work in progress.** OpenQuad 0.1.0 beta 2 is an early test release. It works on the
+> **Beta: work in progress.** OpenQuad 0.1.0 beta 3 is an early test release. It works on the
 > hardware it was developed with (a Canon PIXMA MG3600 and its built-in scanner), but it hasn't been
 > tried widely yet. Expect rough edges, and please
 > [report what you find](https://github.com/akendrick/openquad/issues/new/choose).
@@ -16,13 +16,17 @@ calibration files and settings.
 
 ## Download the beta (Mac app)
 
-1. Download **OpenQuad-0.1.0b2.zip** (or the newest) from the
+1. Download **OpenQuad-0.1.0b3.zip** (or the newest) from the
    [latest pre-release](https://github.com/akendrick/openquad/releases) and unzip it.
 2. Move **OpenQuad.app** to your Applications folder.
 3. The beta isn't notarized by Apple yet, so the first time you open it macOS will refuse. Open it
    anyway: double-click it once, then go to **System Settings ▸ Privacy & Security** and click
    **Open Anyway** next to OpenQuad. Or, in Terminal:
    `xattr -dr com.apple.quarantine /Applications/OpenQuad.app`
+
+The first time you scan, macOS asks to let OpenQuad find devices on your local network: choose
+**Allow** (it talks to your printer's scanner). If you chose Don't Allow, turn OpenQuad on in **System
+Settings ▸ Privacy & Security ▸ Local Network**, then quit and reopen it.
 
 Needs macOS 14 (Sonoma) or later, on Apple silicon or Intel. A short **How to Use OpenQuad** guide
 opens on first launch (and later from **Help** or the **?** button).
@@ -50,7 +54,7 @@ The app keeps its calibration runs, scans and measurements in
 
 - **Not notarized:** see the install steps above.
 - **Tested hardware:** a Canon PIXMA MG3600 (Letter, plain paper) and its scanner; an Epson ET-2900's
-  scanner works since beta 2 (its calibration is in progress). Other printers should work through the macOS print panel or CUPS. Scanning needs an eSCL scanner on the
+  scanner works since beta 3 (its calibration is in progress). Other printers should work through the macOS print panel or CUPS. Scanning needs an eSCL scanner on the
   network; any scanner works through "Read a Scan File".
 - **Print panel vs `lp`:** the Canon calibration was made printing straight to the printer (`lp`). A
   calibration made through the macOS print panel should be used through the panel (the wizard records

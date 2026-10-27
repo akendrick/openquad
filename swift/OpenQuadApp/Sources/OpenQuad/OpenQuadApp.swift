@@ -4,6 +4,8 @@
 //     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN]
 //                                       draw the window to a PNG and quit (for checks)
+//     OpenQuad --scan-test HOST RESULT  scan once from the app (with its own network
+//                                       permissions), write OK or the error to RESULT, quit
 
 import AppKit
 import OpenQuadCore
@@ -18,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.activate()
         Snapshot.takeIfAsked()
+        ScanTest.runIfAsked()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
@@ -114,6 +117,27 @@ enum Snapshot {
             }
             view.cacheDisplay(in: view.bounds, to: rep)
             try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: output))
+            exit(0)
+        }
+    }
+}
+
+/// `--scan-test HOST RESULT`: check the app itself can reach a scanner (macOS grants
+/// local network access per app, so a test from Terminal proves nothing about the app).
+enum ScanTest {
+    static func runIfAsked() {
+        let arguments = CommandLine.arguments
+        guard let i = arguments.firstIndex(of: "--scan-test"), i + 2 < arguments.count else { return }
+        let host = arguments[i + 1], result = URL(fileURLWithPath: arguments[i + 2])
+        DispatchQueue.global().async {
+            let text: String
+            do {
+                let image = try ESCL.scan(host: host)
+                text = "OK \(image.count) bytes"
+            } catch {
+                text = "ERROR \(error)"
+            }
+            try? (text + "\n").write(to: result, atomically: true, encoding: .utf8)
             exit(0)
         }
     }
