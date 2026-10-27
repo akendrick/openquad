@@ -63,6 +63,36 @@ struct WizardTests {
         #expect(made.printer == "Canon_MG3600_series" && made.paper == "Letter plain" && made.settings.hasPrefix("macOS print panel"))
     }
 
+    @Test func roundsStepByStepAndCanBeContinued() async throws {
+        let model = CalibrationWizardModel(folder: folder, paper: "Letter", scannerHost: "scanner.local", starting: nil,
+                                           startingName: nil, printers: [], printer: "Canon_MG3600_series", find: { [] })
+        #expect(model.step == .setup && model.rounds.isEmpty)
+        model.method = .panel
+        model.start()
+        #expect(model.step == .print && model.round == 1 && model.rounds.map(\.then) == ["To print"])
+        model.printed("print panel")
+        #expect(model.step == .scan && model.rounds.first?.then == "To scan")
+        let image = try scannedPage()
+        model.scanAndMeasure(fetch: { method, _, _ in
+            method == "POST" ? (201, "/eSCL/ScanJobs/1", Data()) : (200, "", method == "GET" ? image : Data())
+        })
+        try await waitUntilIdle(model)
+        #expect(model.error == nil, "\(model.error ?? "")")
+        #expect(model.step == .result && model.rounds.first?.worstCast != nil && model.rounds.first?.then == "Measured")
+        model.improve("grey balance")
+        #expect(model.step == .print && model.round == 2)
+        #expect(model.rounds.map(\.then) == ["Improved grey balance", "To print"] && model.rounds[1].calibration == "v1")
+
+        // A new wizard lists the run and carries on where it stopped.
+        let later = CalibrationWizardModel(folder: folder, paper: "A4", scannerHost: "", starting: nil, startingName: nil,
+                                           printers: [], printer: "", find: { [] })
+        let saved = try #require(later.savedRuns.first)
+        #expect(saved.label.hasPrefix("Canon MG3600, Letter: round 2"))
+        later.resume(saved.folder)
+        #expect(later.step == .print && later.round == 2 && later.printer == "Canon_MG3600_series" && later.paper == "Letter")
+        #expect(later.method == .panel && later.paperType == "plain" && later.rounds.count == 2)
+    }
+
     @Test func printsTheWizardPageStraightToThePrinter() async throws {
         let model = CalibrationWizardModel(folder: folder, paper: "Letter", scannerHost: "", starting: nil, startingName: nil,
                                            printers: ["Canon_MG3600_series"], printer: "Canon_MG3600_series", find: { [] })

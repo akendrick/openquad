@@ -9,9 +9,6 @@ import UniformTypeIdentifiers
 public struct ContentView: View {
     @Bindable var model: AppModel
     @State private var ppiText = ""
-    @State private var calibrationWizard: CalibrationWizardModel?
-    @State private var processWizard: ProcessWizardModel?
-    @State private var blockingTest: BlockingTestModel?
     @State private var showGuide = false
     @AppStorage("guideSeen") private var guideSeen = 0
 
@@ -30,15 +27,6 @@ public struct ContentView: View {
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 820, minHeight: 600)
-        .sheet(item: $calibrationWizard) { wizard in
-            CalibrationWizardView(model: wizard) { model.finishCalibration($0, scannerHost: wizard.scannerHost) }
-        }
-        .sheet(item: $processWizard) { wizard in
-            ProcessWizardView(model: wizard) { model.finishProcess($0, scannerHost: wizard.scannerHost) }
-        }
-        .sheet(item: $blockingTest) { test in
-            BlockingTestView(model: test) { model.useBlockingColour($0, scannerHost: test.scannerHost) }
-        }
         .sheet(isPresented: $showGuide) { GuideView { guideSeen = GuideView.version } }
         .toolbar {
             ToolbarItem {
@@ -139,7 +127,7 @@ public struct ContentView: View {
             Button("Import…") {
                 if let url = Self.askOpen(types: [UTType(filenameExtension: "oqcal")].compactMap { $0 }) { model.importCalibration(url) }
             }
-            Button("Calibrate This Printer…") { calibrationWizard = model.calibrationWizard() }
+            Button("Calibrate This Printer…", action: openCalibrationWizard)
         }
     }
 
@@ -150,8 +138,8 @@ public struct ContentView: View {
         .disabled(model.session.process != nil)  // the process curve decides the colour
         fileRow("Process curve", model.session.processPath, types: ["oqproc"],
                 choose: { model.setProcess($0) }, clear: { model.setProcess(nil) })
-        Button("Calibrate a Process…") { processWizard = model.processWizard() }
-        Button("Find the Best Blocking Colour…") { blockingTest = model.blockingTest() }
+        Button("Calibrate a Process…", action: openProcessWizard)
+        Button("Find the Best Blocking Colour…", action: openBlockingTest)
         Toggle("Mirror (flip left to right)", isOn: Binding(get: { model.session.mirror }, set: { model.setMirror($0) }))
         Stepper(value: Binding(get: { model.session.safeEdge }, set: { model.setSafeEdge($0) }), in: 0...2, step: 0.05) {
             LabeledContent("Safe edge", value: String(format: "%.2f in", model.session.safeEdge))
@@ -191,6 +179,30 @@ public struct ContentView: View {
     }
 
     // MARK: actions
+
+    private func openCalibrationWizard() {
+        let wizard = model.calibrationWizard(), app = model
+        WizardWindows.show("calibrate-printer", title: "Calibrate a Printer", size: CGSize(width: 980, height: 820),
+                           minSize: CGSize(width: 760, height: 560)) { close in
+            CalibrationWizardView(model: wizard, use: { app.finishCalibration($0, scannerHost: wizard.scannerHost) }, close: close)
+        }
+    }
+
+    private func openProcessWizard() {
+        let wizard = model.processWizard(), app = model
+        WizardWindows.show("calibrate-process", title: "Calibrate a Process", size: CGSize(width: 980, height: 860),
+                           minSize: CGSize(width: 760, height: 600)) { close in
+            ProcessWizardView(model: wizard, use: { app.finishProcess($0, scannerHost: wizard.scannerHost) }, close: close)
+        }
+    }
+
+    private func openBlockingTest() {
+        let test = model.blockingTest(), app = model
+        WizardWindows.show("blocking-test", title: "Blocking Test", size: CGSize(width: 900, height: 820),
+                           minSize: CGSize(width: 700, height: 560)) { close in
+            BlockingTestView(model: test, use: { app.useBlockingColour($0, scannerHost: test.scannerHost) }, close: close)
+        }
+    }
 
     private func openPhoto() {
         let types: [UTType] = [.tiff, .png, .jpeg]
