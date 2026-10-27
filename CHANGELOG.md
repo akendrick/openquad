@@ -5,6 +5,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0-beta.2] - 2026-10-27
+
 ### Fixed
 - Scanning with Epson printers (found on an ET-2900): Epson answers a scan job created over http
   with an https:// job address on a self-signed certificate, so the download failed, the job was
