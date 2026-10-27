@@ -5,6 +5,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0-beta.3] - 2026-10-27
+
 ### Fixed
 - Mac app: scanning failed with "The Internet connection appears to be offline" (or timed out)
   because macOS blocked the app from the local network: the app now declares its local network use
