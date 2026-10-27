@@ -140,7 +140,14 @@ public enum ESCL {
             if let response = response as? HTTPURLResponse {
                 box.result = .success((response.statusCode, response.value(forHTTPHeaderField: "Location") ?? "", data ?? Data()))
             } else {
-                box.result = .failure(ESCLError(description: "can't reach the scanner at \(url): \(error?.localizedDescription ?? "no response")"))
+                var reason = error?.localizedDescription ?? "no response"
+                while reason.hasSuffix(".") { reason.removeLast() }
+                let blocked: [URLError.Code] = [.notConnectedToInternet, .timedOut, .cannotConnectToHost, .networkConnectionLost]
+                if let code = (error as? URLError)?.code, blocked.contains(code) {
+                    reason += ". If the scanner is on and other devices can reach it, macOS may be blocking OpenQuad from your "
+                        + "local network: turn OpenQuad on in System Settings ▸ Privacy & Security ▸ Local Network."
+                }
+                box.result = .failure(ESCLError(description: "can't reach the scanner at \(url): \(reason)"))
             }
             done.signal()
         }.resume()

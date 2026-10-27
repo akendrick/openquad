@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 3
+    public static let version = 4
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -40,7 +40,8 @@ public struct GuideView: View {
              steps: ["Choose the printer, paper, paper type and how you'll print (straight to the printer or "
                         + "through the print panel), then Start and 1. Print Comparison Page….",
                      "When it's dry, put it face down on the scanner glass and choose 2. Scan and Measure "
-                        + "(Find looks for the scanner on the network).",
+                        + "(Find looks for the scanner on the network). The first time, macOS asks to let OpenQuad "
+                        + "find devices on your local network: choose Allow.",
                      "Follow the advice: Improve Grey Balance while there is a colour cast, then Even Out Tone.",
                      "Repeat until both goals are met (cast under 3, tone within 2 L*), then Use This Calibration: "
                         + "it joins your saved calibrations under the printer's name.",

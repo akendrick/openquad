@@ -24,6 +24,10 @@ calibration files and settings.
    **Open Anyway** next to OpenQuad. Or, in Terminal:
    `xattr -dr com.apple.quarantine /Applications/OpenQuad.app`
 
+The first time you scan, macOS asks to let OpenQuad find devices on your local network: choose
+**Allow** (it talks to your printer's scanner). If you chose Don't Allow, turn OpenQuad on in **System
+Settings ▸ Privacy & Security ▸ Local Network**, then quit and reopen it.
+
 Needs macOS 14 (Sonoma) or later, on Apple silicon or Intel. A short **How to Use OpenQuad** guide
 opens on first launch (and later from **Help** or the **?** button).
 
