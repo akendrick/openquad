@@ -69,6 +69,14 @@ public enum ESCL {
 
     static let busyRetries = 10
 
+    /// The path of a URL reference, as Python's urlsplit(...).path: what follows the host, if any.
+    static func path(of reference: String) -> String {
+        let cut = reference.components(separatedBy: CharacterSet(charactersIn: "?#"))[0]
+        guard let scheme = cut.range(of: "://") else { return cut }
+        let rest = cut[scheme.upperBound...]
+        return rest.firstIndex(of: "/").map { String(rest[$0...]) } ?? ""
+    }
+
     /// RFC 3986 reference resolution, as Python's urljoin.
     static func join(_ base: String, _ reference: String) -> String {
         URL(string: reference, relativeTo: URL(string: base))?.absoluteURL.absoluteString ?? reference
@@ -89,10 +97,16 @@ public enum ESCL {
             if status != 503 { break }  // 503 = busy (e.g. warming up)
             sleep(2.0)
         }
+        if status == 503 {
+            throw ESCLError(description: "the scanner is busy: a scan job is still open on it (perhaps an earlier scan that "
+                            + "didn't finish). Wait a minute and try again, or turn the printer off and on.")
+        }
         guard status == 201, !location.isEmpty else {
             throw ESCLError(description: "scanner refused the job (HTTP \(status)): \(pyRepr(Array(body.prefix(200))))")
         }
-        var job = location
+        // Keep talking to the scanner the way we reached it: some (Epson) answer with an https://
+        // job address even when asked over http, so use only the job's path.
+        var job = path(of: location)
         while job.hasSuffix("/") { job.removeLast() }
         let jobURL = join(jobsURL, job)
         var image = Data()

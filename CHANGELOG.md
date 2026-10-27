@@ -5,6 +5,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0-beta.2] - 2026-10-27
+
+### Fixed
+- Scanning with Epson printers (found on an ET-2900): Epson answers a scan job created over http
+  with an https:// job address on a self-signed certificate, so the download failed, the job was
+  never closed and every later scan got "HTTP 503". OpenQuad now keeps to the scanner address it
+  connected to (only the job's path is taken from the reply), in both the Python and Swift clients.
+- A scanner that stays busy now says so plainly ("a scan job is still open on it…") instead of
+  "scanner refused the job (HTTP 503): b''".
+
 ## [0.1.0-beta.1] - 2026-10-25
 
 First beta for testers: a native Mac app alongside the Python tools.
