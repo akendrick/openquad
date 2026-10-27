@@ -87,3 +87,27 @@ def test_intent_is_sent_and_checked() -> None:
     assert b"<scan:Intent>Photo</scan:Intent>" in ScanSettings(intent="Photo").xml()
     with pytest.raises(ValueError, match="intent"):
         ScanSettings(intent="Magic")
+
+
+def test_an_https_job_address_is_followed_on_the_scanners_own_address(tmp_path: Path) -> None:
+    """Epson answers a job made over http with an https:// address (self-signed): keep to the
+    address we reached it on, or the download fails and the job stays open (then 503 forever)."""
+    fake = FakeScanner()
+    epson = "https://EPSON255E1C.local:443/eSCL/ScanJobs/feaf5e67/"
+
+    def fetch(method: str, url: str, body: bytes | None) -> tuple[int, str, bytes]:
+        status, location, data = fake(method, url, body)
+        return status, epson if method == "POST" else location, data
+
+    scan("EPSON255E1C.local:443", tmp_path / "s.jpg", fetch=fetch)
+    assert [(m, u) for m, u, _ in fake.calls[1:]] == [
+        ("GET", "http://EPSON255E1C.local:443/eSCL/ScanJobs/feaf5e67/NextDocument"),
+        ("DELETE", "http://EPSON255E1C.local:443/eSCL/ScanJobs/feaf5e67"),
+    ]
+
+
+def test_a_scanner_that_stays_busy_says_so(tmp_path: Path) -> None:
+    waits: list[float] = []
+    with pytest.raises(ScanError, match="busy: a scan job is still open"):
+        scan("scanner.local", tmp_path / "s.jpg", fetch=FakeScanner(busy=99), sleep=waits.append)
+    assert len(waits) == 10

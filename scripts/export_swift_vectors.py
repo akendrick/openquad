@@ -623,6 +623,9 @@ def devices_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
          [(503, "", ""), (503, "", ""), (201, "/eSCL/ScanJobs/7/", ""), (503, "", ""),
           (200, "", "jpeg"), (200, "", "")]),
         ("refused", "scanner.local", [(409, "", "<error>it's busy</error>")]),
+        ("epson-https-job", "EPSON255E1C.local:443",
+         [(201, "https://EPSON255E1C.local:443/eSCL/ScanJobs/feaf5e67/", ""), (200, "", "jpeg"),
+          (200, "", "")]),
         ("no-image", "scanner.local", [(201, "ScanJobs/9", ""), (500, "", "oops"), (-1, "", "")]),
         ("never-free", "scanner.local", [(503, "", "")] * 10),
     ]  # fmt: skip

@@ -13,7 +13,7 @@ import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 # (method, url, body) -> (status, location header or "", body)
 Fetch = Callable[[str, str, bytes | None], tuple[int, str, bytes]]
@@ -105,10 +105,17 @@ def scan(
         if status != 503:  # 503 = busy (e.g. warming up)
             break
         sleep(2.0)
+    if status == 503:
+        raise ScanError(
+            "the scanner is busy: a scan job is still open on it (perhaps an earlier scan that "
+            "didn't finish). Wait a minute and try again, or turn the printer off and on."
+        )
     if status != 201 or not location:
         raise ScanError(f"scanner refused the job (HTTP {status}): {body[:200]!r}")
 
-    job_url = urljoin(jobs_url, location.rstrip("/"))
+    # Keep talking to the scanner the way we reached it: some (Epson) answer with an https://
+    # job address even when asked over http, so use only the job's path.
+    job_url = urljoin(jobs_url, urlsplit(location).path.rstrip("/"))
     try:
         for _ in range(BUSY_RETRIES):
             status, _, image = fetch("GET", job_url + "/NextDocument", None)
