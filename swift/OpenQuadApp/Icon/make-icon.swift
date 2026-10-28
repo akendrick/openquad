@@ -1,6 +1,6 @@
 // Draws the OpenQuad app icon into an .iconset folder (swift/build-app.sh turns it into
-// AppIcon.icns): a stylized printer on a light tile, blank paper going in at the top and a
-// print with a black-to-white step wedge coming out of the front. Drawn on the 1024 px macOS icon grid and scaled for each size.
+// AppIcon.icns): a stylized printer on a light tile, a positive step wedge going in at the
+// top and its green carbon negative (safe edge and F) coming out of the front. Drawn on the 1024 px macOS icon grid and scaled for each size.
 //
 //     swift make-icon.swift OUT.iconset            the icon set
 //     swift make-icon.swift --preview OUT.png      one 1024 px PNG
@@ -34,12 +34,12 @@ func drawIcon(_ c: CGContext) {
     c.drawLinearGradient(shade, start: CGPoint(x: 0, y: 924), end: CGPoint(x: 0, y: 100), options: [])
     c.restoreGState()
 
-    // Blank paper going in at the top, behind the printer.
-    rounded(c, CGRect(x: 318, y: 560, width: 388, height: 270), 18, rgb(1, 1, 1))
-    c.setStrokeColor(CGColor(gray: 0.84, alpha: 1))
-    c.setLineWidth(3)
-    c.addPath(CGPath(roundedRect: CGRect(x: 318, y: 560, width: 388, height: 270), cornerWidth: 18, cornerHeight: 18, transform: nil))
-    c.strokePath()
+    // Paper going in at the top, behind the printer: the positive (black to white).
+    let top = CGRect(x: 280, y: 560, width: 464, height: 290)
+    rounded(c, top, 18, rgb(1, 1, 1))
+    wedge(c, in: CGRect(x: top.minX + 28, y: top.minY + 96, width: top.width - 56, height: 160)) {
+        CGColor(gray: CGFloat($0) / 6 * 0.94, alpha: 1)
+    }
 
     // The printer: a wide body with a lighter top, a status light, and the output slot.
     rounded(c, CGRect(x: 176, y: 330, width: 672, height: 300), 56, rgb(0.20, 0.22, 0.25))
@@ -47,23 +47,39 @@ func drawIcon(_ c: CGContext) {
     rounded(c, CGRect(x: 690, y: 500, width: 100, height: 26), 13, rgb(0.35, 0.85, 0.55))
     rounded(c, CGRect(x: 236, y: 400, width: 552, height: 30), 15, rgb(0.09, 0.10, 0.11))
 
-    // The print coming out of the front, with a 7-step wedge from black to white.
+    // Coming out of the front: its negative on film, in green carbon ink, inside a green
+    // safe edge with the orientation F cut into it.
     let sheet = CGRect(x: 266, y: 150, width: 492, height: 266)
     c.saveGState()
     c.setShadow(offset: CGSize(width: 0, height: -6), blur: 14, color: rgb(0, 0, 0, 0.25))
-    rounded(c, sheet, 20, rgb(1, 1, 1))
+    rounded(c, sheet, 20, green(1))
     c.restoreGState()
-    rounded(c, CGRect(x: sheet.minX, y: sheet.maxY - 24, width: sheet.width, height: 24), 0, rgb(0.93, 0.93, 0.94))  // in the slot's shadow
-    let steps = 7
-    let wedge = CGRect(x: sheet.minX + 30, y: sheet.minY + 34, width: sheet.width - 60, height: 172)
-    let step = wedge.width / CGFloat(steps)
+    rounded(c, sheet.insetBy(dx: 22, dy: 22), 6, rgb(1, 1, 1))
+    c.setFillColor(rgb(1, 1, 1))  // the F, in the top-left corner of the safe edge
+    c.fill(CGRect(x: sheet.minX + 6, y: sheet.maxY - 40, width: 5, height: 22))
+    c.fill(CGRect(x: sheet.minX + 6, y: sheet.maxY - 23, width: 14, height: 5))
+    c.fill(CGRect(x: sheet.minX + 6, y: sheet.maxY - 32, width: 10, height: 4))
+    rounded(c, CGRect(x: sheet.minX, y: sheet.maxY - 24, width: sheet.width, height: 24), 0, rgb(0, 0, 0, 0.06))  // slot shadow
+    wedge(c, in: CGRect(x: sheet.minX + 30, y: sheet.minY + 34, width: sheet.width - 60, height: 172)) {
+        green(CGFloat($0) / 6 * 0.94 + 0.03)  // a negative: most ink where the positive is lightest
+    }
+}
+
+/// The negative ink (OpenQuad's green) at coverage 0-1 over clear film.
+func green(_ coverage: CGFloat) -> CGColor {
+    rgb(1 - coverage * 0.90, 1 - coverage * 0.55, 1 - coverage * 0.80)
+}
+
+/// A 7-step wedge with a thin outline.
+func wedge(_ c: CGContext, in rect: CGRect, colour: (Int) -> CGColor) {
+    let steps = 7, step = rect.width / CGFloat(steps)
     for i in 0..<steps {
-        c.setFillColor(CGColor(gray: CGFloat(i) / CGFloat(steps - 1) * 0.94, alpha: 1))
-        c.fill(CGRect(x: wedge.minX + CGFloat(i) * step, y: wedge.minY, width: step + 0.5, height: wedge.height))
+        c.setFillColor(colour(i))
+        c.fill(CGRect(x: rect.minX + CGFloat(i) * step, y: rect.minY, width: step + 0.5, height: rect.height))
     }
     c.setStrokeColor(CGColor(gray: 0.82, alpha: 1))
     c.setLineWidth(3)
-    c.stroke(wedge)
+    c.stroke(rect)
 }
 
 func png(_ size: Int) -> Data {
