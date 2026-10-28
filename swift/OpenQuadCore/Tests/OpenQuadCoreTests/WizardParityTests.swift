@@ -81,6 +81,10 @@ struct WizardParity {
         check("blocking_sheet", [sheet.height, sheet.width, 3], sheet.pixels)
         let mirrored = Blocking.sheet(dpi: 60, mirror: true, safeEdge: 0.3, labels: false)
         check("blocking_sheet_mirrored", [mirrored.height, mirrored.width, 3], mirrored.pixels)
+        #expect(Negative.standardColours == v["standard_colours"] as? [String])
+        #expect(Negative.mixtureColours == v["mixture_colours"] as? [String])
+        let mixtures = Blocking.sheet(layout: BlockingLayout(colours: Negative.mixtureColours), dpi: 50, labels: false)
+        check("blocking_sheet_mixtures", [mixtures.height, mixtures.width, 3], mixtures.pixels)
         let labelled = Blocking.sheet(dpi: 50)
         let inked = zip(labelled.pixels, sheet.pixels).filter { $0 != $1 }.count
         #expect(inked > 0 && labelled.pixels.count == sheet.pixels.count)  // the names are drawn, nothing else changes

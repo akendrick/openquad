@@ -3,6 +3,7 @@
 //     OpenQuad                          the app
 //     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE] [--max-size WxH]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN] [--run RUN]
+//                                       [--mixtures] (blocking: the ink-mixture chart)
 //                                       draw the window to a PNG and quit (for checks)
 //     OpenQuad --scan-test HOST RESULT  scan once from the app (with its own network
 //                                       permissions), write OK or the error to RESULT, quit
@@ -110,6 +111,7 @@ enum Snapshot {
             return AnyView(ProcessWizardView(model: wizard) { _ in })
         case "blocking":
             let test = BlockingTestModel(scannerHost: "876298000000.local:80", find: { [] })
+            if arguments.contains("--mixtures") { test.chart = .mixtures }
             if let scan { test.read(file: scan) }
             return AnyView(BlockingTestView(model: test) { _ in })
         case "guide":

@@ -29,8 +29,19 @@ NEGATIVE_COLOURS: dict[str, tuple[float, float, float]] = {
     "yellow": (1.0, 0.85, 0.0),
     "red": (0.85, 0.10, 0.10),
     "olive": (0.40, 0.40, 0.0),
+    # Single printer inks and simple two-ink mixes, for the ink-mixture chart.
+    "magenta": (0.90, 0.10, 0.52),
+    "blue": (0.0, 0.06, 0.47),
+    "cyan": (0.0, 0.62, 0.90),
+    "yellow-green": (0.50, 0.75, 0.05),
 }
 DEFAULT_COLOUR = "black"
+# The blocking test's usual six colours, and the ink-mixture chart's ten (printable colours
+# made from single inks and simple two-ink mixes).
+STANDARD_COLOURS: tuple[str, ...] = ("black", "green", "orange", "yellow", "red", "olive")
+MIXTURE_COLOURS: tuple[str, ...] = (
+    "yellow", "orange", "red", "magenta", "blue", "cyan", "green", "yellow-green", "olive", "black",
+)  # fmt: skip
 
 # 5 x 7 cell bitmap of the letter F: asymmetric both ways, so a mirror flip shows.
 F_GLYPH = np.array(
