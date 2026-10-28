@@ -1,7 +1,7 @@
 // OpenQuad for macOS.
 //
 //     OpenQuad                          the app
-//     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE]
+//     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE] [--max-size WxH]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN] [--run RUN]
 //                                       draw the window to a PNG and quit (for checks)
 //     OpenQuad --scan-test HOST RESULT  scan once from the app (with its own network
@@ -30,6 +30,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct OpenQuadApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     @State private var model = Snapshot.model()
+
+    init() {
+        // Options like "--negative --max-size 4x5" would otherwise leave "4x5" looking like a
+        // file to open, and then the print window doesn't open at launch.
+        UserDefaults.standard.register(defaults: ["NSTreatUnknownArgumentsAsOpen": "NO"])
+    }
 
     var body: some Scene {
         Window("OpenQuad (Beta)", id: "print") {
@@ -66,6 +72,9 @@ enum Snapshot {
         if let photo = value("--photo") { model.openPhoto(URL(fileURLWithPath: photo)) }
         if arguments.contains("--negative") { model.setMode(.negative) }
         if let printer = value("--printer") { model.setPrinter(printer) }
+        if let size = value("--max-size")?.lowercased().split(separator: "x").compactMap({ Double($0) }), size.count == 2 {
+            model.setMaxSize((size[0], size[1]))
+        }
         return model
     }
 
@@ -112,11 +121,12 @@ enum Snapshot {
 
     static func takeIfAsked() {
         guard let output = value("--snapshot") else { return }
-        let wait = value("--wizard") == nil ? 2.5 : 8.0  // let a wizard finish reading its scan
+        let wait = Double(value("--wait") ?? "") ?? (value("--wizard") == nil ? 2.5 : 8.0)  // a wizard reads its scan
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
             guard let view = NSApp.windows.first(where: { $0.isVisible })?.contentView,
                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-                FileHandle.standardError.write(Data("no window to snapshot\n".utf8))
+                let windows = NSApp.windows.map { "\($0.title) visible=\($0.isVisible) frame=\($0.frame)" }
+                FileHandle.standardError.write(Data("no window to snapshot; windows: \(windows)\n".utf8))
                 exit(1)
             }
             view.cacheDisplay(in: view.bounds, to: rep)

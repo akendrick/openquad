@@ -43,3 +43,12 @@ def test_default_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert default_path().parts[-3:] == ("Application Support", "OpenQuad", "settings.json")
     monkeypatch.setattr(settings_module.sys, "platform", "linux")
     assert default_path().parts[-3:] == (".config", "openquad", "settings.json")
+
+
+def test_max_size_is_remembered(tmp_path: Path) -> None:
+    from openquad.settings import Settings
+
+    path = tmp_path / "settings.json"
+    Settings(max_size=[8.0, 10.0]).save(path)
+    assert Settings.load(path).max_size == [8.0, 10.0]
+    assert Settings.load(tmp_path / "missing.json").max_size is None

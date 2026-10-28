@@ -74,6 +74,7 @@ public struct ContentView: View {
                         ForEach(paperOrder, id: \.self) { Text($0).tag($0) }
                     }
                     Toggle("Fit to page (0.5 in margins)", isOn: Binding(get: { model.session.fit }, set: { model.setFit($0) }))
+                    if model.session.fit { fitWithin }
                     TextField("Resolution (ppi)", text: $ppiText, prompt: Text("photo's own"))
                         .disabled(model.session.fit)
                         .onSubmit { model.setPPI(Double(ppiText)) }
@@ -106,6 +107,44 @@ public struct ContentView: View {
                     .disabled(!model.canPrint)
             }
             .padding()
+        }
+    }
+
+    /// Fit within the page, or a set size (for a negative: its outer edge, e.g. the tissue).
+    @ViewBuilder private var fitWithin: some View {
+        Picker("Fit within", selection: Binding(get: { model.session.maxSize != nil },
+                                                set: { model.setMaxSize($0 ? model.rememberedMaxSize : nil) })) {
+            Text("The page").tag(false)
+            Text("A set size").tag(true)
+        }
+        if let size = model.session.maxSize {
+            LabeledContent(model.session.negative ? "Outer size" : "Size") {
+                HStack(spacing: 6) {
+                    TextField("Width", value: Binding(get: { size.0 }, set: { model.setMaxSize(($0, size.1)) }),
+                              format: .number.precision(.fractionLength(0...2)))
+                        .frame(width: 56)
+                        .multilineTextAlignment(.trailing)
+                    Text("×")
+                    TextField("Height", value: Binding(get: { size.1 }, set: { model.setMaxSize((size.0, $0)) }),
+                              format: .number.precision(.fractionLength(0...2)))
+                        .frame(width: 56)
+                        .multilineTextAlignment(.trailing)
+                    Text("in")
+                    Menu("Sizes") {
+                        ForEach([(4.0, 5.0), (5.0, 7.0), (6.0, 8.0), (8.0, 10.0), (11.0, 14.0)], id: \.0) { w, h in
+                            Button(String(format: "%g × %g in", w, h)) { model.setMaxSize((w, h)) }
+                        }
+                    }
+                    .fixedSize()
+                }
+                .labelsHidden()
+            }
+            Text(model.session.negative
+                 ? "The negative's outer edge, safe edge included: the photo shrinks to fit inside it (e.g. your tissue). "
+                    + "It turns to match the photo, and never goes past the page's margins."
+                 : "The image fits inside this size (turned to match the photo), and never goes past the page's margins.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

@@ -5,6 +5,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Max image size: with Fit to page, "Fit within: A set size" keeps the image within W x H
+  inches (turned to match the photo, never past the page's margins). For a negative it is the
+  outer edge, safe edge included, e.g. the carbon tissue's size; the photo shrinks to fit inside.
+  Remembered between sessions. Command line: `openquad negative --fit Letter --max-size 8x10`.
+
 ## [0.1.0-beta.3] - 2026-10-27
 
 ### Fixed

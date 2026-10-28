@@ -151,3 +151,26 @@ def test_print_needs_a_printer_and_a_fitting_size(tmp_path: Path) -> None:
     session.printer, session.fit, session.ppi = "P", False, 10.0
     with pytest.raises(SessionError, match="larger than the paper"):
         session.print_job(tmp_path / "x.tif")
+
+
+def test_max_size_keeps_a_negative_within_the_tissue(tmp_path: Path) -> None:
+    """A 4 x 5 in tissue: the negative's outer edge (safe edge included) fits it exactly."""
+    # (5, 4) or (4, 5): the box turns to match the photo
+    session = opened(tmp_path, mode="negative", safe_edge=0.25, max_size=(5.0, 4.0))
+    width, height = session.size_inches()  # the photo is portrait: 300 x 400 px
+    assert height == pytest.approx(5.0) and width <= 4.0 + 1e-9
+    assert "Fit within: 4 x 5 in" in session.summary()
+    edge = round(0.25 * session.effective_ppi())
+    assert session.render(session._photo().pixels).shape[0] == 400 + 2 * edge
+
+
+def test_max_size_bounds_a_print_and_never_passes_the_page(tmp_path: Path) -> None:
+    session = opened(tmp_path, max_size=(4.0, 5.0))
+    assert session.effective_ppi() == pytest.approx(80.0)  # 300 / 4 and 400 / 5
+    assert session.size_inches() == pytest.approx((3.75, 5.0))
+    session.max_size = (20.0, 30.0)  # bigger than the page: the page still limits
+    assert session.size_inches()[1] == pytest.approx(10.0)
+    session.fit = False  # the box only applies when fitting
+    session.max_size = (1.0, 1.0)
+    assert session.effective_ppi() == pytest.approx(72.0)
+    assert not any(line.startswith("Fit within") for line in session.summary())

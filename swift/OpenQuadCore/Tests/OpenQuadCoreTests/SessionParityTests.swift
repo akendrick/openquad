@@ -44,6 +44,7 @@ struct SessionParity {
             }
             session.mirror = c["mirror"] as? Bool ?? false
             session.safeEdge = (c["safe_edge"] as? NSNumber)?.doubleValue ?? 0.25
+            if let box = c["max_size"] as? [NSNumber] { session.maxSize = (box[0].doubleValue, box[1].doubleValue) }
             session.printer = "Canon_MG3600_series"
 
             #expect(abs(try session.effectivePPI() - (c["ppi_used"] as! NSNumber).doubleValue) < 1e-9)

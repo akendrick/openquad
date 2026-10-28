@@ -27,6 +27,9 @@ public struct PrintSession: Sendable {
     public var margin = Paper.defaultMargin
     /// Used when fit is off; nil = the photo's own resolution.
     public var ppi: Double?
+    /// With fit: also keep within this (width, height) in inches, turned to match the photo;
+    /// for a negative it is the outer edge, safe edge included (e.g. the carbon tissue's size).
+    public var maxSize: (Double, Double)?
     public var notes: [String] = []
     public private(set) var mode = OutputMode.print
     public private(set) var negativeColour = "green"
@@ -103,10 +106,16 @@ public struct PrintSession: Sendable {
 
     public func effectivePPI() throws -> Double {
         let photo = try currentPhoto()
-        if fit && negative {
-            return try Paper.negativePPI(width: photo.width, height: photo.height, paper: paper, safeEdge: safeEdge, margin: margin)
+        if fit {
+            var ppi = negative
+                ? try Paper.negativePPI(width: photo.width, height: photo.height, paper: paper, safeEdge: safeEdge, margin: margin)
+                : try Paper.fitPPI(width: photo.width, height: photo.height, paper: paper, margin: margin)
+            if let maxSize {  // smaller of the page and the box (never past the page)
+                ppi = max(ppi, try Paper.boxPPI(width: photo.width, height: photo.height, box: maxSize,
+                                                border: negative ? safeEdge : 0))
+            }
+            return ppi
         }
-        if fit { return try Paper.fitPPI(width: photo.width, height: photo.height, paper: paper, margin: margin) }
         if let ppi, ppi != 0 { return ppi }
         return photo.dpi?.0 ?? Self.fallbackPPI
     }
@@ -185,12 +194,18 @@ public struct PrintSession: Sendable {
         let (width, height) = try sizeInches()
         let photoName = source?.lastPathComponent ?? "untitled"
         let size = String(format: "%.2f x %.2f in", width, height)
+        var within: [String] = []
+        if fit, let maxSize, let photo {
+            let (w, h) = Paper.oriented(maxSize, width: photo.width, height: photo.height)
+            within = [String(format: "Fit within: %g x %g in", w, h)]
+        }
         if negative {
             return [
                 "Photo: \(photoName)",
                 "Output: digital negative",
                 "Printer: \(printer ?? "not chosen")",
                 "Paper: \(paper)",
+            ] + within + [
                 "Size: \(size) with a \(String(format: "%g", safeEdge)) in safe edge",
                 "Colour: \(negativeColour)",
                 "Process curve: \(processPath?.lastPathComponent ?? "none (uncalibrated)")",
@@ -201,6 +216,7 @@ public struct PrintSession: Sendable {
             "Photo: \(photoName)",
             "Printer: \(printer ?? "not chosen")",
             "Paper: \(paper)",
+        ] + within + [
             "Size: \(size) at \(String(format: "%.0f", try effectivePPI())) ppi",
             "Toning: \(preset)",
             "Calibration: \(calibrationPath?.lastPathComponent ?? "none")",
@@ -241,6 +257,8 @@ public struct AppSettings: Sendable, Equatable {
     public var lastFolder: String?
     public var process: String?
     public var negativeColour = "green"
+    /// Fit within (width, height) inches, e.g. the carbon tissue; nil for the page.
+    public var maxSize: [Double]?
 
     public init() {}
 
@@ -266,6 +284,7 @@ public struct AppSettings: Sendable, Equatable {
         settings.lastFolder = object["last_folder"] as? String
         settings.process = object["process"] as? String
         settings.negativeColour = object["negative_colour"] as? String ?? "green"
+        if let size = object["max_size"] as? [NSNumber], size.count == 2 { settings.maxSize = size.map(\.doubleValue) }
         return settings
     }
 
@@ -274,7 +293,7 @@ public struct AppSettings: Sendable, Equatable {
         let object: [String: Any] = [
             "printer": printer ?? NSNull(), "scanner_host": scannerHost ?? NSNull(), "paper": paper,
             "calibration": calibration ?? NSNull(), "last_folder": lastFolder ?? NSNull(),
-            "process": process ?? NSNull(), "negative_colour": negativeColour,
+            "process": process ?? NSNull(), "negative_colour": negativeColour, "max_size": maxSize ?? NSNull(),
         ]
         var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         data.append(0x0a)

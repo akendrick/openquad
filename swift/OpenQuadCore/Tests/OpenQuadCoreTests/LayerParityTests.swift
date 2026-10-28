@@ -108,6 +108,16 @@ struct PaperParity {
                                             paper: f["paper"] as! String, safeEdge: (f["edge"] as! NSNumber).doubleValue)
             #expect(abs(got - (f["ppi"] as! NSNumber).doubleValue) < 1e-12)
         }
+        for f in try #require(v["box"] as? [[String: Any]]) {
+            let box = doubles(f["box"]), edge = (f["edge"] as! NSNumber).doubleValue
+            let w = f["width"] as! Int, h = f["height"] as! Int
+            let turned = Paper.oriented((box[0], box[1]), width: w, height: h)
+            #expect([turned.0, turned.1] == doubles(f["oriented"]))
+            let got = try Paper.boxPPI(width: w, height: h, box: (box[0], box[1]), border: edge)
+            #expect(abs(got - (f["ppi"] as! NSNumber).doubleValue) < 1e-12)
+        }
+        #expect(throws: Paper.FitError.self) { try Paper.boxPPI(width: 300, height: 400, box: (0.4, 0.4), border: 0.25) }
+        #expect(throws: Paper.FitError.self) { try Paper.boxPPI(width: 300, height: 400, box: (0, 4)) }
         #expect(throws: Paper.FitError.self) { try Paper.fitPPI(width: 10, height: 10, paper: "Tabloid") }
         #expect(throws: Paper.FitError.self) { try Paper.fitPPI(width: 10, height: 10, paper: "4x6", margin: 2) }
     }

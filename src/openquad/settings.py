@@ -36,6 +36,7 @@ class Settings:
     last_folder: str | None = None
     process: str | None = None  # digital negative process curve
     negative_colour: str = "green"
+    max_size: list[float] | None = None  # fit within (width, height) inches, e.g. the tissue
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:

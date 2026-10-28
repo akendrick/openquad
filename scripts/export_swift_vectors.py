@@ -213,7 +213,7 @@ def negative_vectors() -> dict[str, Any]:
 
 def paper_vectors() -> dict[str, Any]:
     from openquad.negative import negative_ppi
-    from openquad.paper import PAPER_SIZES, fit_ppi
+    from openquad.paper import PAPER_SIZES, box_ppi, fit_ppi, oriented
 
     sizes = [(3008, 4032), (4000, 2000), (300, 400), (850, 1100)]
     return {
@@ -233,6 +233,19 @@ def paper_vectors() -> dict[str, Any]:
             }
             for w, h in sizes
             for edge in (0.0, 0.25, 0.5)
+        ],
+        "box": [
+            {
+                "width": w,
+                "height": h,
+                "box": list(box),
+                "edge": edge,
+                "oriented": list(oriented(box, w, h)),
+                "ppi": box_ppi(w, h, box, edge),
+            }
+            for w, h in sizes
+            for box in ((8.0, 10.0), (10.0, 8.0), (4.0, 5.0), (7.25, 9.5))
+            for edge in (0.0, 0.25)
         ],
     }
 
@@ -811,6 +824,10 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 40.0,
          "negative_colour": "green", "mirror": True, "safe_edge": 0.25},
         {"photo": "photo-grey16.tif", "mode": "negative", "process": True, "safe_edge": 0.1},
+        {"photo": "photo-grey16.tif", "mode": "negative", "max_size": [2.0, 3.0],
+         "safe_edge": 0.25},
+        {"photo": "photo-grey16.tif", "max_size": [2.5, 1.5]},
+        {"photo": "photo-grey16.tif", "max_size": [40.0, 30.0], "paper": "4x6"},
     ]  # fmt: skip
     sessions = []
     for config in configurations:
@@ -829,6 +846,7 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
             session.set_negative_colour(config["negative_colour"])
         session.mirror = config.get("mirror", False)
         session.safe_edge = config.get("safe_edge", 0.25)
+        session.max_size = tuple(config["max_size"]) if "max_size" in config else None
         session.printer = "Canon_MG3600_series"
         rendered = session.render(session._photo().pixels)
         sessions.append({**config, "ppi_used": session.effective_ppi(),
