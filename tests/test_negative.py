@@ -144,3 +144,29 @@ def test_safe_edge_is_printed_in_the_negative_colour() -> None:
     neg = make_negative(RAMP, NegativeSettings(colour="green", safe_edge=0.5, mark=False), dpi=100)
     edge = neg[:50].reshape(-1, 3) / 65535
     assert np.abs(edge - np.array(NEGATIVE_COLOURS["green"])).max() < 0.01
+
+
+def test_box_ppi_turns_the_box_to_match_the_photo() -> None:
+    from openquad.paper import box_ppi, oriented
+
+    assert oriented((8.0, 10.0), 300, 400) == (8.0, 10.0)
+    assert oriented((8.0, 10.0), 400, 300) == (10.0, 8.0)
+    assert box_ppi(300, 400, (10.0, 8.0), 0.25) == pytest.approx(max(300 / 7.5, 400 / 9.5))
+    with pytest.raises(ValueError, match="no room"):
+        box_ppi(300, 400, (0.4, 0.4), 0.25)
+    with pytest.raises(ValueError, match="positive"):
+        box_ppi(300, 400, (0.0, 4.0))
+    with pytest.raises(ValueError, match="no pixels"):
+        box_ppi(0, 400, (4.0, 5.0))
+
+
+def test_negative_command_max_size(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out = tmp_path / "neg.tif"
+    base = ["negative", str(photo(tmp_path)), "-o", str(out)]
+    assert main([*base, "--fit", "Letter", "--max-size", "4x5"]) == 0
+    dpi = read_dpi(out)
+    assert dpi is not None and 40 / dpi[0] + 0.5 == pytest.approx(5.0)  # landscape: 5 x 4 in box
+    assert "5.00 x" in capsys.readouterr().out
+    assert main([*base, "--max-size", "4x5"]) == 1  # needs --fit
+    with pytest.raises(SystemExit):
+        main([*base, "--fit", "Letter", "--max-size", "big"])

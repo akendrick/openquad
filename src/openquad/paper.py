@@ -31,3 +31,23 @@ def fit_ppi(width_px: int, height_px: int, paper: str, margin: float = DEFAULT_M
 def print_size(width_px: int, height_px: int, ppi: float) -> tuple[float, float]:
     """(width, height) in inches at `ppi`."""
     return (width_px / ppi, height_px / ppi)
+
+
+def oriented(box: tuple[float, float], width_px: int, height_px: int) -> tuple[float, float]:
+    """The box (width, height) turned to match the image: its long side along the image's."""
+    long, short = max(box), min(box)
+    return (long, short) if width_px > height_px else (short, long)
+
+
+def box_ppi(width_px: int, height_px: int, box: tuple[float, float], border: float = 0.0) -> float:
+    """The resolution that makes the image, plus `border` inches round it, as large as fits
+    within a `box` of (width, height) inches, turned to match the image."""
+    if width_px < 1 or height_px < 1:
+        raise ValueError("image has no pixels")
+    if min(box) <= 0:
+        raise ValueError(f"the size must be positive, got {box[0]:g} x {box[1]:g} in")
+    box_w, box_h = oriented(box, width_px, height_px)
+    room_w, room_h = box_w - 2 * border, box_h - 2 * border
+    if room_w <= 0 or room_h <= 0:
+        raise ValueError(f"no room inside {box_w:g} x {box_h:g} in with a {border:g} in edge")
+    return max(width_px / room_w, height_px / room_h)

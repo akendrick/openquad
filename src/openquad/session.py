@@ -19,7 +19,7 @@ from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.greybalance import Calibration, load_calibration
 from openquad.imageio import save_rgb, srgb_profile
 from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, make_negative, negative_ppi
-from openquad.paper import DEFAULT_MARGIN, PAPER_SIZES, fit_ppi, print_size
+from openquad.paper import DEFAULT_MARGIN, PAPER_SIZES, box_ppi, fit_ppi, oriented, print_size
 from openquad.photo import Photo, load_photo
 from openquad.printing import PrintJob, Runner, run_command, send
 
@@ -42,6 +42,9 @@ class PrintSession:
     fit: bool = True
     margin: float = DEFAULT_MARGIN
     ppi: float | None = None  # used when fit is off; None = the photo's own DPI
+    # With fit: also keep within this (width, height) in inches, turned to match the photo;
+    # for a negative it is the outer edge, safe edge included (e.g. the carbon tissue's size).
+    max_size: tuple[float, float] | None = None
     notes: list[str] = field(default_factory=list)
     # Digital negative mode: the photo becomes a negative for contact printing.
     mode: str = "print"  # "print" or "negative"
@@ -118,10 +121,15 @@ class PrintSession:
 
     def effective_ppi(self) -> float:
         photo = self._photo()
-        if self.fit and self.negative:
-            return negative_ppi(*photo.size, self.paper, self.safe_edge, self.margin)
         if self.fit:
-            return fit_ppi(*photo.size, self.paper, self.margin)
+            if self.negative:
+                ppi = negative_ppi(*photo.size, self.paper, self.safe_edge, self.margin)
+            else:
+                ppi = fit_ppi(*photo.size, self.paper, self.margin)
+            if self.max_size:  # smaller of the page and the box (never past the page)
+                edge = self.safe_edge if self.negative else 0.0
+                ppi = max(ppi, box_ppi(*photo.size, self.max_size, edge))
+            return ppi
         if self.ppi:
             return self.ppi
         return photo.dpi[0] if photo.dpi else FALLBACK_PPI
@@ -167,6 +175,12 @@ class PrintSession:
             shown = composite(pixels, PRESETS[self.preset])
         return (shown >> 8).astype(np.uint8)
 
+    def _within(self) -> list[str]:
+        if not (self.fit and self.max_size):
+            return []
+        box_w, box_h = oriented(self.max_size, *self._photo().size)
+        return [f"Fit within: {box_w:g} x {box_h:g} in"]
+
     def summary(self) -> list[str]:
         """Lines for the print confirmation."""
         width, height = self.size_inches()
@@ -178,6 +192,7 @@ class PrintSession:
                 "Output: digital negative",
                 f"Printer: {self.printer or 'not chosen'}",
                 f"Paper: {self.paper}",
+                *self._within(),
                 f"Size: {width:.2f} x {height:.2f} in with a {self.safe_edge:g} in safe edge",
                 f"Colour: {self.negative_colour}",
                 f"Process curve: {process}",
@@ -187,6 +202,7 @@ class PrintSession:
             f"Photo: {self.source.name if self.source else 'untitled'}",
             f"Printer: {self.printer or 'not chosen'}",
             f"Paper: {self.paper}",
+            *self._within(),
             f"Size: {width:.2f} x {height:.2f} in at {self.effective_ppi():.0f} ppi",
             f"Toning: {self.preset}",
             f"Calibration: {calibration}",

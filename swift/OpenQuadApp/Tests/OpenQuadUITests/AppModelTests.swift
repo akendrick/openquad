@@ -49,6 +49,22 @@ struct AppModelTests {
         #expect(m.preview?.width == 60)
     }
 
+    @Test func maxSizeFitsTheNegativeToTheTissueAndIsRemembered() throws {
+        let m = model()
+        m.openPhoto(photo)  // 60 x 40 px, landscape
+        m.setMode(.negative)
+        m.setMaxSize((2, 3))  // turned to 3 x 2 in for a landscape photo
+        let (width, height) = try m.session.sizeInches()  // height limits: 2 in tall, 2.75 in wide
+        #expect(abs(height - 2) < 1e-9 && width <= 3 + 1e-9 && abs(width - 2.75) < 1e-9)
+        #expect(m.summary.contains("Fit within: 3 x 2 in"))
+        m.setMaxSize((0, 3))  // not a size: ignored
+        #expect(m.session.maxSize?.0 == 2)
+        let again = model()
+        #expect(again.session.maxSize?.0 == 2 && again.session.maxSize?.1 == 3 && again.rememberedMaxSize.1 == 3)
+        again.setMaxSize(nil)
+        #expect(again.session.maxSize == nil && model().session.maxSize == nil && again.rememberedMaxSize == (8, 10))
+    }
+
     @Test func negativesAndErrors() throws {
         let m = model()
         m.openPhoto(photo)

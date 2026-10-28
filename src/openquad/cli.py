@@ -47,7 +47,7 @@ from openquad.negative import (
     make_negative,
     negative_ppi,
 )
-from openquad.paper import DEFAULT_MARGIN, fit_ppi
+from openquad.paper import DEFAULT_MARGIN, box_ppi, fit_ppi
 from openquad.photo import load_photo
 from openquad.printing import PrintError, PrintJob, Runner, list_printers, run_command, send
 from openquad.targets import framed_target, step_wedge, wedge_levels
@@ -159,6 +159,9 @@ def build_parser() -> argparse.ArgumentParser:
     size = neg.add_mutually_exclusive_group()
     size.add_argument("--dpi", type=float, help="print resolution (default: the photo's own)")
     size.add_argument("--fit", metavar="PAPER", help="size photo + safe edge to fit PAPER")
+    neg.add_argument("--max-size", metavar="WxH", type=_inches_pair,
+                     help="with --fit: also keep within W x H inches, safe edge included "
+                          "(e.g. 8x10 for the tissue; turned to match the photo)")  # fmt: skip
 
     prt = commands.add_parser("print", help="print a TIFF through the printer's normal driver")
     prt.add_argument("input", type=Path, help="TIFF to print")
@@ -359,6 +362,19 @@ def _chart(args: argparse.Namespace) -> None:
             print(f"wrote {path}")
 
 
+def _inches_pair(text: str) -> tuple[float, float]:
+    """'8x10' (or '8 x 10', '8.5X11') -> (8.0, 10.0)."""
+    parts = text.lower().replace(" ", "").split("x")
+    try:
+        width, height = (float(p) for p in parts)
+    except ValueError:
+        message = f"expected W x H in inches, like 8x10, got {text!r}"
+        raise argparse.ArgumentTypeError(message) from None
+    if width <= 0 or height <= 0:
+        raise argparse.ArgumentTypeError(f"the size must be positive, got {text!r}")
+    return (width, height)
+
+
 def _negative(args: argparse.Namespace) -> None:
     photo = load_photo(args.input)
     process = load_process(args.process) if args.process else None
@@ -372,8 +388,12 @@ def _negative(args: argparse.Namespace) -> None:
     settings = NegativeSettings(
         colour=colour, mirror=args.mirror, safe_edge=args.safe_edge, mark=not args.no_mark
     )
+    if args.max_size and not args.fit:
+        raise ValueError("--max-size works with --fit PAPER")
     if args.fit:
         dpi = negative_ppi(*photo.size, args.fit, settings.safe_edge, DEFAULT_MARGIN)
+        if args.max_size:
+            dpi = max(dpi, box_ppi(*photo.size, args.max_size, settings.safe_edge))
     else:
         dpi = args.dpi or (photo.dpi[0] if photo.dpi else DEFAULT_DPI)
     pixels = process.apply(photo.pixels) if process else photo.pixels

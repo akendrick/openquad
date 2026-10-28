@@ -108,6 +108,7 @@ public final class AppModel {
             try? session.setNegativeColour(settings.negativeColour)
         }
         session.printer = settings.printer
+        if let size = settings.maxSize, size.count == 2 { session.maxSize = (size[0], size[1]) }
     }
 
     private func remember() {
@@ -202,6 +203,21 @@ public final class AppModel {
     public func setFit(_ on: Bool) {
         session.fit = on
         refreshPreview()
+    }
+
+    /// Fit within a set size (inches; the tissue's, for a negative), or nil for the page.
+    /// Remembered, as the tissue rarely changes.
+    public func setMaxSize(_ size: (Double, Double)?) {
+        if let size, !(size.0 > 0 && size.1 > 0) { return }
+        session.maxSize = size
+        settings.maxSize = size.map { [$0.0, $0.1] }
+        try? settings.save(settingsURL)
+        refreshPreview()
+    }
+
+    /// The last set size, to offer when switching from the page to a set size.
+    public var rememberedMaxSize: (Double, Double) {
+        session.maxSize ?? settings.maxSize.flatMap { $0.count == 2 ? ($0[0], $0[1]) : nil } ?? (8, 10)
     }
 
     public func setPPI(_ ppi: Double?) {
