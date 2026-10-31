@@ -183,6 +183,21 @@ public final class AppModel {
         refreshPreview()
     }
 
+    /// The black outline's width, kept while it is turned off so turning it back on restores it.
+    public private(set) var outlineSize = 0.1
+
+    /// Turn the black outline (between the safe edge and the photo) on or off.
+    public func setOutline(_ on: Bool) {
+        session.outline = on ? outlineSize : 0
+        refreshPreview()
+    }
+
+    public func setOutlineSize(_ inches: Double) {
+        outlineSize = min(max(inches, 0.01), 1)
+        if session.outline > 0 { session.outline = outlineSize }
+        refreshPreview()
+    }
+
     public func setPaper(_ paper: String) {
         attempt {
             try session.setPaper(paper)

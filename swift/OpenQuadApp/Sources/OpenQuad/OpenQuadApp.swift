@@ -2,6 +2,7 @@
 //
 //     OpenQuad                          the app
 //     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE] [--max-size WxH]
+//                                       [--outline INCHES]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN] [--run RUN]
 //                                       [--mixtures] (blocking: the ink-mixture chart)
 //                                       draw the window to a PNG and quit (for checks)
@@ -75,6 +76,10 @@ enum Snapshot {
         if let printer = value("--printer") { model.setPrinter(printer) }
         if let size = value("--max-size")?.lowercased().split(separator: "x").compactMap({ Double($0) }), size.count == 2 {
             model.setMaxSize((size[0], size[1]))
+        }
+        if let outline = value("--outline").flatMap(Double.init) {
+            model.setOutlineSize(outline)
+            model.setOutline(true)
         }
         return model
     }

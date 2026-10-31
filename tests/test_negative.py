@@ -87,7 +87,11 @@ def test_add_safe_edge_without_edge_only_mirrors() -> None:
 
 @pytest.mark.parametrize(
     ("kwargs", "message"),
-    [({"colour": "purple"}, "unknown negative colour"), ({"safe_edge": 3.0}, "safe edge")],
+    [
+        ({"colour": "purple"}, "unknown negative colour"),
+        ({"safe_edge": 3.0}, "safe edge"),
+        ({"outline": 1.5}, "black outline"),
+    ],
 )
 def test_settings_are_checked(kwargs: dict[str, object], message: str) -> None:
     with pytest.raises(ValueError, match=message):
@@ -170,3 +174,23 @@ def test_negative_command_max_size(tmp_path: Path, capsys: pytest.CaptureFixture
     assert main([*base, "--max-size", "4x5"]) == 1  # needs --fit
     with pytest.raises(SystemExit):
         main([*base, "--fit", "Letter", "--max-size", "big"])
+
+
+def test_black_outline_sits_between_the_safe_edge_and_the_photo() -> None:
+    settings = NegativeSettings(safe_edge=0.5, mark=False, outline=0.2)
+    assert settings.border == pytest.approx(0.7)
+    neg = make_negative(RAMP, settings, dpi=100)
+    assert neg.shape == (170, 180, 3)  # 50 px safe edge + 20 px outline all round
+    assert np.all(neg[:50] == 0)  # the safe edge: full ink
+    assert np.all(neg[50:70, 50:-50] == 65535)  # the outline: clear film, so prints black
+    assert np.all(neg[50:-50, 50:70] == 65535)
+    assert np.array_equal(neg[70:100, 70:110], make_negative(RAMP, NO_EDGE, dpi=100))
+
+
+def test_negative_command_outline(tmp_path: Path) -> None:
+    out = tmp_path / "neg.tif"
+    base = ["negative", str(photo(tmp_path)), "-o", str(out), "--safe-edge", "0"]
+    assert main([*base, "--dpi", "100", "--outline", "0.1"]) == 0
+    neg = tifffile.imread(out)
+    assert neg.shape[:2] == (30 + 20, 40 + 20)
+    assert np.all(neg[:10] == 65535)
