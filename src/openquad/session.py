@@ -53,6 +53,7 @@ class PrintSession:
     process_path: Path | None = None
     mirror: bool = False
     safe_edge: float = 0.25
+    outline: float = 0.0  # inches of black between the safe edge and the photo (0 = none)
 
     # --- choosing things ------------------------------------------------------------
 
@@ -104,7 +105,10 @@ class PrintSession:
 
     def _negative_settings(self) -> NegativeSettings:
         return NegativeSettings(
-            colour=self.negative_colour, mirror=self.mirror, safe_edge=self.safe_edge
+            colour=self.negative_colour,
+            mirror=self.mirror,
+            safe_edge=self.safe_edge,
+            outline=self.outline,
         )
 
     def set_paper(self, paper: str) -> None:
@@ -123,11 +127,11 @@ class PrintSession:
         photo = self._photo()
         if self.fit:
             if self.negative:
-                ppi = negative_ppi(*photo.size, self.paper, self.safe_edge, self.margin)
+                ppi = negative_ppi(*photo.size, self.paper, self._border, self.margin)
             else:
                 ppi = fit_ppi(*photo.size, self.paper, self.margin)
             if self.max_size:  # smaller of the page and the box (never past the page)
-                edge = self.safe_edge if self.negative else 0.0
+                edge = self._border if self.negative else 0.0
                 ppi = max(ppi, box_ppi(*photo.size, self.max_size, edge))
             return ppi
         if self.ppi:
@@ -137,7 +141,7 @@ class PrintSession:
     def size_inches(self) -> tuple[float, float]:
         width, height = print_size(*self._photo().size, self.effective_ppi())
         if self.negative:  # the safe edge goes round the photo
-            width, height = width + 2 * self.safe_edge, height + 2 * self.safe_edge
+            width, height = width + 2 * self._border, height + 2 * self._border
         return width, height
 
     def fits_on_paper(self) -> bool:
@@ -175,6 +179,11 @@ class PrintSession:
             shown = composite(pixels, PRESETS[self.preset])
         return (shown >> 8).astype(np.uint8)
 
+    @property
+    def _border(self) -> float:
+        """Inches round the photo in a negative: the black outline plus the safe edge."""
+        return self.outline + self.safe_edge
+
     def _within(self) -> list[str]:
         if not (self.fit and self.max_size):
             return []
@@ -193,7 +202,8 @@ class PrintSession:
                 f"Printer: {self.printer or 'not chosen'}",
                 f"Paper: {self.paper}",
                 *self._within(),
-                f"Size: {width:.2f} x {height:.2f} in with a {self.safe_edge:g} in safe edge",
+                f"Size: {width:.2f} x {height:.2f} in with a {self.safe_edge:g} in safe edge"
+                + (f" and a {self.outline:g} in black outline" if self.outline else ""),
                 f"Colour: {self.negative_colour}",
                 f"Process curve: {process}",
                 f"Mirrored: {'yes' if self.mirror else 'no'}",

@@ -64,6 +64,14 @@ class NegativeSettings:
     mirror: bool = False
     safe_edge: float = 0.25  # inches of opaque border; 0 for none
     mark: bool = True  # cut an orientation "F" into the safe edge
+    # Inches of black between the safe edge and the photo (0 for none): clear film on the
+    # negative, so the deepest black the process gives; a border for light-edged photos.
+    outline: float = 0.0
+
+    @property
+    def border(self) -> float:
+        """Inches added round the photo on each side: the outline plus the safe edge."""
+        return self.outline + self.safe_edge
 
     def __post_init__(self) -> None:
         if self.colour not in NEGATIVE_COLOURS:
@@ -73,6 +81,8 @@ class NegativeSettings:
             )
         if not 0.0 <= self.safe_edge <= 2.0:
             raise ValueError(f"safe edge must be 0-2 in, got {self.safe_edge}")
+        if not 0.0 <= self.outline <= 1.0:
+            raise ValueError(f"black outline must be 0-1 in, got {self.outline}")
 
 
 def ink_to_rgb(
@@ -92,6 +102,9 @@ def make_negative(
     """Render a greyscale photo (0 black, 65535 white) as a negative, (H, W, 3) uint16 sRGB."""
     if photo.dtype != np.uint16 or photo.ndim != 2:
         raise ValueError("photo must be a 2-D uint16 greyscale array")
+    band = round(settings.outline * dpi)
+    if band > 0:  # the black outline: photo black, so no ink at all
+        photo = np.pad(photo, band, constant_values=0)
     coverage = photo.astype(np.float64) / MAX_VALUE  # white in the print = most ink
     image = ink_to_rgb(coverage, NEGATIVE_COLOURS[settings.colour])
     return add_safe_edge(image, settings, dpi)

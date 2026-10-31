@@ -72,10 +72,11 @@ struct NegativeParity {
         let width = try #require(photo["width"] as? Int), height = try #require(photo["height"] as? Int)
         let pixels = ints(photo["pixels"]).map { UInt16($0) }
         let cases = try #require(v["cases"] as? [[String: Any]])
-        #expect(cases.count == 4)
+        #expect(cases.count == 6)
         for c in cases {
             let settings = NegativeSettings(colour: c["colour"] as! String, mirror: c["mirror"] as! Bool,
-                                            safeEdge: (c["safe_edge"] as! NSNumber).doubleValue, mark: c["mark"] as! Bool)
+                                            safeEdge: (c["safe_edge"] as! NSNumber).doubleValue, mark: c["mark"] as! Bool,
+                                            outline: (c["outline"] as? NSNumber)?.doubleValue ?? 0)
             let got = Negative.make(pixels, width: width, height: height, settings: settings,
                                     dpi: (c["dpi"] as! NSNumber).doubleValue)
             let shape = ints(c["shape"])
