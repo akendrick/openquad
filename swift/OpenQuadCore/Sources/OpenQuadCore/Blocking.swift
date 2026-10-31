@@ -5,7 +5,7 @@ import Foundation
 
 public struct BlockingLayout: SheetSpec {
     public static let steps = 11  // 0%, 10%, ... 100% ink
-    public var colours = Negative.colourOrder
+    public var colours = Negative.standardColours
     public var labelWidth = 1.0
     public var marker = 0.3
     public var fullWidth = 0.6
@@ -13,7 +13,7 @@ public struct BlockingLayout: SheetSpec {
     public var rowHeight = 0.45
     public var gap = 0.12
 
-    public init(colours: [String] = Negative.colourOrder) { self.colours = colours }
+    public init(colours: [String] = Negative.standardColours) { self.colours = colours }
 
     public var width: Double {
         labelWidth + gap + fullWidth + gap + Double(Self.steps) * stepWidth + gap

@@ -6,6 +6,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Ink-mixture chart for the blocking test: ten printable colours made from single inks and
+  simple two-ink mixes (yellow, orange, red, magenta, blue, cyan, green, yellow-green, olive,
+  black), each as a full patch and an 11-step wedge. Chosen in the app's blocking window (the
+  usual six-colour sheet stays the default); `openquad target --kind blocking --mixtures` and
+  `openquad blocking SCAN --mixtures`. Magenta, blue, cyan and yellow-green are new negative
+  colours. The app shows results as a heat map (how light each patch printed) or as lines.
 - Max image size: with Fit to page, "Fit within: A set size" keeps the image within W x H
   inches (turned to match the photo, never past the page's margins). For a negative it is the
   outer edge, safe edge included, e.g. the carbon tissue's size; the photo shrinks to fit inside.

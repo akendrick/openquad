@@ -15,7 +15,7 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from openquad import __version__
-from openquad.blocking import analyse, blocking_sheet
+from openquad.blocking import BlockingLayout, analyse, blocking_sheet
 from openquad.chart import (
     ChartReading,
     ProcessCurve,
@@ -42,6 +42,7 @@ from openquad.linearize import linearize, tone_report
 from openquad.measure import Measurement, load_scan, measure_pair, measure_scan
 from openquad.negative import (
     DEFAULT_COLOUR,
+    MIXTURE_COLOURS,
     NEGATIVE_COLOURS,
     NegativeSettings,
     make_negative,
@@ -96,6 +97,11 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--calibration", type=Path, help="grey-balance: apply this calibration")
     target.add_argument("--mirror", action="store_true", help="blocking/chart: mirror the sheet")
     target.add_argument(
+        "--mixtures",
+        action="store_true",
+        help="blocking: the ink-mixture chart (10 printable colours) instead of the usual 6",
+    )
+    target.add_argument(
         "--colour",
         type=_colours,
         default=["green"],
@@ -146,6 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     blk = commands.add_parser("blocking", help="read a scanned print of the blocking test")
     blk.add_argument("scan", type=Path, help="scan of the exposed print (JPEG, PNG or TIFF)")
+    blk.add_argument("--mixtures", action="store_true", help="it is the ink-mixture chart")
 
     neg = commands.add_parser("negative", help="make a digital negative for contact printing")
     neg.add_argument("input", type=Path, help="greyscale photo (any bit depth; RGB/RGBA grey too)")
@@ -259,7 +266,7 @@ def _target(args: argparse.Namespace) -> None:
         print("print it on film, contact print it, then scan the print: openquad chart SCAN")
         return
     if args.kind == "blocking":
-        sheet = blocking_sheet(dpi=args.dpi, mirror=args.mirror)
+        sheet = blocking_sheet(_blocking_layout(args.mixtures), dpi=args.dpi, mirror=args.mirror)
         save_rgb(args.output, sheet, dpi, srgb_profile())
         width, height = sheet.shape[1] / args.dpi, sheet.shape[0] / args.dpi
         print(f"wrote {args.output} (blocking test, {width:.2f} x {height:.2f} in): print it on")
@@ -318,8 +325,12 @@ def _pixel_size(path: Path) -> tuple[int, int]:
         return image.size
 
 
+def _blocking_layout(mixtures: bool) -> BlockingLayout:
+    return BlockingLayout(colours=MIXTURE_COLOURS) if mixtures else BlockingLayout()
+
+
 def _blocking(args: argparse.Namespace) -> None:
-    report = analyse(load_scan(args.scan))
+    report = analyse(load_scan(args.scan), _blocking_layout(args.mixtures))
     print(f"Read the print {report.orientation}.")
     for line in report.lines():
         print(line)

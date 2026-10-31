@@ -12,9 +12,18 @@ public enum Negative {
         "yellow": (1.0, 0.85, 0.0),
         "red": (0.85, 0.10, 0.10),
         "olive": (0.40, 0.40, 0.0),
+        // Single printer inks and simple two-ink mixes, for the ink-mixture chart.
+        "magenta": (0.90, 0.10, 0.52),
+        "blue": (0.0, 0.06, 0.47),
+        "cyan": (0.0, 0.62, 0.90),
+        "yellow-green": (0.50, 0.75, 0.05),
     ]
     /// The colours in their usual order (the blocking sheet's rows).
-    public static let colourOrder = ["black", "green", "orange", "yellow", "red", "olive"]
+    public static let colourOrder = ["black", "green", "orange", "yellow", "red", "olive", "magenta", "blue", "cyan", "yellow-green"]
+    /// The blocking test's usual six colours.
+    public static let standardColours = ["black", "green", "orange", "yellow", "red", "olive"]
+    /// The ink-mixture chart's ten: printable colours from single inks and simple two-ink mixes.
+    public static let mixtureColours = ["yellow", "orange", "red", "magenta", "blue", "cyan", "green", "yellow-green", "olive", "black"]
     public static let defaultColour = "black"
 
     /// The letter F, 7 rows by 5 columns: asymmetric both ways, so a flip shows.

@@ -24,7 +24,13 @@ from numpy.typing import NDArray
 from PIL import Image, ImageDraw, ImageFont
 
 from openquad.colour import linear_rgb_to_lab, srgb_to_linear
-from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, add_safe_edge, ink_to_rgb
+from openquad.negative import (
+    NEGATIVE_COLOURS,
+    STANDARD_COLOURS,
+    NegativeSettings,
+    add_safe_edge,
+    ink_to_rgb,
+)
 from openquad.quadfile import MAX_VALUE
 
 STEPS = 11  # 0%, 10%, ... 100% ink
@@ -62,7 +68,7 @@ class BlockingError(ValueError):
 
 @dataclass(frozen=True)
 class BlockingLayout:
-    colours: tuple[str, ...] = tuple(NEGATIVE_COLOURS)
+    colours: tuple[str, ...] = STANDARD_COLOURS
     label_width: float = 1.0
     marker: float = 0.3
     full_width: float = 0.6
@@ -653,4 +659,4 @@ def _safe_edge_lightness(
 
 
 def colours_from(names: Sequence[str] | None) -> tuple[str, ...]:
-    return tuple(names) if names else tuple(NEGATIVE_COLOURS)
+    return tuple(names) if names else STANDARD_COLOURS

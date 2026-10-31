@@ -9,6 +9,13 @@ import SwiftUI
 @MainActor
 @Observable
 public final class BlockingTestModel: WizardModel {
+    /// Which chart: the usual six colours, or ten printable ink mixtures.
+    public enum ChartKind: String, CaseIterable, Sendable {
+        case standard = "Standard (6 colours)"
+        case mixtures = "Ink mixtures (10 colours)"
+    }
+
+    public var chart = ChartKind.standard
     public var mirror = false
     public var safeEdge = 0.25
     public private(set) var report: BlockingReport?
@@ -19,11 +26,16 @@ public final class BlockingTestModel: WizardModel {
     }
 
     /// The sheet at 300 ppi, for the print panel or a file.
-    public func sheet() -> RGBImage { Blocking.sheet(dpi: 300, mirror: mirror, safeEdge: safeEdge) }
+    public var layout: BlockingLayout {
+        BlockingLayout(colours: chart == .mixtures ? Negative.mixtureColours : Negative.standardColours)
+    }
+
+    public func sheet() -> RGBImage { Blocking.sheet(layout: layout, dpi: 300, mirror: mirror, safeEdge: safeEdge) }
 
     public func printRequest() -> (RGBImage, Double, Double, String, String) {
         let sheet = sheet()
-        return (sheet, Double(sheet.width) / 300, Double(sheet.height) / 300, "Letter", "OpenQuad blocking test")
+        let title = chart == .mixtures ? "OpenQuad ink-mixture chart" : "OpenQuad blocking test"
+        return (sheet, Double(sheet.width) / 300, Double(sheet.height) / 300, "Letter", title)
     }
 
     public func save(_ url: URL) {
@@ -44,6 +56,7 @@ public final class BlockingTestModel: WizardModel {
         }
         say(file == nil ? "Scanning the contact print…" : "Reading \(file!.lastPathComponent)…")
         nonisolated(unsafe) let fetch = fetch
+        let layout = self.layout
         step("read", { () -> (BlockingReport, String) in
             let url: URL
             if let file {
@@ -52,7 +65,7 @@ public final class BlockingTestModel: WizardModel {
                 url = FileManager.default.temporaryDirectory.appendingPathComponent("openquad-blocking-scan.jpg")
                 try ESCL.scan(host: host, settings: try ScanSettings(), fetch: fetch).write(to: url)
             }
-            return (try Blocking.analyse(try Scan.load(url)), url.lastPathComponent)
+            return (try Blocking.analyse(try Scan.load(url), layout: layout), url.lastPathComponent)
         }) { report, name in
             self.report = report
             self.scanName = name
@@ -91,6 +104,7 @@ public struct BlockingTestView: View {
     @Bindable var model: BlockingTestModel
     let use: (String) -> Void
     let close: () -> Void
+    @State private var resultView = 0
 
     public init(model: BlockingTestModel, use: @escaping (String) -> Void, close: @escaping () -> Void = {}) {
         self.model = model
@@ -108,6 +122,10 @@ public struct BlockingTestView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Form {
+                Picker("Chart", selection: $model.chart) {
+                    ForEach(BlockingTestModel.ChartKind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .pickerStyle(.segmented)
                 Toggle("Mirror the sheet", isOn: $model.mirror)
                 Stepper(value: $model.safeEdge, in: 0...1, step: 0.05) {
                     LabeledContent("Safe edge", value: String(format: "%.2f in", model.safeEdge))
@@ -132,7 +150,17 @@ public struct BlockingTestView: View {
                 if model.busy { ProgressView().controlSize(.small) }
             }
             if let report = model.report {
-                BlockingChart(report: report).frame(minHeight: 240, maxHeight: .infinity)
+                Picker("Show", selection: $resultView) {
+                    Text("Heat map").tag(0)
+                    Text("Lines").tag(1)
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                if resultView == 0 {
+                    ScrollView { BlockingHeatMap(report: report) }.frame(minHeight: 240, maxHeight: .infinity)
+                } else {
+                    BlockingChart(report: report).frame(minHeight: 240, maxHeight: .infinity)
+                }
                 Text(report.lines().joined(separator: "\n"))
                     .font(.callout.monospaced())
                     .textSelection(.enabled)
@@ -158,7 +186,71 @@ public struct BlockingTestView: View {
     private func save() {
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.tiff]
-        panel.nameFieldStringValue = "blocking-test.tif"
+        panel.nameFieldStringValue = model.chart == .mixtures ? "ink-mixture-chart.tif" : "blocking-test.tif"
         if panel.runModal() == .OK, let url = panel.url { model.save(url) }
+    }
+}
+
+
+/// Each colour's wedge as a row of cells, coloured by how light the patch printed: dark
+/// where UV got through, pale where the ink blocked it. Rows that block fully get a check.
+struct BlockingHeatMap: View {
+    let report: BlockingReport
+
+    /// L* to a colour, from deep blue-violet (UV got through) to cream (blocked).
+    static func heat(_ l: Double) -> Color {
+        let stops: [(Double, (Double, Double, Double))] = [
+            (20, (0.14, 0.14, 0.29)), (50, (0.59, 0.22, 0.27)), (75, (0.92, 0.59, 0.24)), (95, (1.0, 0.97, 0.84)),
+        ]
+        let v = clip(l, stops[0].0, stops[stops.count - 1].0)
+        for (a, b) in zip(stops, stops.dropFirst()) where v <= b.0 {
+            let t = (v - a.0) / (b.0 - a.0)
+            return Color(.sRGB, red: a.1.0 + t * (b.1.0 - a.1.0), green: a.1.1 + t * (b.1.1 - a.1.1),
+                         blue: a.1.2 + t * (b.1.2 - a.1.2))
+        }
+        return .white
+    }
+
+    var body: some View {
+        let best = report.best()?.name
+        Grid(alignment: .leading, horizontalSpacing: 3, verticalSpacing: 3) {
+            GridRow {
+                Text("Colour").font(.caption.weight(.semibold))
+                ForEach(0..<BlockingLayout.steps, id: \.self) { step in
+                    Text("\(step * 10)%").font(.caption2).foregroundStyle(.secondary).frame(width: 40)
+                }
+                Text("Full").font(.caption2).foregroundStyle(.secondary).frame(width: 40)
+                Text("")
+            }
+            ForEach(report.results, id: \.name) { result in
+                GridRow {
+                    HStack(spacing: 6) {
+                        RoundedRectangle(cornerRadius: 3).fill(ToneChartView.swatch(result.name)).frame(width: 14, height: 14)
+                        Text(result.name.capitalized).fontWeight(result.name == best ? .bold : .regular)
+                    }
+                    ForEach(Array(result.wedge.enumerated()), id: \.offset) { _, l in cell(l) }
+                    cell(result.full)
+                    HStack(spacing: 4) {
+                        if result.blocksFully {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            Text("blocks, \(result.usableSteps) steps").font(.caption)
+                        } else {
+                            Text("lets UV through").font(.caption).foregroundStyle(.secondary)
+                        }
+                        if result.name == best { Text("best").font(.caption.bold()).foregroundStyle(.green) }
+                    }
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    func cell(_ l: Double) -> some View {
+        Text(String(format: "%.0f", l))
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(l > 60 ? Color.black : Color.white)
+            .frame(width: 40, height: 28)
+            .background(Self.heat(l), in: RoundedRectangle(cornerRadius: 3))
+            .help(String(format: "L* %.1f", l))
     }
 }

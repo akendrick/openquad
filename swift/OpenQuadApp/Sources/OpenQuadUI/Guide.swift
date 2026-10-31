@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 6
+    public static let version = 7
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -62,7 +62,8 @@ public struct GuideView: View {
                      "Print on transparency film at 100% with your usual film settings."]),
         Page(symbol: "square.grid.3x3.square", title: "Find the best blocking colour",
              text: "Find the Best Blocking Colour… (in negative mode) prints a sheet of every negative colour.",
-             steps: ["Print the test sheet on film and expose it on your tissue at your usual time.",
+             steps: ["Choose the chart: Standard (six colours) or Ink mixtures (ten colours your printer makes "
+                        + "from single inks and simple mixes). Print it on film and expose it at your usual time.",
                      "Develop it, let it dry, and scan the print (or read a scan file).",
                      "OpenQuad reads the print any way up, tilted or mirrored, and reports which colours block "
                         + "fully and how many distinct steps each gives.",

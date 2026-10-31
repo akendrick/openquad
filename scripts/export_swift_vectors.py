@@ -929,6 +929,7 @@ def wizards_vectors(directory: Path) -> dict[str, Any]:
                         "white": reading.white, "black": reading.black,
                         "json": reading_to_json(reading)})  # fmt: skip
     import openquad.blocking as blocking
+    from openquad.negative import MIXTURE_COLOURS, STANDARD_COLOURS
 
     labels = blocking._draw_labels
     blocking._draw_labels = lambda sheet, layout, dpi: None
@@ -937,9 +938,13 @@ def wizards_vectors(directory: Path) -> dict[str, Any]:
         renders["blocking_sheet_mirrored"] = _digest(
             blocking.blocking_sheet(dpi=60, mirror=True, safe_edge=0.3)
         )
+        mixtures = blocking.BlockingLayout(colours=MIXTURE_COLOURS)
+        renders["blocking_sheet_mixtures"] = _digest(blocking.blocking_sheet(mixtures, dpi=50))
     finally:
         blocking._draw_labels = labels
     return {
+        "standard_colours": list(STANDARD_COLOURS),
+        "mixture_colours": list(MIXTURE_COLOURS),
         "identity_levels": _ints(identity.levels),
         "identity_curves": _ints(identity.curves),
         "renders": renders,

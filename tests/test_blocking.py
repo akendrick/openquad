@@ -300,3 +300,26 @@ def test_real_carbon_print_from_24_oct() -> None:
     assert by_name["orange"].full == pytest.approx(92.7, abs=0.5)
     best = report.best()
     assert best is not None and best.name == "green"
+
+
+def test_ink_mixture_chart_is_read_with_its_own_layout() -> None:
+    from openquad.negative import MIXTURE_COLOURS, STANDARD_COLOURS
+
+    assert BlockingLayout().colours == STANDARD_COLOURS  # the usual sheet is unchanged
+    layout = BlockingLayout(colours=MIXTURE_COLOURS)
+    sheet = blocking_sheet(layout, dpi=DPI)
+    assert sheet.shape[0] > blocking_sheet(dpi=DPI).shape[0]  # ten rows instead of six
+    report = analyse(carbon_scan(sheet), layout)
+    assert [r.name for r in report.results] == list(MIXTURE_COLOURS)
+    assert all(len(r.wedge) == STEPS for r in report.results)
+
+
+def test_ink_mixture_commands(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out = tmp_path / "mixtures.tif"
+    assert main(["target", "--kind", "blocking", "--mixtures", "-o", str(out), "--dpi", "100"]) == 0
+    assert "blocking test" in capsys.readouterr().out
+    scan = tmp_path / "scan.png"
+    Image.fromarray((carbon_scan(tifffile.imread(out)) * 255).round().astype(np.uint8)).save(scan)
+    assert main(["blocking", str(scan), "--mixtures"]) == 0
+    printed = capsys.readouterr().out
+    assert "yellow-green" in printed and "magenta" in printed

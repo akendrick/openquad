@@ -30,6 +30,12 @@ struct GapsTests {
         test.save(folder.appendingPathComponent("blocking-test.tif"))
         #expect(try Scan.load(folder.appendingPathComponent("blocking-test.tif")).width == request.0.width)
 
+        test.mirror = false
+        #expect(test.layout.colours == Negative.standardColours)
+        test.chart = .mixtures
+        #expect(test.layout.colours == Negative.mixtureColours && test.printRequest().4 == "OpenQuad ink-mixture chart")
+        #expect(test.sheet().height > request.0.height)  // ten rows instead of six
+
         let app = AppModel(settingsURL: folder.appendingPathComponent("settings.json"))
         app.useBlockingColour("orange", scannerHost: "scanner.local")
         #expect(app.session.negative && app.session.negativeColour == "orange" && app.settings.scannerHost == "scanner.local")
