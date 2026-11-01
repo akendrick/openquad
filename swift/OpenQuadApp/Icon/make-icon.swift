@@ -4,6 +4,9 @@
 //
 //     swift make-icon.swift OUT.iconset            the icon set
 //     swift make-icon.swift --preview OUT.png      one 1024 px PNG
+//
+// Sources/OpenQuad/Resources/AppIcon.png is the --preview PNG: the icon when the app runs
+// from Xcode or `swift run`, and the README's. swift/build-app.sh warns if it is out of date.
 
 import AppKit
 

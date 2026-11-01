@@ -1,3 +1,5 @@
+<img src="swift/OpenQuadApp/Sources/OpenQuad/Resources/AppIcon.png" alt="OpenQuad icon: a printer taking in a positive step wedge and giving out its green carbon negative" width="128" align="right">
+
 # OpenQuad
 
 > [!WARNING]

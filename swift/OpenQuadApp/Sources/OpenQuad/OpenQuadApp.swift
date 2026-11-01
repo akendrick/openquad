@@ -16,6 +16,12 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)  // also when run straight from `swift run`
+        // Run from Xcode or `swift run` there is no app bundle, so no AppIcon.icns: use the same
+        // icon from the package's resources (the bundled app gets it from its Info.plist).
+        if Bundle.main.bundleURL.pathExtension != "app",
+           let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"), let icon = NSImage(contentsOf: url) {
+            NSApp.applicationIconImage = icon
+        }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
