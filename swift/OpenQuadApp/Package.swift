@@ -14,7 +14,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "OpenQuadUI", dependencies: [.product(name: "OpenQuadCore", package: "OpenQuadCore")]),
-        .executableTarget(name: "OpenQuad", dependencies: ["OpenQuadUI", .product(name: "OpenQuadCore", package: "OpenQuadCore")]),
+        .executableTarget(name: "OpenQuad", dependencies: ["OpenQuadUI", .product(name: "OpenQuadCore", package: "OpenQuadCore")],
+                          resources: [.copy("Resources/AppIcon.png")]),
         .testTarget(name: "OpenQuadUITests", dependencies: ["OpenQuadUI"]),
     ]
 )

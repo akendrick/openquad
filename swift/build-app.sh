@@ -16,6 +16,10 @@ iconset="$here/build/AppIcon.iconset"
 rm -rf "$iconset"
 swift "$here/OpenQuadApp/Icon/make-icon.swift" "$iconset"
 iconutil -c icns "$iconset" -o "$app/Contents/Resources/AppIcon.icns"
+# The PNG copy used outside the bundle (Xcode, swift run, the README) should match.
+swift "$here/OpenQuadApp/Icon/make-icon.swift" --preview "$here/build/AppIcon.png"
+cmp -s "$here/build/AppIcon.png" "$here/OpenQuadApp/Sources/OpenQuad/Resources/AppIcon.png" ||
+  echo "warning: AppIcon.png is out of date; copy swift/build/AppIcon.png over Sources/OpenQuad/Resources/AppIcon.png" >&2
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
