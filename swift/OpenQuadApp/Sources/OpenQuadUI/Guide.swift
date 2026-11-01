@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 7
+    public static let version = 8
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -57,6 +57,8 @@ public struct GuideView: View {
                      "Mirror if the film's printed side must face the tissue.",
                      "The safe edge frames the photo; the F cut into it reads correctly in the print when the "
                         + "mirror setting was right.",
+                     "Outline in black adds a black border of the width you set between the safe edge and the "
+                        + "photo: a natural frame for photos with white or light edges.",
                      "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",
                      "Print on transparency film at 100% with your usual film settings."]),

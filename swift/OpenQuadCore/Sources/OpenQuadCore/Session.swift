@@ -37,6 +37,8 @@ public struct PrintSession: Sendable {
     public private(set) var processPath: URL?
     public var mirror = false
     public var safeEdge = 0.25
+    /// Inches of black between the safe edge and the photo (0 = none).
+    public var outline = 0.0
 
     public init() {}
 
@@ -93,8 +95,11 @@ public struct PrintSession: Sendable {
 
     public var negative: Bool { mode == .negative }
 
+    /// Inches round the photo in a negative: the black outline plus the safe edge.
+    var border: Double { outline + safeEdge }
+
     var negativeSettings: NegativeSettings {
-        NegativeSettings(colour: negativeColour, mirror: mirror, safeEdge: safeEdge)
+        NegativeSettings(colour: negativeColour, mirror: mirror, safeEdge: safeEdge, outline: outline)
     }
 
     // MARK: size
@@ -108,11 +113,11 @@ public struct PrintSession: Sendable {
         let photo = try currentPhoto()
         if fit {
             var ppi = negative
-                ? try Paper.negativePPI(width: photo.width, height: photo.height, paper: paper, safeEdge: safeEdge, margin: margin)
+                ? try Paper.negativePPI(width: photo.width, height: photo.height, paper: paper, safeEdge: border, margin: margin)
                 : try Paper.fitPPI(width: photo.width, height: photo.height, paper: paper, margin: margin)
             if let maxSize {  // smaller of the page and the box (never past the page)
                 ppi = max(ppi, try Paper.boxPPI(width: photo.width, height: photo.height, box: maxSize,
-                                                border: negative ? safeEdge : 0))
+                                                border: negative ? border : 0))
             }
             return ppi
         }
@@ -123,9 +128,9 @@ public struct PrintSession: Sendable {
     public func sizeInches() throws -> (Double, Double) {
         let photo = try currentPhoto(), ppi = try effectivePPI()
         var (width, height) = (Double(photo.width) / ppi, Double(photo.height) / ppi)
-        if negative {  // the safe edge goes round the photo
-            width += 2 * safeEdge
-            height += 2 * safeEdge
+        if negative {  // the outline and safe edge go round the photo
+            width += 2 * border
+            height += 2 * border
         }
         return (width, height)
     }
@@ -206,7 +211,8 @@ public struct PrintSession: Sendable {
                 "Printer: \(printer ?? "not chosen")",
                 "Paper: \(paper)",
             ] + within + [
-                "Size: \(size) with a \(String(format: "%g", safeEdge)) in safe edge",
+                "Size: \(size) with a \(String(format: "%g", safeEdge)) in safe edge"
+                    + (outline != 0 ? " and a \(String(format: "%g", outline)) in black outline" : ""),
                 "Colour: \(negativeColour)",
                 "Process curve: \(processPath?.lastPathComponent ?? "none (uncalibrated)")",
                 "Mirrored: \(mirror ? "yes" : "no")",

@@ -54,15 +54,24 @@ public struct NegativeSettings: Sendable {
     /// Inches of opaque border; 0 for none.
     public let safeEdge: Double
     public let mark: Bool
+    /// Inches of black between the safe edge and the photo (0 for none): clear film on the
+    /// negative, so the deepest black the process gives; a border for light-edged photos.
+    public let outline: Double
 
-    public init(colour: String = Negative.defaultColour, mirror: Bool = false, safeEdge: Double = 0.25, mark: Bool = true) {
+    public init(colour: String = Negative.defaultColour, mirror: Bool = false, safeEdge: Double = 0.25, mark: Bool = true,
+                outline: Double = 0) {
         precondition(Negative.colours[colour] != nil, "unknown negative colour \(colour)")
         precondition((0.0...2.0).contains(safeEdge), "safe edge must be 0-2 in")
+        precondition((0.0...1.0).contains(outline), "black outline must be 0-1 in")
         self.colour = colour
         self.mirror = mirror
         self.safeEdge = safeEdge
         self.mark = mark
+        self.outline = outline
     }
+
+    /// Inches added round the photo on each side: the outline plus the safe edge.
+    public var border: Double { outline + safeEdge }
 }
 
 /// A 16-bit RGB image, interleaved R, G, B per pixel, row-major.
@@ -83,6 +92,18 @@ extension Negative {
     /// A greyscale photo (0 black .. 65535 white) as a negative at `dpi`.
     public static func make(_ photo: [UInt16], width: Int, height: Int, settings: NegativeSettings, dpi: Double) -> RGBImage {
         precondition(photo.count == width * height, "photo must be width x height")
+        let band = pyRound(settings.outline * dpi)
+        if band > 0 {  // the black outline: photo black, so no ink at all
+            let wider = width + 2 * band, taller = height + 2 * band
+            var padded = [UInt16](repeating: 0, count: wider * taller)
+            for y in 0..<height {
+                padded.replaceSubrange(((y + band) * wider + band)..<((y + band) * wider + band + width),
+                                       with: photo[(y * width)..<((y + 1) * width)])
+            }
+            return make(padded, width: wider, height: taller,
+                        settings: NegativeSettings(colour: settings.colour, mirror: settings.mirror,
+                                                   safeEdge: settings.safeEdge, mark: settings.mark), dpi: dpi)
+        }
         let colour = colours[settings.colour]!
         var pixels = [UInt16](repeating: 0, count: photo.count * 3)
         for (index, value) in photo.enumerated() {
