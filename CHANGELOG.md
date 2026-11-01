@@ -16,6 +16,12 @@ versions follow [Semantic Versioning](https://semver.org/).
   inches (turned to match the photo, never past the page's margins). For a negative it is the
   outer edge, safe edge included, e.g. the carbon tissue's size; the photo shrinks to fit inside.
   Remembered between sessions. Command line: `openquad negative --fit Letter --max-size 8x10`.
+- Outline in black for digital negatives: an optional black border of a set width (0.01-1 in)
+  between the safe edge and the photo, so photos with white or light, high-contrast edges still
+  print with a clean frame. It is clear film on the negative (no ink), so it prints as the
+  process's deepest black. Part of the negative's size, so Fit to page and Fit within allow for
+  it. App: "Outline in black" with its width under the safe edge; command line:
+  `openquad negative --outline 0.1`.
 
 ## [0.1.0-beta.3] - 2026-10-27
 

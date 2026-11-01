@@ -65,6 +65,28 @@ struct AppModelTests {
         #expect(again.session.maxSize == nil && model().session.maxSize == nil && again.rememberedMaxSize == (8, 10))
     }
 
+    @Test func blackOutlineGoesBetweenTheSafeEdgeAndThePhoto() throws {
+        let m = model()
+        m.openPhoto(photo)  // 60 x 40 px
+        m.setMode(.negative)
+        m.setFit(false)  // 300 ppi: 0.2 x 0.133 in
+        m.setSafeEdge(0.25)
+        let (plainWidth, _) = try m.session.sizeInches()
+        m.setOutline(true)
+        #expect(m.session.outline == 0.1)
+        let (width, _) = try m.session.sizeInches()
+        #expect(abs(width - plainWidth - 0.2) < 1e-9)
+        #expect(m.summary.joined().contains("and a 0.1 in black outline"))
+        m.setOutlineSize(0.3)
+        #expect(m.session.outline == 0.3)
+        m.setOutline(false)
+        #expect(m.session.outline == 0 && !m.summary.joined().contains("black outline"))
+        m.setOutline(true)
+        #expect(m.session.outline == 0.3)  // the width comes back
+        let negative = try m.session.renderPrint()
+        #expect(negative.width == 60 + 2 * (90 + 75))  // 0.3 in outline + 0.25 in safe edge at 300 ppi
+    }
+
     @Test func negativesAndErrors() throws {
         let m = model()
         m.openPhoto(photo)

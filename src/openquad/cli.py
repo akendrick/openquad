@@ -162,6 +162,8 @@ def build_parser() -> argparse.ArgumentParser:
     neg.add_argument("--mirror", action="store_true", help="flip left to right")
     neg.add_argument("--safe-edge", type=float, default=0.25, help="opaque border, inches (0.25)")
     neg.add_argument("--no-mark", action="store_true", help="leave the orientation F out")
+    neg.add_argument("--outline", type=float, default=0.0, metavar="INCHES",
+                     help="black outline inside the safe edge (default none)")  # fmt: skip
     neg.add_argument("--process", type=Path, help="process curve (.oqproc) to apply first")
     size = neg.add_mutually_exclusive_group()
     size.add_argument("--dpi", type=float, help="print resolution (default: the photo's own)")
@@ -397,19 +399,23 @@ def _negative(args: argparse.Namespace) -> None:
             )
         colour = process.colour
     settings = NegativeSettings(
-        colour=colour, mirror=args.mirror, safe_edge=args.safe_edge, mark=not args.no_mark
+        colour=colour,
+        mirror=args.mirror,
+        safe_edge=args.safe_edge,
+        mark=not args.no_mark,
+        outline=args.outline,
     )
     if args.max_size and not args.fit:
         raise ValueError("--max-size works with --fit PAPER")
     if args.fit:
-        dpi = negative_ppi(*photo.size, args.fit, settings.safe_edge, DEFAULT_MARGIN)
+        dpi = negative_ppi(*photo.size, args.fit, settings.border, DEFAULT_MARGIN)
         if args.max_size:
-            dpi = max(dpi, box_ppi(*photo.size, args.max_size, settings.safe_edge))
+            dpi = max(dpi, box_ppi(*photo.size, args.max_size, settings.border))
     else:
         dpi = args.dpi or (photo.dpi[0] if photo.dpi else DEFAULT_DPI)
     pixels = process.apply(photo.pixels) if process else photo.pixels
     save_rgb(args.output, make_negative(pixels, settings, dpi), (dpi, dpi), srgb_profile())
-    width, height = (n / dpi + 2 * settings.safe_edge for n in photo.size)
+    width, height = (n / dpi + 2 * settings.border for n in photo.size)
     flip = ", mirrored" if settings.mirror else ""
     size = f"{width:.2f} x {height:.2f} in at {dpi:.0f} dpi"
     print(f"wrote {args.output} ({settings.colour}{flip}, {size})")

@@ -178,16 +178,19 @@ def negative_vectors() -> dict[str, Any]:
 
     photo = np.tile(np.rint(np.linspace(0, 65535, 12)).astype(np.uint16), (10, 1))
     photo[3, 4] = 1234
-    cases: list[tuple[str, bool, float, bool, float]] = [
-        ("black", False, 0.0, True, 100.0),
-        ("green", False, 0.2, True, 100.0),
-        ("orange", True, 0.2, True, 100.0),
-        ("red", False, 0.05, False, 100.0),
+    cases: list[tuple[str, bool, float, bool, float, float]] = [
+        ("black", False, 0.0, True, 100.0, 0.0),
+        ("green", False, 0.2, True, 100.0, 0.0),
+        ("orange", True, 0.2, True, 100.0, 0.0),
+        ("red", False, 0.05, False, 100.0, 0.0),
+        ("green", True, 0.2, True, 100.0, 0.05),  # with a black outline
+        ("cyan", False, 0.0, False, 100.0, 0.03),  # an outline but no safe edge
     ]
     coverage = np.linspace(0.0, 1.0, 101)
     rendered = []
-    for colour, mirror, edge, mark, dpi in cases:
-        settings = NegativeSettings(colour=colour, mirror=mirror, safe_edge=edge, mark=mark)
+    for colour, mirror, edge, mark, dpi, outline in cases:
+        settings = NegativeSettings(colour=colour, mirror=mirror, safe_edge=edge, mark=mark,
+                                    outline=outline)  # fmt: skip
         negative = make_negative(photo, settings, dpi)
         rendered.append(
             {
@@ -196,6 +199,7 @@ def negative_vectors() -> dict[str, Any]:
                 "safe_edge": edge,
                 "mark": mark,
                 "dpi": dpi,
+                "outline": outline,
                 "shape": list(negative.shape),
                 "rgb": _ints(negative),
             }
@@ -828,6 +832,10 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
          "safe_edge": 0.25},
         {"photo": "photo-grey16.tif", "max_size": [2.5, 1.5]},
         {"photo": "photo-grey16.tif", "max_size": [40.0, 30.0], "paper": "4x6"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 20.0,
+         "safe_edge": 0.2, "outline": 0.15},
+        {"photo": "photo-grey16.tif", "mode": "negative", "max_size": [2.0, 3.0],
+         "safe_edge": 0.25, "outline": 0.1},
     ]  # fmt: skip
     sessions = []
     for config in configurations:
@@ -847,6 +855,7 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         session.mirror = config.get("mirror", False)
         session.safe_edge = config.get("safe_edge", 0.25)
         session.max_size = tuple(config["max_size"]) if "max_size" in config else None
+        session.outline = config.get("outline", 0.0)
         session.printer = "Canon_MG3600_series"
         rendered = session.render(session._photo().pixels)
         sessions.append({**config, "ppi_used": session.effective_ppi(),

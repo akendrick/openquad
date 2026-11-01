@@ -183,6 +183,15 @@ public struct ContentView: View {
         Stepper(value: Binding(get: { model.session.safeEdge }, set: { model.setSafeEdge($0) }), in: 0...2, step: 0.05) {
             LabeledContent("Safe edge", value: String(format: "%.2f in", model.session.safeEdge))
         }
+        Toggle("Outline in black", isOn: Binding(get: { model.session.outline > 0 }, set: { model.setOutline($0) }))
+        if model.session.outline > 0 {
+            Stepper(value: Binding(get: { model.outlineSize }, set: { model.setOutlineSize($0) }), in: 0.01...1, step: 0.01) {
+                LabeledContent("Outline width", value: String(format: "%.2f in", model.outlineSize))
+            }
+            Text("A black border inside the safe edge, so photos with white or light edges still print with a frame.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func fileRow(_ title: String, _ url: URL?, types: [String], choose: @escaping (URL) -> Void,

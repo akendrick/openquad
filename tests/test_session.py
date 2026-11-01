@@ -174,3 +174,11 @@ def test_max_size_bounds_a_print_and_never_passes_the_page(tmp_path: Path) -> No
     session.max_size = (1.0, 1.0)
     assert session.effective_ppi() == pytest.approx(72.0)
     assert not any(line.startswith("Fit within") for line in session.summary())
+
+
+def test_black_outline_is_part_of_the_negatives_size(tmp_path: Path) -> None:
+    session = opened(tmp_path, mode="negative", fit=False, ppi=100.0, safe_edge=0.25, outline=0.1)
+    assert session.size_inches() == pytest.approx((3.0 + 0.7, 4.0 + 0.7))
+    assert any("and a 0.1 in black outline" in line for line in session.summary())
+    session.fit, session.max_size = True, (4.0, 5.0)  # the box holds photo, outline and edge
+    assert session.size_inches()[1] == pytest.approx(5.0)
