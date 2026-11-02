@@ -99,6 +99,8 @@ struct SessionParity {
         settings.scannerHost = "876298000000.local:80"
         settings.negativeColour = "orange"
         settings.units = .millimetres
+        settings.negativePrinter = "Epson_ET_2900"
+        settings.negativePaper = "A4"
         try settings.save(url)
         #expect(AppSettings.load(url) == settings)
         let text = try String(contentsOf: url, encoding: .utf8)

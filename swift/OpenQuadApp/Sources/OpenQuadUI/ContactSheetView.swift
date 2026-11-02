@@ -25,21 +25,40 @@ public final class ContactSheetModel {
     public var busy = false
     public var error: String?
     public private(set) var preview: CGImage?
-    /// The printable room (width, height) in inches, portrait, from the print window.
-    public let room: (Double, Double)
-    public let units: LengthUnit
+    /// The printable room (width, height) in inches, portrait: the Print tab's page.
+    public private(set) var room: (Double, Double)
+    /// The Negative tab's room (inside its safe edge and outline), if different.
+    public private(set) var negativeRoom: (Double, Double)?
     let folder: URL
     private var previewToken = 0
 
+    public var units: LengthUnit
+
+    static func portrait(_ room: (Double, Double)) -> (Double, Double) { (min(room.0, room.1), max(room.0, room.1)) }
+
     public init(room: (Double, Double), units: LengthUnit = .inches, folder: URL) {
-        self.room = (min(room.0, room.1), max(room.0, room.1))
+        self.room = Self.portrait(room)
         self.units = units
         self.folder = folder
         applySize()
     }
 
     /// The sheet's size in inches, turned for landscape.
-    public var size: (Double, Double) { landscape ? (room.1, room.0) : room }
+    public var size: (Double, Double) { size(for: .print) }
+
+    /// The sheet's size for the Print or Negative tab's page.
+    public func size(for role: TabRole) -> (Double, Double) {
+        let room = role == .negative ? negativeRoom ?? room : room
+        return landscape ? (room.1, room.0) : room
+    }
+
+    /// The Print and Negative tabs' pages, as they are now.
+    public func setRooms(print: (Double, Double), negative: (Double, Double)) {
+        let (print, negative) = (Self.portrait(print), Self.portrait(negative))
+        guard print != room || negative != negativeRoom ?? room else { return }
+        (room, negativeRoom) = (print, negative)
+        applySize()
+    }
 
     func applySize() {
         (layout.width, layout.height) = size
@@ -56,27 +75,64 @@ public final class ContactSheetModel {
         refresh()
     }
 
-    public var canAdd: Bool { entries.count < ContactSheet.maxPhotos }
+    public var canAdd: Bool { entries.count + queue.count < ContactSheet.maxPhotos }
 
-    /// Add photos (up to 16 in all), in the background.
+    /// Photos being opened: how many are done, of how many, since when.
+    public struct Loading: Equatable {
+        public var done: Int
+        public var total: Int
+        public let started: Date
+        /// The file being opened now.
+        public var current: String
+
+        /// Seconds left, from the time per photo so far (nil until one is done).
+        public func secondsLeft(now: Date = Date()) -> Double? {
+            guard done > 0 else { return nil }
+            return now.timeIntervalSince(started) / Double(done) * Double(total - done)
+        }
+
+        /// "Opening frame-03.tif (3 of 12) · about 8 s left".
+        public func description(now: Date = Date()) -> String {
+            var text = "Opening \(current) (\(done + 1) of \(total))"
+            if let left = secondsLeft(now: now) {
+                text += left < 60 ? " · about \(max(1, Int(left.rounded()))) s left"
+                    : " · about \(Int((left / 60).rounded())) min left"
+            }
+            return text
+        }
+    }
+
+    public private(set) var loading: Loading?
+    private var queue: [URL] = []
+
+    /// Add photos (up to 16 in all), opened one at a time in the background; each shows on
+    /// the sheet as soon as it is ready.
     public func add(_ urls: [URL]) {
-        let room = ContactSheet.maxPhotos - entries.count
-        let chosen = Array(urls.prefix(room))
+        let room = ContactSheet.maxPhotos - entries.count - queue.count
+        let chosen = Array(urls.prefix(max(0, room)))
         if urls.count > room { error = "A contact sheet takes up to \(ContactSheet.maxPhotos) photos; the rest were left out." }
         guard !chosen.isEmpty else { return }
+        queue += chosen
+        if loading != nil {  // already opening: these join the queue
+            loading?.total += chosen.count
+            return
+        }
+        loading = Loading(done: 0, total: queue.count, started: Date(), current: queue[0].lastPathComponent)
         busy = true
         Task {
-            let loaded = await Task.detached(priority: .userInitiated) {
-                chosen.map { url in Result { (url, try Self.shrunk(Photos.load(url))) } }
-            }.value
-            busy = false
-            for result in loaded {
+            while !queue.isEmpty {
+                let url = queue.removeFirst()
+                loading?.current = url.lastPathComponent
+                let result = await Task.detached(priority: .userInitiated) { Result { try Self.shrunk(Photos.load(url)) } }.value
                 switch result {
-                case .success(let (url, photo)): entries.append(Entry(url: url, photo: photo))
-                case .failure(let failure): error = "Couldn't open a photo: \(failure)"
+                case .success(let photo): entries.append(Entry(url: url, photo: photo))
+                case .failure(let failure): error = "Couldn't open \(url.lastPathComponent): \(failure)"
                 }
+                loading?.done += 1
+                refresh()
             }
-            refresh()
+            loading = nil
+            busy = false
         }
     }
 
@@ -130,10 +186,12 @@ public final class ContactSheetModel {
                        provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
     }
 
-    /// Make the full sheet at 300 ppi, save it as a 16-bit TIFF in OpenQuad's contact
-    /// sheets folder, and hand its file to `done`.
-    public func make(dpi: Double = 300, done: @escaping (URL) -> Void) {
-        let photos = photos, names = names, layout = layout, landscape = landscape
+    /// Make the full sheet at 300 ppi for the Print or Negative tab's page, save it as a
+    /// 16-bit TIFF in OpenQuad's contact sheets folder, and hand its file to `done`.
+    public func make(dpi: Double = 300, for role: TabRole = .print, done: @escaping (URL) -> Void) {
+        var sized = layout
+        (sized.width, sized.height) = size(for: role)
+        let photos = photos, names = names, landscape = landscape, layout = sized
         let format = DateFormatter()
         format.dateFormat = "yyyy-MM-dd-HHmmss"
         let url = folder.appendingPathComponent("contact-sheet-\(format.string(from: Date())).tif")
@@ -164,10 +222,12 @@ public final class ContactSheetModel {
 
 public struct ContactSheetView: View {
     @Bindable var model: ContactSheetModel
-    let use: (URL) -> Void
-    let close: () -> Void
+    /// Hands the made sheet to the Print or Negative tab.
+    let use: (URL, TabRole) -> Void
+    /// Closes the window it is in; nil inside a tab (no Close button).
+    let close: (() -> Void)?
 
-    public init(model: ContactSheetModel, use: @escaping (URL) -> Void, close: @escaping () -> Void = {}) {
+    public init(model: ContactSheetModel, use: @escaping (URL, TabRole) -> Void, close: (() -> Void)? = nil) {
         self.model = model
         self.use = use
         self.close = close
@@ -205,7 +265,7 @@ public struct ContactSheetView: View {
             Form {
                 Section("Photos (\(model.entries.count) of \(ContactSheet.maxPhotos))") {
                     Button("Add Photos…", action: addPhotos)
-                        .disabled(!model.canAdd || model.busy)
+                        .disabled(!model.canAdd)
                     List {
                         ForEach(model.entries) { entry in
                             HStack {
@@ -248,8 +308,8 @@ public struct ContactSheetView: View {
                                                                  set: { value in model.update { $0.wedge = value } }))
                     LengthStepper(title: "Space between", inches: model.layout.gap, range: 0...1, inchStep: 0.05, mmStep: 1,
                                   units: model.units) { value in model.update { $0.gap = value } }
-                    Text("The sheet fills the print window's page, inside its margins (and the safe edge and outline, for "
-                         + "a negative); a landscape sheet is turned to fit. Use it there as a print or a digital negative.")
+                    Text("The sheet fills the Print or Negative tab's page, inside its margins (and the safe edge and "
+                         + "outline, for a negative); a landscape sheet is turned to fit.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -260,20 +320,39 @@ public struct ContactSheetView: View {
             }
             .formStyle(.grouped)
             Divider()
-            HStack {
-                if model.busy { ProgressView().controlSize(.small) }
-                Spacer()
-                Button("Cancel", action: close)
-                Button("Use Sheet") {
-                    model.make { url in
-                        use(url)
-                        close()
+            if let loading = model.loading {
+                VStack(alignment: .leading, spacing: 4) {
+                    ProgressView(value: Double(loading.done), total: Double(max(loading.total, 1)))
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text(loading.description(now: context.date))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
                     }
                 }
-                .keyboardShortcut(.defaultAction)
-                .disabled(model.entries.isEmpty || model.busy)
+                .padding([.horizontal, .top])
+            }
+            HStack {
+                if model.busy && model.loading == nil { ProgressView().controlSize(.small) }
+                Spacer()
+                if let close { Button("Cancel", action: close) }
+                Button("Make a Negative") { make(for: .negative) }
+                    .disabled(model.entries.isEmpty || model.busy)
+                    .help("Make the sheet for the Negative tab's page and open it there")
+                Button("Print It") { make(for: .print) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(model.entries.isEmpty || model.busy)
+                    .help("Make the sheet for the Print tab's page and open it there")
             }
             .padding()
+        }
+    }
+
+    private func make(for role: TabRole) {
+        model.make(for: role) { url in
+            use(url, role)
+            close?()
         }
     }
 

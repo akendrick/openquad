@@ -1,7 +1,8 @@
 // OpenQuad for macOS.
 //
 //     OpenQuad                          the app
-//     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE] [--max-size WxH]
+//     OpenQuad --snapshot out.png [--tab print|negative|contact-sheet|printer-calibration|process-calibration]
+//                                       [--photo PHOTO] [--negative] [--printer CUPS_QUEUE] [--max-size WxH] [--notice TEXT]
 //                                       [--outline INCHES] [--units in|mm] [--setups FOLDER] [--setup NAME]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide|contact-sheet [--scan SCAN] [--run RUN]
 //                                       [--photos P1,P2,...] [--landscape] [--white] [--wedge] [--labels] [--crop]
@@ -34,31 +35,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+
+    /// Offer to keep the open photos for next time.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        MainActor.assumeIsolated { (OpenQuadApp.root?.confirmQuit() ?? true) ? .terminateNow : .terminateCancel }
+    }
 }
 
 @main
 struct OpenQuadApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    @State private var model = Snapshot.model()
+    @State private var root = Snapshot.root()
+    /// For the app delegate's quit question.
+    @MainActor static var root: AppRoot?
 
     init() {
         // Options like "--negative --max-size 4x5" would otherwise leave "4x5" looking like a
         // file to open, and then the print window doesn't open at launch.
         UserDefaults.standard.register(defaults: ["NSTreatUnknownArgumentsAsOpen": "NO"])
+        Self.root = root
     }
 
     var body: some Scene {
         Window("OpenQuad (Beta)", id: "print") {
-            Snapshot.content(model)
+            Snapshot.content(root)
         }
         .defaultSize(width: 1100, height: 720)
         Settings {
-            SettingsView(model: model)
+            SettingsView(root: root)
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("New Contact Sheet…") { NotificationCenter.default.post(name: ContentView.contactSheetNotification, object: nil) }
+                Button("New Contact Sheet…") { root.show(.contactSheet) }
                     .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
+            CommandGroup(before: .toolbar) {
+                ForEach(AppTab.allCases) { tab in
+                    Button(tab.title) { root.show(tab) }
+                        .keyboardShortcut(tab.shortcut, modifiers: .command)
+                }
+                Divider()
             }
             CommandGroup(replacing: .help) {
                 Button("How to Use OpenQuad") { NotificationCenter.default.post(name: GuideView.showNotification, object: nil) }
@@ -78,33 +94,51 @@ enum Snapshot {
         return arguments[i + 1]
     }
 
-    static func model() -> AppModel {
-        guard value("--snapshot") != nil else { return AppModel() }
+    static func root() -> AppRoot {
+        guard value("--snapshot") != nil else { return AppRoot() }
         // A throwaway settings file, so snapshots never change the user's settings.
-        let settings = FileManager.default.temporaryDirectory.appendingPathComponent("openquad-snapshot-settings.json")
-        try? FileManager.default.removeItem(at: settings)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("openquad-snapshot")
+        try? FileManager.default.removeItem(at: folder)
+        let negative = arguments.contains("--negative")
+        let tab = value("--tab").flatMap(AppTab.init(rawValue:)) ?? (negative ? .negative : .print)
         // The real calibrations, so the snapshot shows what this Mac has.
-        let model = AppModel(settingsURL: settings, libraryFolder: AppSettings.dataDirectory().appendingPathComponent("calibrations"),
-                             setupsFolder: value("--setups").map { URL(fileURLWithPath: $0) }
-                                 ?? AppSettings.dataDirectory().appendingPathComponent("setups"))
+        let root = AppRoot(settingsURL: folder.appendingPathComponent("settings.json"),
+                           libraryFolder: AppSettings.dataDirectory().appendingPathComponent("calibrations"),
+                           setupsFolder: value("--setups").map { URL(fileURLWithPath: $0) }
+                               ?? AppSettings.dataDirectory().appendingPathComponent("setups"),
+                           tab: tab, restoreWorkspace: false)
+        root.askOnQuit = false
+        let model = tab == .negative ? root.negativeModel : root.printModel
+        if let units = value("--units").flatMap(LengthUnit.init(rawValue:)) { root.setUnits(units) }
         if let photo = value("--photo") { model.openPhoto(URL(fileURLWithPath: photo)) }
-        if arguments.contains("--negative") { model.setMode(.negative) }
         if let printer = value("--printer") { model.setPrinter(printer) }
         if let name = value("--setup"), let setup = model.setups.first(where: { $0.name == name }) { model.applySetup(setup) }
         if let size = value("--max-size")?.lowercased().split(separator: "x").compactMap({ Double($0) }), size.count == 2 {
             model.setMaxSize((size[0], size[1]))
         }
-        if let units = value("--units").flatMap(LengthUnit.init(rawValue:)) { model.setUnits(units) }
         if let outline = value("--outline").flatMap(Double.init) {
             model.setOutlineSize(outline)
             model.setOutline(true)
         }
-        return model
+        if let notice = value("--notice") { root.notice = notice }
+        if tab == .contactSheet { fillSheet(root.contactSheet) }
+        return root
+    }
+
+    static func fillSheet(_ sheet: ContactSheetModel) {
+        if arguments.contains("--landscape") { sheet.setLandscape(true) }
+        sheet.update {
+            $0.background = arguments.contains("--white") ? .white : .black
+            $0.wedge = arguments.contains("--wedge")
+            $0.labels = arguments.contains("--labels")
+            $0.crop = arguments.contains("--crop")
+        }
+        sheet.add((value("--photos") ?? "").split(separator: ",").map { URL(fileURLWithPath: String($0)) })
     }
 
     /// The print window, or (for a snapshot) one of the wizards, filled in from a scan.
-    static func content(_ model: AppModel) -> AnyView {
-        wizard ?? AnyView(ContentView(model: model, guideOnLaunch: value("--snapshot") == nil))
+    static func content(_ root: AppRoot) -> AnyView {
+        wizard ?? AnyView(RootView(root: root, guideOnLaunch: value("--snapshot") == nil))
     }
 
     /// Built once: the scene's body is evaluated again on every change.
@@ -141,15 +175,8 @@ enum Snapshot {
             return AnyView(GuideView())
         case "contact-sheet":
             let sheet = ContactSheetModel(room: (7.5, 10), folder: folder)
-            if arguments.contains("--landscape") { sheet.setLandscape(true) }
-            sheet.update {
-                $0.background = arguments.contains("--white") ? .white : .black
-                $0.wedge = arguments.contains("--wedge")
-                $0.labels = arguments.contains("--labels")
-                $0.crop = arguments.contains("--crop")
-            }
-            sheet.add((value("--photos") ?? "").split(separator: ",").map { URL(fileURLWithPath: String($0)) })
-            return AnyView(ContactSheetView(model: sheet) { _ in })
+            fillSheet(sheet)
+            return AnyView(ContactSheetView(model: sheet) { _, _ in })
         default:
             return nil
         }
@@ -159,7 +186,9 @@ enum Snapshot {
         guard let output = value("--snapshot") else { return }
         let wait = Double(value("--wait") ?? "") ?? (value("--wizard") == nil ? 2.5 : 8.0)  // a wizard reads its scan
         DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
-            guard let view = NSApp.windows.first(where: { $0.isVisible })?.contentView,
+            // The frame view, so the toolbar (the tab bar) is in the picture too.
+            guard let content = NSApp.windows.first(where: { $0.isVisible })?.contentView,
+                  let view = Optional(content.superview ?? content),
                   let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
                 let windows = NSApp.windows.map { "\($0.title) visible=\($0.isVisible) frame=\($0.frame)" }
                 FileHandle.standardError.write(Data("no window to snapshot; windows: \(windows)\n".utf8))

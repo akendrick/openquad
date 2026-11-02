@@ -38,6 +38,9 @@ class Settings:
     negative_colour: str = "green"
     max_size: list[float] | None = None  # fit within (width, height) inches, e.g. the tissue
     units: str = "in"  # lengths shown in the app: "in" or "mm"
+    # The Mac app's Negative tab keeps its own printer and paper (None: as above).
+    negative_printer: str | None = None
+    negative_paper: str | None = None
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:

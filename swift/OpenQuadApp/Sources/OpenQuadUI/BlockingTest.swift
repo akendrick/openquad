@@ -105,10 +105,11 @@ struct BlockingChart: View {
 public struct BlockingTestView: View {
     @Bindable var model: BlockingTestModel
     let use: (String) -> Void
-    let close: () -> Void
+    /// Closes the window it is in; nil inside a tab (no Close button).
+    let close: (() -> Void)?
     @State private var resultView = 0
 
-    public init(model: BlockingTestModel, use: @escaping (String) -> Void, close: @escaping () -> Void = {}) {
+    public init(model: BlockingTestModel, use: @escaping (String) -> Void, close: (() -> Void)? = nil) {
         self.model = model
         self.use = use
         self.close = close
@@ -173,10 +174,10 @@ public struct BlockingTestView: View {
             if let error = model.error { Text(error).foregroundStyle(.red) }
             HStack {
                 Spacer()
-                Button("Close", action: close)
+                if let close { Button("Close", action: close) }
                 Button(model.best.map { "Use \($0.capitalized) for Negatives" } ?? "Use the Best Colour") {
                     if let best = model.best { use(best) }
-                    close()
+                    close?()
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(model.best == nil)
