@@ -52,3 +52,10 @@ def test_max_size_is_remembered(tmp_path: Path) -> None:
     Settings(max_size=[8.0, 10.0]).save(path)
     assert Settings.load(path).max_size == [8.0, 10.0]
     assert Settings.load(tmp_path / "missing.json").max_size is None
+
+
+def test_units_are_remembered(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    assert Settings.load(path).units == "in"
+    Settings(units="mm").save(path)
+    assert Settings.load(path).units == "mm"

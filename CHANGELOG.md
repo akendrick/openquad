@@ -6,6 +6,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Millimetres: OpenQuad > Settings… (⌘,) shows and takes every length in the app (safe edge, black
+  outline, set sizes, print sizes, the summary) in inches or millimetres, remembered between
+  sessions. Files, settings and the command line stay in inches.
 - Ink-mixture chart for the blocking test: ten printable colours made from single inks and
   simple two-ink mixes (yellow, orange, red, magenta, blue, cyan, green, yellow-green, olive,
   black), each as a full patch and an 11-step wedge. Chosen in the app's blocking window (the

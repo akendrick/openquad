@@ -2,7 +2,7 @@
 //
 //     OpenQuad                          the app
 //     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE] [--max-size WxH]
-//                                       [--outline INCHES]
+//                                       [--outline INCHES] [--units in|mm]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN] [--run RUN]
 //                                       [--mixtures] (blocking: the ink-mixture chart)
 //                                       draw the window to a PNG and quit (for checks)
@@ -50,6 +50,9 @@ struct OpenQuadApp: App {
             Snapshot.content(model)
         }
         .defaultSize(width: 1100, height: 720)
+        Settings {
+            SettingsView(model: model)
+        }
         .commands {
             CommandGroup(replacing: .newItem) {}
             CommandGroup(replacing: .help) {
@@ -83,6 +86,7 @@ enum Snapshot {
         if let size = value("--max-size")?.lowercased().split(separator: "x").compactMap({ Double($0) }), size.count == 2 {
             model.setMaxSize((size[0], size[1]))
         }
+        if let units = value("--units").flatMap(LengthUnit.init(rawValue:)) { model.setUnits(units) }
         if let outline = value("--outline").flatMap(Double.init) {
             model.setOutlineSize(outline)
             model.setOutline(true)

@@ -39,6 +39,8 @@ public struct PrintSession: Sendable {
     public var safeEdge = 0.25
     /// Inches of black between the safe edge and the photo (0 = none).
     public var outline = 0.0
+    /// How the summary shows lengths.
+    public var units = LengthUnit.inches
 
     public init() {}
 
@@ -198,11 +200,11 @@ public struct PrintSession: Sendable {
     public func summary() throws -> [String] {
         let (width, height) = try sizeInches()
         let photoName = source?.lastPathComponent ?? "untitled"
-        let size = String(format: "%.2f x %.2f in", width, height)
+        let size = units.size(width, height)
         var within: [String] = []
         if fit, let maxSize, let photo {
             let (w, h) = Paper.oriented(maxSize, width: photo.width, height: photo.height)
-            within = [String(format: "Fit within: %g x %g in", w, h)]
+            within = ["Fit within: \(units.box(w, h))"]
         }
         if negative {
             return [
@@ -211,8 +213,8 @@ public struct PrintSession: Sendable {
                 "Printer: \(printer ?? "not chosen")",
                 "Paper: \(paper)",
             ] + within + [
-                "Size: \(size) with a \(String(format: "%g", safeEdge)) in safe edge"
-                    + (outline != 0 ? " and a \(String(format: "%g", outline)) in black outline" : ""),
+                "Size: \(size) with a \(units.length(safeEdge)) safe edge"
+                    + (outline != 0 ? " and a \(units.length(outline)) black outline" : ""),
                 "Colour: \(negativeColour)",
                 "Process curve: \(processPath?.lastPathComponent ?? "none (uncalibrated)")",
                 "Mirrored: \(mirror ? "yes" : "no")",
@@ -265,6 +267,8 @@ public struct AppSettings: Sendable, Equatable {
     public var negativeColour = "green"
     /// Fit within (width, height) inches, e.g. the carbon tissue; nil for the page.
     public var maxSize: [Double]?
+    /// Lengths shown in the app.
+    public var units = LengthUnit.inches
 
     public init() {}
 
@@ -291,6 +295,7 @@ public struct AppSettings: Sendable, Equatable {
         settings.process = object["process"] as? String
         settings.negativeColour = object["negative_colour"] as? String ?? "green"
         if let size = object["max_size"] as? [NSNumber], size.count == 2 { settings.maxSize = size.map(\.doubleValue) }
+        settings.units = (object["units"] as? String).flatMap(LengthUnit.init(rawValue:)) ?? .inches
         return settings
     }
 
@@ -300,6 +305,7 @@ public struct AppSettings: Sendable, Equatable {
             "printer": printer ?? NSNull(), "scanner_host": scannerHost ?? NSNull(), "paper": paper,
             "calibration": calibration ?? NSNull(), "last_folder": lastFolder ?? NSNull(),
             "process": process ?? NSNull(), "negative_colour": negativeColour, "max_size": maxSize ?? NSNull(),
+            "units": units.rawValue,
         ]
         var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         data.append(0x0a)

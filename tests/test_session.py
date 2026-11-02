@@ -182,3 +182,14 @@ def test_black_outline_is_part_of_the_negatives_size(tmp_path: Path) -> None:
     assert any("and a 0.1 in black outline" in line for line in session.summary())
     session.fit, session.max_size = True, (4.0, 5.0)  # the box holds photo, outline and edge
     assert session.size_inches()[1] == pytest.approx(5.0)
+
+
+def test_summary_shows_lengths_in_millimetres(tmp_path: Path) -> None:
+    session = opened(tmp_path, mode="negative", fit=False, ppi=100.0, safe_edge=0.25, outline=0.1)
+    session.set_units("mm")
+    size = next(line for line in session.summary() if line.startswith("Size:"))
+    assert size == "Size: 94.0 x 119.4 mm with a 6.35 mm safe edge and a 2.54 mm black outline"
+    session.fit, session.max_size = True, (4.0, 5.0)
+    assert "Fit within: 101.6 x 127 mm" in session.summary()
+    with pytest.raises(ValueError, match="units"):
+        session.set_units("cm")

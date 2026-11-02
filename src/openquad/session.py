@@ -22,6 +22,7 @@ from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, make_negative,
 from openquad.paper import DEFAULT_MARGIN, PAPER_SIZES, box_ppi, fit_ppi, oriented, print_size
 from openquad.photo import Photo, load_photo
 from openquad.printing import PrintJob, Runner, run_command, send
+from openquad.units import box, check, length, size
 
 FALLBACK_PPI = 300.0
 
@@ -54,6 +55,7 @@ class PrintSession:
     mirror: bool = False
     safe_edge: float = 0.25
     outline: float = 0.0  # inches of black between the safe edge and the photo (0 = none)
+    units: str = "in"  # how the summary shows lengths: "in" or "mm"
 
     # --- choosing things ------------------------------------------------------------
 
@@ -65,6 +67,9 @@ class PrintSession:
             self.notes.append("Transparent edges were cropped off.")
         if self.photo.converted:
             self.notes.append("This is a colour image; it was converted to greyscale.")
+
+    def set_units(self, units: str) -> None:
+        self.units = check(units)
 
     def set_preset(self, name: str) -> None:
         if name not in PRESETS:
@@ -184,11 +189,14 @@ class PrintSession:
         """Inches round the photo in a negative: the black outline plus the safe edge."""
         return self.outline + self.safe_edge
 
+    def _length(self, inches: float) -> str:
+        return length(inches, self.units)
+
     def _within(self) -> list[str]:
         if not (self.fit and self.max_size):
             return []
         box_w, box_h = oriented(self.max_size, *self._photo().size)
-        return [f"Fit within: {box_w:g} x {box_h:g} in"]
+        return [f"Fit within: {box(box_w, box_h, self.units)}"]
 
     def summary(self) -> list[str]:
         """Lines for the print confirmation."""
@@ -196,14 +204,15 @@ class PrintSession:
         calibration = self.calibration_path.name if self.calibration_path else "none"
         if self.negative:
             process = self.process_path.name if self.process_path else "none (uncalibrated)"
+            outline = f" and a {self._length(self.outline)} black outline" if self.outline else ""
             return [
                 f"Photo: {self.source.name if self.source else 'untitled'}",
                 "Output: digital negative",
                 f"Printer: {self.printer or 'not chosen'}",
                 f"Paper: {self.paper}",
                 *self._within(),
-                f"Size: {width:.2f} x {height:.2f} in with a {self.safe_edge:g} in safe edge"
-                + (f" and a {self.outline:g} in black outline" if self.outline else ""),
+                f"Size: {size(width, height, self.units)} with a {self._length(self.safe_edge)} "
+                f"safe edge{outline}",
                 f"Colour: {self.negative_colour}",
                 f"Process curve: {process}",
                 f"Mirrored: {'yes' if self.mirror else 'no'}",
@@ -213,7 +222,7 @@ class PrintSession:
             f"Printer: {self.printer or 'not chosen'}",
             f"Paper: {self.paper}",
             *self._within(),
-            f"Size: {width:.2f} x {height:.2f} in at {self.effective_ppi():.0f} ppi",
+            f"Size: {size(width, height, self.units)} at {self.effective_ppi():.0f} ppi",
             f"Toning: {self.preset}",
             f"Calibration: {calibration}",
         ]

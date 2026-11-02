@@ -87,6 +87,21 @@ struct AppModelTests {
         #expect(negative.width == 60 + 2 * (90 + 75))  // 0.3 in outline + 0.25 in safe edge at 300 ppi
     }
 
+    @Test func lengthsCanBeShownInMillimetresAndAreRemembered() throws {
+        let m = model()
+        #expect(m.units == .inches)
+        m.openPhoto(photo)  // 60 x 40 px at 300 ppi
+        m.setFit(false)
+        m.setUnits(.millimetres)
+        #expect(m.sizeDescription.hasPrefix("5.1 x 3.4 mm at 300 ppi"))
+        m.setMode(.negative)
+        m.setSafeEdge(LengthUnit.millimetres.toInches(5))
+        #expect(m.summary.joined().contains("with a 5 mm safe edge"))
+        #expect(model().units == .millimetres && model().session.units == .millimetres)
+        m.setUnits(.inches)
+        #expect(m.summary.joined().contains("with a 0.19685 in safe edge") && model().units == .inches)
+    }
+
     @Test func negativesAndErrors() throws {
         let m = model()
         m.openPhoto(photo)
