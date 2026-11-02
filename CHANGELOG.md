@@ -6,11 +6,20 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Contact sheets: File > New Contact Sheet… (⇧⌘N, or Make a Contact Sheet… under Photo) arranges up
+- Tabs: the Mac app is one window with five tabs along the toolbar (⌘1–⌘5): Print, Negative,
+  Contact Sheet, Printer Calibration and Process Calibration (blocking colour, then process curve).
+  Each tab keeps its own work, so one printer can be calibrating while another prints; the Print
+  and Negative tabs each remember their own photo, printer and paper. A finished calibration,
+  blocking colour or process curve offers to go straight to the tab that uses it, and a contact
+  sheet goes to Print It or Make a Negative. On quitting, OpenQuad asks whether to keep the open
+  photos and contact sheet for next time; it reopens on the last tab used.
+- Contact sheets show a progress bar while photos open, with each photo's name and an estimate of
+  the time left.
+- Contact sheets: the Contact Sheet tab (⇧⌘N) arranges up
   to 16 photos as thumbnails on one sheet the size of the page (inside its margins, safe edge and
   outline), portrait or landscape, on black or white, each whole or cropped to fill its cell, with
-  optional file names and a 21-step greyscale wedge. Use Sheet makes it the photo to print, as an
-  inkjet print or a digital negative. Command line: `openquad contact-sheet PHOTOS... -o sheet.tif`.
+  optional file names and a 21-step greyscale wedge. Print It or Make a Negative sends it to that
+  tab. Command line: `openquad contact-sheet PHOTOS... -o sheet.tif`.
 - Saved negative setups: Save Setup… in negative mode remembers the process curve (a copy is kept
   with the setup), ink colour, mirror, safe edge, black outline, printer and paper under a name
   such as "Cyanotype on Pictorico"; the Setup menu switches all of them at once, and shows which

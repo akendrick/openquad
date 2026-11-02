@@ -1,5 +1,5 @@
-// The print window: open a photo, choose toning or a digital negative, set the page,
-// preview, and print through the macOS print panel.
+// The Print and Negative tabs: open a photo, choose toning (Print) or the negative's
+// settings (Negative), set the page, preview, and print.
 
 import AppKit
 import OpenQuadCore
@@ -9,17 +9,15 @@ import UniformTypeIdentifiers
 public struct ContentView: View {
     @Bindable var model: AppModel
     @State private var ppiText = ""
-    @State private var showGuide = false
     @State private var savingSetup = false
     @State private var setupName = ""
     @State private var deletingSetup: NegativeSetup?
-    @AppStorage("guideSeen") private var guideSeen = 0
+    /// Switch to another tab (e.g. to calibrate).
+    let goTo: (AppTab) -> Void
 
-    let guideOnLaunch: Bool
-
-    public init(model: AppModel, guideOnLaunch: Bool = true) {
+    public init(model: AppModel, goTo: @escaping (AppTab) -> Void = { _ in }) {
         self.model = model
-        self.guideOnLaunch = guideOnLaunch
+        self.goTo = goTo
     }
 
     public var body: some View {
@@ -30,7 +28,6 @@ public struct ContentView: View {
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(minWidth: 820, minHeight: 600)
-        .sheet(isPresented: $showGuide) { GuideView { guideSeen = GuideView.version } }
         .alert("Save Negative Setup", isPresented: $savingSetup) {
             TextField("Name", text: $setupName)
             Button("Save") { model.saveSetup(named: setupName) }
@@ -48,18 +45,7 @@ public struct ContentView: View {
         } message: {
             Text("Its copy of the process curve goes too. Your own curve files are not touched.")
         }
-        .toolbar {
-            ToolbarItem {
-                Button { showGuide = true } label: { Label("How to Use OpenQuad", systemImage: "questionmark.circle") }
-                    .help("How to use OpenQuad")
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: GuideView.showNotification)) { _ in showGuide = true }
-        .onReceive(NotificationCenter.default.publisher(for: ContentView.contactSheetNotification)) { _ in openContactSheet() }
-        .onAppear {
-            model.loadPrinters()
-            if guideOnLaunch && guideSeen < GuideView.version { showGuide = true }  // first launch: walk through the app
-        }
+        .onAppear { model.loadPrinters() }
     }
 
     // MARK: the controls
@@ -68,22 +54,14 @@ public struct ContentView: View {
         VStack(spacing: 0) {
             Form {
                 Section("Photo") {
-                    HStack {
-                        Button("Open Photo…", action: openPhoto)
-                            .keyboardShortcut("o")
-                        Button("Make a Contact Sheet…", action: openContactSheet)
-                    }
+                    Button("Open Photo…", action: openPhoto)
+                        .keyboardShortcut("o")
                     Text(model.photoDescription)
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
                 }
-                Section("Output") {
-                    Picker("Output", selection: Binding(get: { model.session.mode }, set: { model.setMode($0) })) {
-                        Text("Print").tag(OutputMode.print)
-                        Text("Digital negative").tag(OutputMode.negative)
-                    }
-                    .pickerStyle(.segmented)
+                Section(model.session.negative ? "Negative" : "Toning and calibration") {
                     if model.session.negative { negativeControls } else { printControls }
                 }
                 Section("Page") {
@@ -195,7 +173,7 @@ public struct ContentView: View {
             Button("Import…") {
                 if let url = Self.askOpen(types: [UTType(filenameExtension: "oqcal")].compactMap { $0 }) { model.importCalibration(url) }
             }
-            Button("Calibrate This Printer…", action: openCalibrationWizard)
+            Button("Calibrate This Printer…") { goTo(.printerCalibration) }
         }
     }
 
@@ -206,6 +184,20 @@ public struct ContentView: View {
     }
 
     @ViewBuilder private var negativeControls: some View {
+        if let offer = model.setupOffer {
+            HStack {
+                Text(offer).font(.callout)
+                Spacer()
+                Button("Save Setup…") {
+                    setupName = model.suggestedSetupName
+                    savingSetup = true
+                    model.setupOffer = nil
+                }
+                Button("Not Now") { model.setupOffer = nil }
+            }
+            .padding(8)
+            .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+        }
         Picker("Setup", selection: Binding(get: { model.currentSetup?.name ?? "" }, set: { name in
             if let setup = model.setups.first(where: { $0.name == name }) { model.applySetup(setup) }
         })) {
@@ -227,8 +219,7 @@ public struct ContentView: View {
         .disabled(model.session.process != nil)  // the process curve decides the colour
         fileRow("Process curve", model.session.processPath, types: ["oqproc"],
                 choose: { model.setProcess($0) }, clear: { model.setProcess(nil) })
-        Button("Calibrate a Process…", action: openProcessWizard)
-        Button("Find the Best Blocking Colour…", action: openBlockingTest)
+        Button("Calibrate a Process…") { goTo(.processCalibration) }
         Toggle("Mirror (flip left to right)", isOn: Binding(get: { model.session.mirror }, set: { model.setMirror($0) }))
         LengthStepper(title: "Safe edge", inches: model.session.safeEdge, range: 0...2, inchStep: 0.05, mmStep: 1,
                       units: model.units) { model.setSafeEdge($0) }
@@ -275,41 +266,6 @@ public struct ContentView: View {
     }
 
     // MARK: actions
-
-    /// Posted by File > New Contact Sheet….
-    public static let contactSheetNotification = Notification.Name("OpenQuadContactSheet")
-
-    private func openContactSheet() {
-        let sheet = model.contactSheet(), app = model
-        WizardWindows.show("contact-sheet", title: "Contact Sheet", size: CGSize(width: 1000, height: 760),
-                           minSize: CGSize(width: 760, height: 520)) { close in
-            ContactSheetView(model: sheet, use: { app.useContactSheet($0) }, close: close)
-        }
-    }
-
-    private func openCalibrationWizard() {
-        let wizard = model.calibrationWizard(), app = model
-        WizardWindows.show("calibrate-printer", title: "Calibrate a Printer", size: CGSize(width: 980, height: 820),
-                           minSize: CGSize(width: 760, height: 560)) { close in
-            CalibrationWizardView(model: wizard, use: { app.finishCalibration($0, scannerHost: wizard.scannerHost) }, close: close)
-        }
-    }
-
-    private func openProcessWizard() {
-        let wizard = model.processWizard(), app = model
-        WizardWindows.show("calibrate-process", title: "Calibrate a Process", size: CGSize(width: 980, height: 860),
-                           minSize: CGSize(width: 760, height: 600)) { close in
-            ProcessWizardView(model: wizard, use: { app.finishProcess($0, scannerHost: wizard.scannerHost) }, close: close)
-        }
-    }
-
-    private func openBlockingTest() {
-        let test = model.blockingTest(), app = model
-        WizardWindows.show("blocking-test", title: "Blocking Test", size: CGSize(width: 900, height: 820),
-                           minSize: CGSize(width: 700, height: 560)) { close in
-            BlockingTestView(model: test, use: { app.useBlockingColour($0, scannerHost: test.scannerHost) }, close: close)
-        }
-    }
 
     private func openPhoto() {
         let types: [UTType] = [.tiff, .png, .jpeg]

@@ -68,5 +68,8 @@ struct GapsTests {
             #expect(titles.contains(part))
         }
         #expect(GuideView.pages.allSatisfy { !$0.steps.isEmpty })
+        for tab in AppTab.allCases where tab != .print {  // every tab is explained
+            #expect(GuideView.pages.contains { $0.text.contains(tab.title) || $0.steps.joined().contains(tab.title) })
+        }
     }
 }

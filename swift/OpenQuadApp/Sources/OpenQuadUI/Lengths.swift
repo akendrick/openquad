@@ -27,13 +27,13 @@ struct LengthStepper: View {
 
 /// The app's settings window (OpenQuad > Settings…).
 public struct SettingsView: View {
-    @Bindable var model: AppModel
+    @Bindable var root: AppRoot
 
-    public init(model: AppModel) { self.model = model }
+    public init(root: AppRoot) { self.root = root }
 
     public var body: some View {
         Form {
-            Picker("Lengths in", selection: Binding(get: { model.units }, set: { model.setUnits($0) })) {
+            Picker("Lengths in", selection: Binding(get: { root.printModel.units }, set: { root.setUnits($0) })) {
                 Text("Inches").tag(LengthUnit.inches)
                 Text("Millimetres").tag(LengthUnit.millimetres)
             }

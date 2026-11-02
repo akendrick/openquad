@@ -431,10 +431,11 @@ func confirm(_ title: String, _ question: String) -> Bool {
 public struct CalibrationWizardView: View {
     @Bindable var model: CalibrationWizardModel
     let use: (URL) -> Void
-    let close: () -> Void
+    /// Closes the window it is in; nil inside a tab (no Close button).
+    let close: (() -> Void)?
     @State private var editingSetup = false
 
-    public init(model: CalibrationWizardModel, use: @escaping (URL) -> Void, close: @escaping () -> Void = {}) {
+    public init(model: CalibrationWizardModel, use: @escaping (URL) -> Void, close: (() -> Void)? = nil) {
         self.model = model
         self.use = use
         self.close = close
@@ -459,7 +460,7 @@ public struct CalibrationWizardView: View {
             HStack {
                 if model.busy { ProgressView().controlSize(.small) }
                 Spacer()
-                Button("Close", action: close)
+                if let close { Button("Close", action: close) }
             }
         }
     }
@@ -549,7 +550,7 @@ public struct CalibrationWizardView: View {
             improve: { model.improve($0) },
             use: {
                 if let path = model.calibrationPath { use(path) }
-                close()
+                close?()
             })
     }
 
@@ -783,9 +784,10 @@ struct RoundsTable: View {
 public struct ProcessWizardView: View {
     @Bindable var model: ProcessWizardModel
     let use: (URL) -> Void
-    let close: () -> Void
+    /// Closes the window it is in; nil inside a tab (no Close button).
+    let close: (() -> Void)?
 
-    public init(model: ProcessWizardModel, use: @escaping (URL) -> Void, close: @escaping () -> Void = {}) {
+    public init(model: ProcessWizardModel, use: @escaping (URL) -> Void, close: (() -> Void)? = nil) {
         self.model = model
         self.use = use
         self.close = close
@@ -836,7 +838,7 @@ public struct ProcessWizardView: View {
             if let error = model.error { Text(error).foregroundStyle(.red) }
             HStack {
                 Spacer()
-                Button("Close", action: close)
+                if let close { Button("Close", action: close) }
                 Picker("Use", selection: $model.useColour) {
                     ForEach(model.run?.colours ?? [], id: \.self) { Text($0.capitalized).tag($0) }
                 }
@@ -844,7 +846,7 @@ public struct ProcessWizardView: View {
                 .disabled(!model.started)
                 Button("Use This Colour's Curve") {
                     if let path = model.curvePath { use(path) }
-                    close()
+                    close?()
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!model.started)

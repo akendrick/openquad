@@ -16,9 +16,16 @@ public let presetLabels: [(String, String)] = [
 
 public let paperOrder = ["Letter", "Legal", "A4", "A5", "4x6", "5x7", "8x10"]
 
+/// Which tab a model serves: the Print tab or the Negative tab. Each keeps its own photo,
+/// printer and paper; the rest of the settings are shared.
+public enum TabRole: Sendable {
+    case print, negative
+}
+
 @MainActor
 @Observable
 public final class AppModel {
+    public let role: TabRole
     public private(set) var session = PrintSession()
     public private(set) var settings: AppSettings
     public private(set) var preview: CGImage?
@@ -26,6 +33,8 @@ public final class AppModel {
     public var error: String?
     /// The last thing that happened (e.g. a print job sent), for the status line.
     public var status: String?
+    /// A new process curve is in use: offer to save it as a setup (Negative tab).
+    public var setupOffer: String?
     /// CUPS printers on this Mac, for printing without the print panel.
     public private(set) var printers: [String] = []
     /// Saved calibrations to choose from: the newest of each printer and paper.
@@ -37,7 +46,9 @@ public final class AppModel {
     let settingsURL: URL
     private var previewToken = 0
 
-    public init(settingsURL: URL = AppSettings.defaultURL(), libraryFolder: URL? = nil, setupsFolder: URL? = nil) {
+    public init(settingsURL: URL = AppSettings.defaultURL(), libraryFolder: URL? = nil, setupsFolder: URL? = nil,
+                role: TabRole = .print) {
+        self.role = role
         self.settingsURL = settingsURL
         library = CalibrationLibrary(folder: libraryFolder
             ?? settingsURL.deletingLastPathComponent().appendingPathComponent("calibrations"))
@@ -47,6 +58,14 @@ public final class AppModel {
         settings = AppSettings.load(settingsURL)
         restore()
         refreshLibrary()
+        session.setMode(role == .negative ? .negative : .print)
+    }
+
+    /// Change the settings file: re-read it first, as the other tab may have changed it.
+    private func saveSettings(_ change: (inout AppSettings) -> Void) {
+        settings = AppSettings.load(settingsURL)
+        change(&settings)
+        try? settings.save(settingsURL)
     }
 
     /// Re-read the calibrations folder (after a wizard or an import).
@@ -104,7 +123,7 @@ public final class AppModel {
     }
 
     private func restore() {
-        try? session.setPaper(settings.paper)
+        try? session.setPaper(role == .negative ? settings.negativePaper ?? settings.paper : settings.paper)
         if let path = settings.calibration, FileManager.default.fileExists(atPath: path) {
             try? session.setCalibration(URL(fileURLWithPath: path))
         }
@@ -113,7 +132,7 @@ public final class AppModel {
         } else {
             try? session.setNegativeColour(settings.negativeColour)
         }
-        session.printer = settings.printer
+        session.printer = role == .negative ? settings.negativePrinter ?? settings.printer : settings.printer
         if let size = settings.maxSize, size.count == 2 { session.maxSize = (size[0], size[1]) }
         session.units = settings.units
     }
@@ -122,18 +141,26 @@ public final class AppModel {
     public var units: LengthUnit { settings.units }
 
     public func setUnits(_ units: LengthUnit) {
-        settings.units = units
         session.units = units
-        try? settings.save(settingsURL)
+        saveSettings { $0.units = units }
     }
 
+    /// Take up the unit the other tab chose.
+    public func followUnits() { session.units = AppSettings.load(settingsURL).units }
+
     private func remember() {
-        settings.paper = session.paper
-        settings.calibration = session.calibrationPath?.path
-        settings.process = session.processPath?.path
-        settings.negativeColour = session.negativeColour
-        settings.lastFolder = session.source?.deletingLastPathComponent().path ?? settings.lastFolder
-        try? settings.save(settingsURL)
+        let session = session
+        saveSettings { settings in
+            if session.negative {
+                settings.negativePaper = session.paper
+                settings.process = session.processPath?.path
+                settings.negativeColour = session.negativeColour
+            } else {
+                settings.paper = session.paper
+                settings.calibration = session.calibrationPath?.path
+            }
+            settings.lastFolder = session.source?.deletingLastPathComponent().path ?? settings.lastFolder
+        }
     }
 
     private func attempt(_ work: () throws -> Void) {
@@ -314,8 +341,8 @@ public final class AppModel {
     /// A CUPS printer to print to directly, or nil to choose in the macOS print panel.
     public func setPrinter(_ name: String?) {
         session.printer = name
-        settings.printer = name
-        try? settings.save(settingsURL)
+        let negative = role == .negative
+        saveSettings { if negative { $0.negativePrinter = name } else { $0.printer = name } }
         matchCalibration()
     }
 
@@ -329,8 +356,7 @@ public final class AppModel {
     public func setMaxSize(_ size: (Double, Double)?) {
         if let size, !(size.0 > 0 && size.1 > 0) { return }
         session.maxSize = size
-        settings.maxSize = size.map { [$0.0, $0.1] }
-        try? settings.save(settingsURL)
+        saveSettings { $0.maxSize = size.map { [$0.0, $0.1] } }
         refreshPreview()
     }
 
@@ -354,7 +380,7 @@ public final class AppModel {
 
     /// Make negatives in the colour the blocking test found best.
     public func useBlockingColour(_ colour: String, scannerHost: String) {
-        if !scannerHost.isEmpty { settings.scannerHost = scannerHost }
+        if !scannerHost.isEmpty { saveSettings { $0.scannerHost = scannerHost } }
         session.setMode(.negative)
         if let process = session.process, process.colour != colour {
             error = "The process curve is for \(process.colour) negatives; clear it to use \(colour)."
@@ -379,13 +405,13 @@ public final class AppModel {
     }
 
     public func finishCalibration(_ path: URL, scannerHost: String) {
-        if !scannerHost.isEmpty { settings.scannerHost = scannerHost }
+        if !scannerHost.isEmpty { saveSettings { $0.scannerHost = scannerHost } }
         setCalibration(path)
         if let entry = currentCalibration { status = "Using \(entry.label)." }
     }
 
     public func finishProcess(_ path: URL, scannerHost: String) {
-        if !scannerHost.isEmpty { settings.scannerHost = scannerHost }
+        if !scannerHost.isEmpty { saveSettings { $0.scannerHost = scannerHost } }
         setProcess(path)
     }
 

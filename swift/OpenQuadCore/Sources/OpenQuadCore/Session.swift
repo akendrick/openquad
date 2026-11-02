@@ -269,6 +269,9 @@ public struct AppSettings: Sendable, Equatable {
     public var maxSize: [Double]?
     /// Lengths shown in the app.
     public var units = LengthUnit.inches
+    /// The Negative tab's own printer and paper (nil: the ones above).
+    public var negativePrinter: String?
+    public var negativePaper: String?
 
     public init() {}
 
@@ -296,6 +299,8 @@ public struct AppSettings: Sendable, Equatable {
         settings.negativeColour = object["negative_colour"] as? String ?? "green"
         if let size = object["max_size"] as? [NSNumber], size.count == 2 { settings.maxSize = size.map(\.doubleValue) }
         settings.units = (object["units"] as? String).flatMap(LengthUnit.init(rawValue:)) ?? .inches
+        settings.negativePrinter = object["negative_printer"] as? String
+        settings.negativePaper = (object["negative_paper"] as? String).flatMap { Paper.sizes[$0] != nil ? $0 : nil }
         return settings
     }
 
@@ -306,6 +311,7 @@ public struct AppSettings: Sendable, Equatable {
             "calibration": calibration ?? NSNull(), "last_folder": lastFolder ?? NSNull(),
             "process": process ?? NSNull(), "negative_colour": negativeColour, "max_size": maxSize ?? NSNull(),
             "units": units.rawValue,
+            "negative_printer": negativePrinter ?? NSNull(), "negative_paper": negativePaper ?? NSNull(),
         ]
         var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         data.append(0x0a)

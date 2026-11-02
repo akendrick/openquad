@@ -43,8 +43,10 @@ opens on first launch (and later from **Help** or the **?** button).
   did the goals get met?
 - **Digital negatives:** make a negative and try the blocking test and process calibration, if you
   contact print (carbon, or another UV process).
-- **Contact sheets:** File > New Contact Sheet… (⇧⌘N) puts up to 16 photos on one sheet, to print
-  or to make a negative of.
+- **Contact sheets:** the Contact Sheet tab (⌘3) puts up to 16 photos on one sheet, to print or
+  to make a negative of.
+- **Tabs:** Print, Negative, Contact Sheet, Printer Calibration and Process Calibration each keep
+  their own work. Does moving between them while working feel natural?
 - **The guide:** is anything unclear or missing?
 
 ### Reporting problems
