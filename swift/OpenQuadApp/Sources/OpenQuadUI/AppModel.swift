@@ -31,13 +31,19 @@ public final class AppModel {
     /// Saved calibrations to choose from: the newest of each printer and paper.
     public private(set) var calibrations: [LibraryEntry] = []
     public let library: CalibrationLibrary
+    /// Saved negative setups (process curve, colour, mirror, edges, printer, paper).
+    public let setupLibrary: SetupLibrary
+    public private(set) var setups: [NegativeSetup] = []
     let settingsURL: URL
     private var previewToken = 0
 
-    public init(settingsURL: URL = AppSettings.defaultURL(), libraryFolder: URL? = nil) {
+    public init(settingsURL: URL = AppSettings.defaultURL(), libraryFolder: URL? = nil, setupsFolder: URL? = nil) {
         self.settingsURL = settingsURL
         library = CalibrationLibrary(folder: libraryFolder
             ?? settingsURL.deletingLastPathComponent().appendingPathComponent("calibrations"))
+        setupLibrary = SetupLibrary(folder: setupsFolder
+            ?? settingsURL.deletingLastPathComponent().appendingPathComponent("setups"))
+        setups = setupLibrary.all()
         settings = AppSettings.load(settingsURL)
         restore()
         refreshLibrary()
@@ -206,6 +212,66 @@ public final class AppModel {
         outlineSize = min(max(inches, 0.01), 1)
         if session.outline > 0 { session.outline = outlineSize }
         refreshPreview()
+    }
+
+    // MARK: saved negative setups
+
+    /// The saved setup the negative settings match right now, if any.
+    public var currentSetup: NegativeSetup? {
+        setups.first { setup in
+            let curve = setupLibrary.processURL(setup)?.resolvingSymlinksInPath()
+            return setup.colour == session.negativeColour && setup.mirror == session.mirror
+                && abs(setup.safeEdge - session.safeEdge) < 1e-9 && abs(setup.outline - session.outline) < 1e-9
+                && curve == session.processPath?.resolvingSymlinksInPath()
+                && setup.printer == session.printer && setup.paper == session.paper
+        }
+    }
+
+    /// Switch to a saved setup: its curve, colour, mirror, edges, printer and paper.
+    public func applySetup(_ setup: NegativeSetup) {
+        setMode(.negative)
+        setPaper(setup.paper)
+        setPrinter(setup.printer)
+        if let curve = setupLibrary.processURL(setup) {
+            setProcess(curve)
+        } else {
+            setProcess(nil)
+            setNegativeColour(setup.colour)
+        }
+        session.mirror = setup.mirror
+        setSafeEdge(setup.safeEdge)
+        if setup.outline > 0 { outlineSize = setup.outline }
+        setOutline(setup.outline > 0)
+    }
+
+    /// A name to offer when saving: "Carbon, green, Letter".
+    public var suggestedSetupName: String {
+        let process = session.process.map(\.process).flatMap { $0.isEmpty ? nil : $0.capitalized } ?? "Negative"
+        return "\(process), \(session.negativeColour), \(session.paper)"
+    }
+
+    /// Save the negative settings as a setup (replacing one of the same name).
+    public func saveSetup(named name: String) {
+        attempt {
+            let setup = NegativeSetup(name: name, colour: session.negativeColour, mirror: session.mirror,
+                                      safeEdge: session.safeEdge, outline: session.outline,
+                                      printer: session.printer, paper: session.paper)
+            try setupLibrary.save(setup, process: session.processPath)
+            setups = setupLibrary.all()
+            // Point at the setup's own copy of the curve, so the setup shows as chosen.
+            if let saved = setups.first(where: { $0.name == name.trimmingCharacters(in: .whitespacesAndNewlines) }),
+               let curve = setupLibrary.processURL(saved) {
+                try session.setProcess(curve)
+                remember()
+            }
+        }
+    }
+
+    public func deleteSetup(_ setup: NegativeSetup) {
+        attempt {
+            try setupLibrary.delete(setup)
+            setups = setupLibrary.all()
+        }
     }
 
     public func setPaper(_ paper: String) {

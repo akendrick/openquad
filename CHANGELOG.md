@@ -6,6 +6,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Saved negative setups: Save Setup… in negative mode remembers the process curve (a copy is kept
+  with the setup), ink colour, mirror, safe edge, black outline, printer and paper under a name
+  such as "Cyanotype on Pictorico"; the Setup menu switches all of them at once, and shows which
+  setup the current settings match. Kept as .oqsetup files in OpenQuad's setups folder.
 - Millimetres: OpenQuad > Settings… (⌘,) shows and takes every length in the app (safe edge, black
   outline, set sizes, print sizes, the summary) in inches or millimetres, remembered between
   sessions. Files, settings and the command line stay in inches.

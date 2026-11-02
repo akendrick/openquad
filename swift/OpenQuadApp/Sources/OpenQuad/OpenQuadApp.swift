@@ -2,7 +2,7 @@
 //
 //     OpenQuad                          the app
 //     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE] [--max-size WxH]
-//                                       [--outline INCHES] [--units in|mm]
+//                                       [--outline INCHES] [--units in|mm] [--setups FOLDER] [--setup NAME]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN] [--run RUN]
 //                                       [--mixtures] (blocking: the ink-mixture chart)
 //                                       draw the window to a PNG and quit (for checks)
@@ -79,10 +79,13 @@ enum Snapshot {
         let settings = FileManager.default.temporaryDirectory.appendingPathComponent("openquad-snapshot-settings.json")
         try? FileManager.default.removeItem(at: settings)
         // The real calibrations, so the snapshot shows what this Mac has.
-        let model = AppModel(settingsURL: settings, libraryFolder: AppSettings.dataDirectory().appendingPathComponent("calibrations"))
+        let model = AppModel(settingsURL: settings, libraryFolder: AppSettings.dataDirectory().appendingPathComponent("calibrations"),
+                             setupsFolder: value("--setups").map { URL(fileURLWithPath: $0) }
+                                 ?? AppSettings.dataDirectory().appendingPathComponent("setups"))
         if let photo = value("--photo") { model.openPhoto(URL(fileURLWithPath: photo)) }
         if arguments.contains("--negative") { model.setMode(.negative) }
         if let printer = value("--printer") { model.setPrinter(printer) }
+        if let name = value("--setup"), let setup = model.setups.first(where: { $0.name == name }) { model.applySetup(setup) }
         if let size = value("--max-size")?.lowercased().split(separator: "x").compactMap({ Double($0) }), size.count == 2 {
             model.setMaxSize((size[0], size[1]))
         }
