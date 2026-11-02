@@ -43,6 +43,8 @@ opens on first launch (and later from **Help** or the **?** button).
   did the goals get met?
 - **Digital negatives:** make a negative and try the blocking test and process calibration, if you
   contact print (carbon, or another UV process).
+- **Contact sheets:** File > New Contact Sheet… (⇧⌘N) puts up to 16 photos on one sheet, to print
+  or to make a negative of.
 - **The guide:** is anything unclear or missing?
 
 ### Reporting problems
@@ -155,6 +157,18 @@ openquad target --kind chart --process carbon.oqproc -o chart2.tif   # check: pr
 openquad chart carbon-chart2.jpg --process carbon.oqproc -o carbon-v2.oqproc
 openquad negative photo.tif -o neg.tif --process carbon-v2.oqproc --fit Letter
 ```
+
+### Contact sheets
+
+Up to 16 photos as thumbnails on one greyscale sheet, which then prints like any photo (or becomes a
+negative):
+
+```bash
+openquad contact-sheet frames/*.tif -o sheet.tif --size 7.5x10 --wedge --labels
+openquad negative sheet.tif -o sheet-neg.tif --colour green --fit Letter
+```
+
+`--background white`, `--crop` (fill every cell) and `--gap INCHES` change the layout.
 
 ## Development
 

@@ -6,6 +6,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Contact sheets: File > New Contact Sheet… (⇧⌘N, or Make a Contact Sheet… under Photo) arranges up
+  to 16 photos as thumbnails on one sheet the size of the page (inside its margins, safe edge and
+  outline), portrait or landscape, on black or white, each whole or cropped to fill its cell, with
+  optional file names and a 21-step greyscale wedge. Use Sheet makes it the photo to print, as an
+  inkjet print or a digital negative. Command line: `openquad contact-sheet PHOTOS... -o sheet.tif`.
 - Saved negative setups: Save Setup… in negative mode remembers the process curve (a copy is kept
   with the setup), ink colour, mirror, safe edge, black outline, printer and paper under a name
   such as "Cyanotype on Pictorico"; the Setup menu switches all of them at once, and shows which

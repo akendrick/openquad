@@ -55,6 +55,7 @@ public struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: GuideView.showNotification)) { _ in showGuide = true }
+        .onReceive(NotificationCenter.default.publisher(for: ContentView.contactSheetNotification)) { _ in openContactSheet() }
         .onAppear {
             model.loadPrinters()
             if guideOnLaunch && guideSeen < GuideView.version { showGuide = true }  // first launch: walk through the app
@@ -67,8 +68,11 @@ public struct ContentView: View {
         VStack(spacing: 0) {
             Form {
                 Section("Photo") {
-                    Button("Open Photo…", action: openPhoto)
-                        .keyboardShortcut("o")
+                    HStack {
+                        Button("Open Photo…", action: openPhoto)
+                            .keyboardShortcut("o")
+                        Button("Make a Contact Sheet…", action: openContactSheet)
+                    }
                     Text(model.photoDescription)
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -271,6 +275,17 @@ public struct ContentView: View {
     }
 
     // MARK: actions
+
+    /// Posted by File > New Contact Sheet….
+    public static let contactSheetNotification = Notification.Name("OpenQuadContactSheet")
+
+    private func openContactSheet() {
+        let sheet = model.contactSheet(), app = model
+        WizardWindows.show("contact-sheet", title: "Contact Sheet", size: CGSize(width: 1000, height: 760),
+                           minSize: CGSize(width: 760, height: 520)) { close in
+            ContactSheetView(model: sheet, use: { app.useContactSheet($0) }, close: close)
+        }
+    }
 
     private func openCalibrationWizard() {
         let wizard = model.calibrationWizard(), app = model

@@ -966,6 +966,52 @@ def wizards_vectors(directory: Path) -> dict[str, Any]:
     }
 
 
+def _sheet_photo(width: int, height: int, seed: int) -> Any:
+    """A made-up photo both languages build the same way."""
+    y, x = np.mgrid[0:height, 0:width]
+    return ((x * 977 + y * 613 + seed * 4999) % 65536).astype(np.uint16)
+
+
+def contactsheet_vectors() -> dict[str, Any]:
+    """Contact sheet grids, cells, resizing and whole sheets (without file names)."""
+    from openquad.contactsheet import SheetLayout, cells, grid, make_sheet, resize
+
+    sample = _sheet_photo(7, 5, 3)
+    resizes = []
+    for region, size in (((0, 0, 7, 5), (3, 2)), ((1, 1, 5, 3), (2, 2)), ((0, 0, 7, 5), (11, 8)),
+                         ((2, 0, 3, 5), (3, 5)), ((0, 0, 7, 5), (1, 1))):  # fmt: skip
+        resizes.append({"region": list(region), "size": list(size),
+                        "pixels": _ints(resize(sample, region, size))})  # fmt: skip
+    grids = []
+    grid_cases = [
+        (4, 1.5, (1000, 1000), 0, 0), (3, 3.0, (300, 1000), 0, 0), (16, 1.0, (1000, 1000), 10, 0),
+        (7, 0.6667, (900, 600), 8, 12), (11, 1.25, (450, 600), 9, 0),
+    ]  # fmt: skip
+    for count, aspect, room, gap, label in grid_cases:
+        found = grid(count, aspect, room, gap, label)
+        grids.append({"count": count, "aspect": aspect, "room": list(room), "gap": gap,
+                      "label": label, "grid": list(found)})  # fmt: skip
+    sizes = [(60, 40), (40, 60), (75, 50), (30, 30), (90, 30)]
+    cases = []
+    sheet_cases: list[tuple[list[tuple[int, int]], dict[str, Any], float]] = [
+        (sizes, {"width": 3.0, "height": 4.0, "gap": 0.1}, 40.0),
+        (sizes, {"width": 3.0, "height": 4.0, "gap": 0.1, "background": "white", "crop": True,
+                 "wedge": True}, 40.0),
+        (sizes * 3 + [(50, 70)], {"width": 7.5, "height": 10.0, "wedge": True}, 30.0),
+        ([(4, 3)], {"width": 2.0, "height": 2.0, "gap": 0.0}, 50.0),
+        (sizes[:3], {"width": 4.0, "height": 3.0, "labels": True, "gap": 0.2}, 45.0),
+    ]  # fmt: skip
+    for photos, layout, dpi in sheet_cases:
+        sheet_layout = SheetLayout(**{**layout, "labels": False})
+        boxes, wedge = cells(photos, SheetLayout(**layout), dpi)
+        pixels = [_sheet_photo(w, h, i) for i, (w, h) in enumerate(photos)]
+        cases.append({"sizes": [list(p) for p in photos], "layout": layout, "dpi": dpi,
+                      "cells": [[b.left, b.top, b.width, b.height] for b in boxes],
+                      "wedge": list(wedge) if wedge else None,
+                      "sheet": _digest(make_sheet(pixels, None, sheet_layout, dpi))})  # fmt: skip
+    return {"sample": _ints(sample), "resizes": resizes, "grids": grids, "cases": cases}
+
+
 def export(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
@@ -979,6 +1025,7 @@ def export(directory: Path) -> list[Path]:
         ("paper", paper_vectors()),
         ("calibration", calibration_vectors()),
         ("builds", builds_vectors()),
+        ("contactsheet", contactsheet_vectors()),
     ):
         path = directory / f"{name}.json"
         path.write_text(json.dumps(data, separators=(",", ":")) + "\n", encoding="utf-8")

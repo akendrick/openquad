@@ -214,6 +214,34 @@ public final class AppModel {
         refreshPreview()
     }
 
+    // MARK: contact sheets
+
+    /// The printable room (width, height) in inches: the page inside its margins, less the
+    /// safe edge and outline for a negative, and within a set size if one is on.
+    public var printableRoom: (Double, Double) {
+        let (paperW, paperH) = Paper.sizes[session.paper] ?? (8.5, 11)
+        let border = session.negative ? session.safeEdge + session.outline : 0
+        var width = paperW - 2 * session.margin - 2 * border, height = paperH - 2 * session.margin - 2 * border
+        if session.fit, let box = session.maxSize {
+            let (short, long) = (min(box.0, box.1) - 2 * border, max(box.0, box.1) - 2 * border)
+            (width, height) = (min(width, short), min(height, long))
+        }
+        return (max(width, 0.5), max(height, 0.5))
+    }
+
+    /// Where made contact sheets are kept.
+    public var contactSheetFolder: URL { settingsURL.deletingLastPathComponent().appendingPathComponent("contact-sheets") }
+
+    public func contactSheet() -> ContactSheetModel {
+        ContactSheetModel(room: printableRoom, units: units, folder: contactSheetFolder)
+    }
+
+    /// Print a made sheet: it becomes the photo, fitted to the page it was made for.
+    public func useContactSheet(_ url: URL) {
+        openPhoto(url)
+        setFit(true)
+    }
+
     // MARK: saved negative setups
 
     /// The saved setup the negative settings match right now, if any.

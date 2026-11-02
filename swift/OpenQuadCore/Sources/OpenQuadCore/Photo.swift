@@ -19,6 +19,17 @@ public struct Photo: Sendable {
     public var cropped = false
 
     public var size: (width: Int, height: Int) { (width, height) }
+
+    public init(width: Int, height: Int, pixels: [UInt16], dpi: (Double, Double)? = nil, converted: Bool = false,
+                cropped: Bool = false) {
+        precondition(pixels.count == width * height, "pixels must be width x height")
+        self.width = width
+        self.height = height
+        self.pixels = pixels
+        self.dpi = dpi
+        self.converted = converted
+        self.cropped = cropped
+    }
 }
 
 public enum Photos {

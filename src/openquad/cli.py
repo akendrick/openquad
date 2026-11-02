@@ -29,6 +29,7 @@ from openquad.chart import (
     tone_errors,
 )
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
+from openquad.contactsheet import BACKGROUNDS, MAX_PHOTOS, SheetLayout, make_sheet
 from openquad.escl import INTENTS, Fetch, ScanError, ScanSettings, http_fetch, scan
 from openquad.greybalance import (
     Calibration,
@@ -171,6 +172,30 @@ def build_parser() -> argparse.ArgumentParser:
     neg.add_argument("--max-size", metavar="WxH", type=_inches_pair,
                      help="with --fit: also keep within W x H inches, safe edge included "
                           "(e.g. 8x10 for the tissue; turned to match the photo)")  # fmt: skip
+
+    sheet = commands.add_parser("contact-sheet", help="up to 16 photos as thumbnails on one sheet")
+    sheet.add_argument("inputs", type=Path, nargs="+", metavar="PHOTO", help="photos (1-16)")
+    sheet.add_argument("-o", "--output", type=Path, required=True, help="greyscale TIFF to write")
+    sheet.add_argument(
+        "--size",
+        metavar="WxH",
+        type=_inches_pair,
+        default=(7.5, 10.0),
+        help="sheet size in inches (default 7.5x10: Letter inside 0.5 in margins)",
+    )
+    sheet.add_argument("--dpi", type=float, default=DEFAULT_DPI, help="resolution (default 300)")
+    sheet.add_argument("--gap", type=float, default=0.15, help="inches between photos (0.15)")
+    sheet.add_argument(
+        "--background",
+        choices=BACKGROUNDS,
+        default="black",
+        help="sheet background (default black)",
+    )
+    sheet.add_argument("--crop", action="store_true", help="crop photos to fill their cells")
+    sheet.add_argument(
+        "--wedge", action="store_true", help="a 21-step greyscale wedge at the bottom"
+    )
+    sheet.add_argument("--labels", action="store_true", help="file names under the photos")
 
     prt = commands.add_parser("print", help="print a TIFF through the printer's normal driver")
     prt.add_argument("input", type=Path, help="TIFF to print")
@@ -388,6 +413,19 @@ def _inches_pair(text: str) -> tuple[float, float]:
     return (width, height)
 
 
+def _contact_sheet(args: argparse.Namespace) -> None:
+    if len(args.inputs) > MAX_PHOTOS:
+        raise ValueError(f"a contact sheet takes up to {MAX_PHOTOS} photos, got {len(args.inputs)}")
+    layout = SheetLayout(
+        width=args.size[0], height=args.size[1], gap=args.gap, background=args.background,
+        crop=args.crop, wedge=args.wedge, labels=args.labels,
+    )  # fmt: skip
+    photos = [load_photo(path).pixels for path in args.inputs]
+    sheet = make_sheet(photos, [path.name for path in args.inputs], layout, args.dpi)
+    save_grey(args.output, GreyImage(sheet, dpi=(args.dpi, args.dpi)))
+    print(f"wrote {args.output} ({len(photos)} photos on {args.size[0]:g} x {args.size[1]:g} in)")
+
+
 def _negative(args: argparse.Namespace) -> None:
     photo = load_photo(args.input)
     process = load_process(args.process) if args.process else None
@@ -554,6 +592,8 @@ def main(
             _presets()
         elif args.command == "negative":
             _negative(args)
+        elif args.command == "contact-sheet":
+            _contact_sheet(args)
         elif args.command == "blocking":
             _blocking(args)
         elif args.command == "chart":

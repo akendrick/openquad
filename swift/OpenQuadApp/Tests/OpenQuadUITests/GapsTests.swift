@@ -62,9 +62,9 @@ struct GapsTests {
 
     @Test func guideCoversEveryPart() {
         let titles = GuideView.pages.map(\.title)
-        #expect(titles.count == 7 && titles.first == "Welcome to OpenQuad")
-        for part in ["Print a photo", "Calibrate your printer", "Digital negatives", "Find the best blocking colour",
-                     "Calibrate the process"] {
+        #expect(titles.count == 8 && titles.first == "Welcome to OpenQuad")
+        for part in ["Print a photo", "Calibrate your printer", "Digital negatives", "Contact sheets",
+                     "Find the best blocking colour", "Calibrate the process"] {
             #expect(titles.contains(part))
         }
         #expect(GuideView.pages.allSatisfy { !$0.steps.isEmpty })

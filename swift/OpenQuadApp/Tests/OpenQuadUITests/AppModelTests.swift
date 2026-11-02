@@ -142,6 +142,53 @@ struct AppModelTests {
         #expect(again.setups.map(\.name) == ["Carbon black"])
     }
 
+    @Test func contactSheetFillsThePrintableRoomAndBecomesThePhoto() async throws {
+        let m = model()
+        #expect(m.printableRoom == (7.5, 10))  // Letter inside 0.5 in margins
+        m.setMode(.negative)
+        m.setSafeEdge(0.25)
+        #expect(m.printableRoom == (7, 9.5))
+        m.setMaxSize((4, 5))
+        #expect(m.printableRoom == (3.5, 4.5))  // the tissue, less the safe edge
+        m.setMaxSize(nil)
+
+        let sheet = m.contactSheet()
+        #expect(sheet.size == (7, 9.5) && sheet.entries.isEmpty && sheet.preview == nil)
+        sheet.setLandscape(true)
+        #expect(sheet.size == (9.5, 7) && sheet.layout.width == 9.5)
+        let urls = (0..<3).map { folder.appendingPathComponent("p\($0).tif") }
+        for (i, url) in urls.enumerated() {
+            try ImageFiles.saveGrey(url, GreyImage(width: 30 + 10 * i, height: 20, pixels: Array(repeating: UInt16(20000 * i), count: (30 + 10 * i) * 20)))
+        }
+        sheet.add(urls + [folder.appendingPathComponent("missing.tif")])
+        for _ in 0..<300 where sheet.busy || sheet.preview == nil { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(sheet.entries.map(\.url.lastPathComponent) == ["p0.tif", "p1.tif", "p2.tif"] && sheet.error != nil)
+        #expect(sheet.preview != nil)
+        sheet.move(from: [2], to: 0)
+        #expect(sheet.entries.first?.url.lastPathComponent == "p2.tif")
+        sheet.remove(sheet.entries[1])
+        #expect(sheet.entries.count == 2)
+        sheet.add(Array(repeating: urls[0], count: 20))  // only 14 more fit
+        for _ in 0..<300 where sheet.busy { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(sheet.entries.count == 16 && !sheet.canAdd)
+
+        var made: URL?
+        sheet.make(dpi: 20) { made = $0 }
+        for _ in 0..<300 where made == nil { try await Task.sleep(for: .milliseconds(10)) }
+        let url = try #require(made)
+        #expect(url.deletingLastPathComponent() == m.contactSheetFolder && url.lastPathComponent.hasPrefix("contact-sheet-"))
+        m.useContactSheet(url)
+        #expect(m.session.photo?.width == 140 && m.session.photo?.height == 190 && m.session.fit)  // turned to stand up
+        let (width, height) = try m.session.sizeInches()  // fills the room, plus the safe edge
+        #expect(abs(width - 7.5) < 1e-9 && abs(height - 10) < 1e-9)
+    }
+
+    @Test func bigPhotosAreShrunkForTheSheet() {
+        let big = Photo(width: 4800, height: 100, pixels: Array(repeating: 1000, count: 4800 * 100), dpi: nil)
+        let small = ContactSheetModel.shrunk(big)
+        #expect(small.width == 2400 && small.height == 50 && small.pixels.count == 2400 * 50 && small.pixels[0] == 1000)
+    }
+
     @Test func negativesAndErrors() throws {
         let m = model()
         m.openPhoto(photo)
