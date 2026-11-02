@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 10
+    public static let version = 11
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -65,6 +65,15 @@ public struct GuideView: View {
                      "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",
                      "Print on transparency film at 100% with your usual film settings."]),
+        Page(symbol: "square.grid.3x3", title: "Contact sheets",
+             text: "File > New Contact Sheet… (⇧⌘N) puts up to 16 photos on one sheet, to proof them or to make one "
+                + "negative of them all.",
+             steps: ["Add Photos… (or drop them on the sheet); drag the list to change the order.",
+                     "Choose portrait or landscape, a black or white background, whole photos or cropped to fill, "
+                        + "file names, and a greyscale step wedge to check the print's tones.",
+                     "The sheet fills the page you chose in the print window (for a negative, inside its safe edge "
+                        + "and outline). Set the page and output first.",
+                     "Use Sheet makes it the photo in the print window: print it, or print it as a negative."]),
         Page(symbol: "square.grid.3x3.square", title: "Find the best blocking colour",
              text: "Find the Best Blocking Colour… (in negative mode) prints a sheet of every negative colour.",
              steps: ["Choose the chart: Standard (six colours) or Ink mixtures (ten colours your printer makes "

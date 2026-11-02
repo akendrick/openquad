@@ -3,7 +3,9 @@
 //     OpenQuad                          the app
 //     OpenQuad --snapshot out.png [--photo PHOTO] [--negative] [--printer CUPS_QUEUE] [--max-size WxH]
 //                                       [--outline INCHES] [--units in|mm] [--setups FOLDER] [--setup NAME]
-//     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide [--scan SCAN] [--run RUN]
+//     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide|contact-sheet [--scan SCAN] [--run RUN]
+//                                       [--photos P1,P2,...] [--landscape] [--white] [--wedge] [--labels] [--crop]
+//                                       (contact-sheet)
 //                                       [--mixtures] (blocking: the ink-mixture chart)
 //                                       draw the window to a PNG and quit (for checks)
 //     OpenQuad --scan-test HOST RESULT  scan once from the app (with its own network
@@ -54,7 +56,10 @@ struct OpenQuadApp: App {
             SettingsView(model: model)
         }
         .commands {
-            CommandGroup(replacing: .newItem) {}
+            CommandGroup(replacing: .newItem) {
+                Button("New Contact Sheet…") { NotificationCenter.default.post(name: ContentView.contactSheetNotification, object: nil) }
+                    .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
             CommandGroup(replacing: .help) {
                 Button("How to Use OpenQuad") { NotificationCenter.default.post(name: GuideView.showNotification, object: nil) }
                     .keyboardShortcut("?")
@@ -134,6 +139,17 @@ enum Snapshot {
             return AnyView(BlockingTestView(model: test) { _ in })
         case "guide":
             return AnyView(GuideView())
+        case "contact-sheet":
+            let sheet = ContactSheetModel(room: (7.5, 10), folder: folder)
+            if arguments.contains("--landscape") { sheet.setLandscape(true) }
+            sheet.update {
+                $0.background = arguments.contains("--white") ? .white : .black
+                $0.wedge = arguments.contains("--wedge")
+                $0.labels = arguments.contains("--labels")
+                $0.crop = arguments.contains("--crop")
+            }
+            sheet.add((value("--photos") ?? "").split(separator: ",").map { URL(fileURLWithPath: String($0)) })
+            return AnyView(ContactSheetView(model: sheet) { _ in })
         default:
             return nil
         }
