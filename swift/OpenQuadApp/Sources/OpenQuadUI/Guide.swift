@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 9
+    public static let version = 10
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -52,7 +52,9 @@ public struct GuideView: View {
         Page(symbol: "film", title: "Digital negatives",
              text: "Output: Digital negative turns the photo into a negative for contact printing, in black or a "
                 + "colour that blocks UV.",
-             steps: ["Ink colour: the colour to print the negative in (the blocking test finds the best one).",
+             steps: ["Setup: switch between saved setups (curve, colour, mirror, edges, printer and paper) in one step. "
+                        + "Once a process is calibrated, Save Setup… keeps it under a name, e.g. Cyanotype on Pictorico.",
+                     "Ink colour: the colour to print the negative in (the blocking test finds the best one).",
                      "Process curve: shapes the tones for your process (made by Calibrate a Process…).",
                      "Mirror if the film's printed side must face the tissue.",
                      "The safe edge frames the photo; the F cut into it reads correctly in the print when the "

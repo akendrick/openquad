@@ -10,6 +10,9 @@ public struct ContentView: View {
     @Bindable var model: AppModel
     @State private var ppiText = ""
     @State private var showGuide = false
+    @State private var savingSetup = false
+    @State private var setupName = ""
+    @State private var deletingSetup: NegativeSetup?
     @AppStorage("guideSeen") private var guideSeen = 0
 
     let guideOnLaunch: Bool
@@ -28,6 +31,23 @@ public struct ContentView: View {
         }
         .frame(minWidth: 820, minHeight: 600)
         .sheet(isPresented: $showGuide) { GuideView { guideSeen = GuideView.version } }
+        .alert("Save Negative Setup", isPresented: $savingSetup) {
+            TextField("Name", text: $setupName)
+            Button("Save") { model.saveSetup(named: setupName) }
+                .disabled(setupName.trimmingCharacters(in: .whitespaces).isEmpty)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Remembers the process curve, ink colour, mirror, safe edge, black outline, printer and paper. "
+                 + "A setup with the same name is replaced.")
+        }
+        .confirmationDialog("Delete the setup “\(deletingSetup?.name ?? "")”?", isPresented: Binding(
+            get: { deletingSetup != nil }, set: { if !$0 { deletingSetup = nil } })) {
+            Button("Delete", role: .destructive) {
+                if let setup = deletingSetup { model.deleteSetup(setup) }
+            }
+        } message: {
+            Text("Its copy of the process curve goes too. Your own curve files are not touched.")
+        }
         .toolbar {
             ToolbarItem {
                 Button { showGuide = true } label: { Label("How to Use OpenQuad", systemImage: "questionmark.circle") }
@@ -182,6 +202,21 @@ public struct ContentView: View {
     }
 
     @ViewBuilder private var negativeControls: some View {
+        Picker("Setup", selection: Binding(get: { model.currentSetup?.name ?? "" }, set: { name in
+            if let setup = model.setups.first(where: { $0.name == name }) { model.applySetup(setup) }
+        })) {
+            Text(model.setups.isEmpty ? "None saved" : "Custom").tag("")
+            ForEach(model.setups) { Text($0.name).tag($0.name) }
+        }
+        HStack {
+            Button("Save Setup…") {
+                setupName = model.currentSetup?.name ?? model.suggestedSetupName
+                savingSetup = true
+            }
+            if let current = model.currentSetup {
+                Button("Delete Setup…") { deletingSetup = current }
+            }
+        }
         Picker("Ink colour", selection: Binding(get: { model.session.negativeColour }, set: { model.setNegativeColour($0) })) {
             ForEach(Negative.colourOrder, id: \.self) { Text($0.capitalized).tag($0) }
         }

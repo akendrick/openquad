@@ -102,6 +102,46 @@ struct AppModelTests {
         #expect(m.summary.joined().contains("with a 0.19685 in safe edge") && model().units == .inches)
     }
 
+    @Test func negativeSetupsAreSavedAndSwitchedBetween() throws {
+        let m = model()
+        #expect(m.setups.isEmpty && m.currentSetup == nil)
+        let curve = folder.appendingPathComponent("cyanotype-curve.oqproc")
+        try ProcessCurve.identity(colour: "orange").encode().write(to: curve)
+        m.openPhoto(photo)
+        m.setMode(.negative)
+        m.setProcess(curve)
+        m.setMirror(true)
+        m.setSafeEdge(0.3)
+        m.setOutlineSize(0.05)
+        m.setOutline(true)
+        m.setPaper("A4")
+        m.setPrinter("Epson_ET_2900")
+        #expect(m.suggestedSetupName == "Carbon, orange, A4")
+        m.saveSetup(named: "Cyanotype")
+        #expect(m.error == nil && m.setups.map(\.name) == ["Cyanotype"] && m.currentSetup?.name == "Cyanotype")
+        #expect(m.session.processPath?.lastPathComponent == "cyanotype.oqproc")  // the setup's own copy
+
+        m.setProcess(nil)
+        m.setNegativeColour("black")
+        m.setMirror(false)
+        m.setSafeEdge(0.25)
+        m.setOutline(false)
+        m.setPaper("Letter")
+        m.setPrinter(nil)
+        #expect(m.currentSetup == nil)
+        m.saveSetup(named: "Carbon black")
+        #expect(m.setups.map(\.name) == ["Carbon black", "Cyanotype"] && m.currentSetup?.name == "Carbon black")
+
+        m.applySetup(m.setups[1])
+        #expect(m.currentSetup?.name == "Cyanotype")
+        #expect(m.session.negativeColour == "orange" && m.session.mirror && m.session.safeEdge == 0.3)
+        #expect(m.session.outline == 0.05 && m.session.paper == "A4" && m.session.printer == "Epson_ET_2900")
+        let again = model()  // a new window sees the same setups
+        #expect(again.setups.count == 2)
+        again.deleteSetup(again.setups[1])
+        #expect(again.setups.map(\.name) == ["Carbon black"])
+    }
+
     @Test func negativesAndErrors() throws {
         let m = model()
         m.openPhoto(photo)
