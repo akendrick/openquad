@@ -73,7 +73,7 @@ public struct ContentView: View {
                     Picker("Paper", selection: Binding(get: { model.session.paper }, set: { model.setPaper($0) })) {
                         ForEach(paperOrder, id: \.self) { Text($0).tag($0) }
                     }
-                    Toggle("Fit to page (0.5 in margins)", isOn: Binding(get: { model.session.fit }, set: { model.setFit($0) }))
+                    Toggle("Fit to page (\(model.units.length(model.session.margin)) margins)", isOn: Binding(get: { model.session.fit }, set: { model.setFit($0) }))
                     if model.session.fit { fitWithin }
                     TextField("Resolution (ppi)", text: $ppiText, prompt: Text("photo's own"))
                         .disabled(model.session.fit)
@@ -118,21 +118,26 @@ public struct ContentView: View {
             Text("A set size").tag(true)
         }
         if let size = model.session.maxSize {
+            let units = model.units
             LabeledContent(model.session.negative ? "Outer size" : "Size") {
                 HStack(spacing: 6) {
-                    TextField("Width", value: Binding(get: { size.0 }, set: { model.setMaxSize(($0, size.1)) }),
+                    TextField("Width", value: Binding(get: { units.fromInches(size.0) },
+                                                      set: { model.setMaxSize((units.toInches($0), size.1)) }),
                               format: .number.precision(.fractionLength(0...2)))
                         .frame(width: 56)
                         .multilineTextAlignment(.trailing)
                     Text("×")
-                    TextField("Height", value: Binding(get: { size.1 }, set: { model.setMaxSize((size.0, $0)) }),
+                    TextField("Height", value: Binding(get: { units.fromInches(size.1) },
+                                                       set: { model.setMaxSize((size.0, units.toInches($0))) }),
                               format: .number.precision(.fractionLength(0...2)))
                         .frame(width: 56)
                         .multilineTextAlignment(.trailing)
-                    Text("in")
+                    Text(units.rawValue)
                     Menu("Sizes") {
-                        ForEach([(4.0, 5.0), (5.0, 7.0), (6.0, 8.0), (8.0, 10.0), (11.0, 14.0)], id: \.0) { w, h in
-                            Button(String(format: "%g × %g in", w, h)) { model.setMaxSize((w, h)) }
+                        ForEach(Self.setSizes(units), id: \.0) { w, h in
+                            Button(units == .millimetres ? String(format: "%g × %g mm", w, h) : String(format: "%g × %g in", w, h)) {
+                                model.setMaxSize((units.toInches(w), units.toInches(h)))
+                            }
                         }
                     }
                     .fixedSize()
@@ -170,6 +175,12 @@ public struct ContentView: View {
         }
     }
 
+    /// Usual tissue and paper sizes to offer, in the app's unit.
+    static func setSizes(_ units: LengthUnit) -> [(Double, Double)] {
+        units == .millimetres ? [(100, 125), (130, 180), (180, 240), (210, 297), (240, 300)]
+            : [(4, 5), (5, 7), (6, 8), (8, 10), (11, 14)]
+    }
+
     @ViewBuilder private var negativeControls: some View {
         Picker("Ink colour", selection: Binding(get: { model.session.negativeColour }, set: { model.setNegativeColour($0) })) {
             ForEach(Negative.colourOrder, id: \.self) { Text($0.capitalized).tag($0) }
@@ -180,14 +191,12 @@ public struct ContentView: View {
         Button("Calibrate a Process…", action: openProcessWizard)
         Button("Find the Best Blocking Colour…", action: openBlockingTest)
         Toggle("Mirror (flip left to right)", isOn: Binding(get: { model.session.mirror }, set: { model.setMirror($0) }))
-        Stepper(value: Binding(get: { model.session.safeEdge }, set: { model.setSafeEdge($0) }), in: 0...2, step: 0.05) {
-            LabeledContent("Safe edge", value: String(format: "%.2f in", model.session.safeEdge))
-        }
+        LengthStepper(title: "Safe edge", inches: model.session.safeEdge, range: 0...2, inchStep: 0.05, mmStep: 1,
+                      units: model.units) { model.setSafeEdge($0) }
         Toggle("Outline in black", isOn: Binding(get: { model.session.outline > 0 }, set: { model.setOutline($0) }))
         if model.session.outline > 0 {
-            Stepper(value: Binding(get: { model.outlineSize }, set: { model.setOutlineSize($0) }), in: 0.01...1, step: 0.01) {
-                LabeledContent("Outline width", value: String(format: "%.2f in", model.outlineSize))
-            }
+            LengthStepper(title: "Outline width", inches: model.outlineSize, range: 0.01...1, inchStep: 0.01, mmStep: 0.5,
+                          units: model.units) { model.setOutlineSize($0) }
             Text("A black border inside the safe edge, so photos with white or light edges still print with a frame.")
                 .font(.caption)
                 .foregroundStyle(.secondary)

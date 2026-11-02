@@ -46,6 +46,7 @@ struct SessionParity {
             session.safeEdge = (c["safe_edge"] as? NSNumber)?.doubleValue ?? 0.25
             if let box = c["max_size"] as? [NSNumber] { session.maxSize = (box[0].doubleValue, box[1].doubleValue) }
             session.outline = (c["outline"] as? NSNumber)?.doubleValue ?? 0
+            session.units = LengthUnit(rawValue: c["units"] as? String ?? "in")!
             session.printer = "Canon_MG3600_series"
 
             #expect(abs(try session.effectivePPI() - (c["ppi_used"] as! NSNumber).doubleValue) < 1e-9)
@@ -97,9 +98,18 @@ struct SessionParity {
         settings.printer = "Canon_MG3600_series"
         settings.scannerHost = "876298000000.local:80"
         settings.negativeColour = "orange"
+        settings.units = .millimetres
         try settings.save(url)
         #expect(AppSettings.load(url) == settings)
         let text = try String(contentsOf: url, encoding: .utf8)
-        #expect(text.contains("\"scanner_host\"") && !text.contains("preset"))
+        #expect(text.contains("\"scanner_host\"") && !text.contains("preset") && text.contains("\"mm\""))
+    }
+
+    @Test func lengthsInEitherUnit() {
+        #expect(LengthUnit.inches.length(0.25) == "0.25 in" && LengthUnit.millimetres.length(0.25) == "6.35 mm")
+        #expect(LengthUnit.millimetres.length(LengthUnit.millimetres.toInches(5)) == "5 mm")
+        #expect(LengthUnit.inches.box(8, 10) == "8 x 10 in" && LengthUnit.millimetres.box(8, 10) == "203.2 x 254 mm")
+        #expect(LengthUnit.inches.size(7.5, 5) == "7.50 x 5.00 in" && LengthUnit.millimetres.size(7.5, 5) == "190.5 x 127.0 mm")
+        #expect(abs(LengthUnit.millimetres.fromInches(1) - 25.4) < 1e-12 && LengthUnit.inches.fromInches(0.37) == 0.37)
     }
 }

@@ -109,6 +109,16 @@ public final class AppModel {
         }
         session.printer = settings.printer
         if let size = settings.maxSize, size.count == 2 { session.maxSize = (size[0], size[1]) }
+        session.units = settings.units
+    }
+
+    /// Lengths shown and typed in the app (the session keeps inches). Remembered.
+    public var units: LengthUnit { settings.units }
+
+    public func setUnits(_ units: LengthUnit) {
+        settings.units = units
+        session.units = units
+        try? settings.save(settingsURL)
     }
 
     private func remember() {
@@ -242,7 +252,11 @@ public final class AppModel {
 
     // MARK: the blocking test and the calibration wizards
 
-    public func blockingTest() -> BlockingTestModel { BlockingTestModel(scannerHost: settings.scannerHost ?? "") }
+    public func blockingTest() -> BlockingTestModel {
+        let test = BlockingTestModel(scannerHost: settings.scannerHost ?? "")
+        test.units = settings.units
+        return test
+    }
 
     /// Make negatives in the colour the blocking test found best.
     public func useBlockingColour(_ colour: String, scannerHost: String) {
@@ -293,7 +307,7 @@ public final class AppModel {
     public var sizeDescription: String {
         guard session.photo != nil, let (width, height) = try? session.sizeInches(),
               let ppi = try? session.effectivePPI() else { return "" }
-        var text = String(format: "%.2f x %.2f in at %.0f ppi", width, height, ppi)
+        var text = "\(units.size(width, height)) at \(String(format: "%.0f", ppi)) ppi"
         if (try? session.fitsOnPaper()) == false { text += "\nLarger than the paper: turn on Fit or lower the size." }
         return text
     }

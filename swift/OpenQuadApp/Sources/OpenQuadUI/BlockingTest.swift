@@ -18,6 +18,8 @@ public final class BlockingTestModel: WizardModel {
     public var chart = ChartKind.standard
     public var mirror = false
     public var safeEdge = 0.25
+    /// Lengths shown in the window (the app's setting).
+    public var units = LengthUnit.inches
     public private(set) var report: BlockingReport?
     public private(set) var scanName: String?
 
@@ -127,9 +129,8 @@ public struct BlockingTestView: View {
                 }
                 .pickerStyle(.segmented)
                 Toggle("Mirror the sheet", isOn: $model.mirror)
-                Stepper(value: $model.safeEdge, in: 0...1, step: 0.05) {
-                    LabeledContent("Safe edge", value: String(format: "%.2f in", model.safeEdge))
-                }
+                LengthStepper(title: "Safe edge", inches: model.safeEdge, range: 0...1, inchStep: 0.05, mmStep: 1,
+                              units: model.units) { model.safeEdge = $0 }
                 LabeledContent("Scanner") { ScannerField(model: model) }
             }
             .formStyle(.grouped)

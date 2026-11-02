@@ -836,6 +836,9 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
          "safe_edge": 0.2, "outline": 0.15},
         {"photo": "photo-grey16.tif", "mode": "negative", "max_size": [2.0, 3.0],
          "safe_edge": 0.25, "outline": 0.1},
+        {"photo": "photo-grey16.tif", "mode": "negative", "max_size": [4.0, 5.0],
+         "safe_edge": 0.25, "outline": 0.0625, "units": "mm"},
+        {"photo": "photo-grey16.tif", "fit": False, "ppi": 7.0, "units": "mm"},
     ]  # fmt: skip
     sessions = []
     for config in configurations:
@@ -856,6 +859,7 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         session.safe_edge = config.get("safe_edge", 0.25)
         session.max_size = tuple(config["max_size"]) if "max_size" in config else None
         session.outline = config.get("outline", 0.0)
+        session.set_units(config.get("units", "in"))
         session.printer = "Canon_MG3600_series"
         rendered = session.render(session._photo().pixels)
         sessions.append({**config, "ppi_used": session.effective_ppi(),
