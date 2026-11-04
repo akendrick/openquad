@@ -72,17 +72,38 @@ struct NegativeParity {
         let width = try #require(photo["width"] as? Int), height = try #require(photo["height"] as? Int)
         let pixels = ints(photo["pixels"]).map { UInt16($0) }
         let cases = try #require(v["cases"] as? [[String: Any]])
-        #expect(cases.count == 6)
+        #expect(cases.count == 10)
         for c in cases {
             let settings = NegativeSettings(colour: c["colour"] as! String, mirror: c["mirror"] as! Bool,
                                             safeEdge: (c["safe_edge"] as! NSNumber).doubleValue, mark: c["mark"] as! Bool,
-                                            outline: (c["outline"] as? NSNumber)?.doubleValue ?? 0)
+                                            outline: (c["outline"] as? NSNumber)?.doubleValue ?? 0,
+                                            guide: c["guide"] as? Bool ?? false, registration: c["registration"] as? Bool ?? false)
             let got = Negative.make(pixels, width: width, height: height, settings: settings,
                                     dpi: (c["dpi"] as! NSNumber).doubleValue)
             let shape = ints(c["shape"])
             #expect([got.height, got.width, 3] == shape)
             #expect(got.pixels.map(Int.init) == ints(c["rgb"]), "\(settings)")
         }
+    }
+
+    @Test func darkroomMarks() throws {
+        let v = try vectors("negative")
+        let masks = try #require(v["masks"] as? [[String: Any]])
+        #expect(masks.count == 5)
+        for m in masks {
+            let mask = Marks.mask(width: m["width"] as! Int, height: m["height"] as! Int, band: m["band"] as! Int,
+                                  dpi: (m["dpi"] as! NSNumber).doubleValue, guide: m["guide"] as! Bool,
+                                  registration: m["registration"] as! Bool)
+            #expect(mask.indices.filter { mask[$0] } == ints(m["on"]), "\(m["width"]!) x \(m["height"]!)")
+        }
+        let photo = try #require(v["photo"] as? [String: Any])
+        let grey = ints(photo["pixels"]).map { UInt16($0) }
+        let image = RGBImage(width: 12, height: 10, pixels: grey.flatMap { [$0, $0, $0] })
+        let printed = Marks.addPrintMarks(image, dpi: 40, guide: true, registration: true)
+        let expected = try #require(v["print_marks"] as? [String: Any])
+        #expect([printed.height, printed.width, 3] == ints(expected["shape"]))
+        #expect(printed.pixels.map(Int.init) == ints(expected["rgb"]))
+        #expect(Marks.addPrintMarks(image, dpi: 40, guide: false, registration: false) == image)
     }
 }
 

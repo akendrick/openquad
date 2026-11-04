@@ -57,9 +57,13 @@ public struct NegativeSettings: Sendable {
     /// Inches of black between the safe edge and the photo (0 for none): clear film on the
     /// negative, so the deepest black the process gives; a border for light-edged photos.
     public let outline: Double
+    /// Darkroom marks in black ink in the safe edge (they show under a red safelight, and
+    /// block UV like the safe edge): a guide line round the image, registration marks.
+    public let guide: Bool
+    public let registration: Bool
 
     public init(colour: String = Negative.defaultColour, mirror: Bool = false, safeEdge: Double = 0.25, mark: Bool = true,
-                outline: Double = 0) {
+                outline: Double = 0, guide: Bool = false, registration: Bool = false) {
         precondition(Negative.colours[colour] != nil, "unknown negative colour \(colour)")
         precondition((0.0...2.0).contains(safeEdge), "safe edge must be 0-2 in")
         precondition((0.0...1.0).contains(outline), "black outline must be 0-1 in")
@@ -68,6 +72,8 @@ public struct NegativeSettings: Sendable {
         self.safeEdge = safeEdge
         self.mark = mark
         self.outline = outline
+        self.guide = guide
+        self.registration = registration
     }
 
     /// Inches added round the photo on each side: the outline plus the safe edge.
@@ -102,7 +108,8 @@ extension Negative {
             }
             return make(padded, width: wider, height: taller,
                         settings: NegativeSettings(colour: settings.colour, mirror: settings.mirror,
-                                                   safeEdge: settings.safeEdge, mark: settings.mark), dpi: dpi)
+                                                   safeEdge: settings.safeEdge, mark: settings.mark,
+                                                   guide: settings.guide, registration: settings.registration), dpi: dpi)
         }
         let colour = colours[settings.colour]!
         var pixels = [UInt16](repeating: 0, count: photo.count * 3)
@@ -115,7 +122,8 @@ extension Negative {
         return addSafeEdge(RGBImage(width: width, height: height, pixels: pixels), settings: settings, dpi: dpi)
     }
 
-    /// Surround with the safe edge (in the negative's colour) and the F; then mirror if asked.
+    /// Surround with the safe edge (in the negative's colour), any darkroom marks and the F;
+    /// then mirror if asked.
     public static func addSafeEdge(_ image: RGBImage, settings: NegativeSettings, dpi: Double) -> RGBImage {
         var result = image
         let edge = Int(rint(settings.safeEdge * dpi))
@@ -133,6 +141,11 @@ extension Negative {
                 let target = ((y + edge) * width + edge) * 3
                 pixels.replaceSubrange(target..<target + image.width * 3,
                                        with: image.pixels[source..<source + image.width * 3])
+            }
+            if settings.guide || settings.registration {
+                let marks = Marks.mask(width: width, height: height, band: edge, dpi: dpi, guide: settings.guide,
+                                       registration: settings.registration)
+                for (i, on) in marks.enumerated() where on { (pixels[i * 3], pixels[i * 3 + 1], pixels[i * 3 + 2]) = (0, 0, 0) }
             }
             if settings.mark {
                 let cell = max(1, edge * 6 / 10 / fGlyph.count)

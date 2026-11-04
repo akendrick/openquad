@@ -39,6 +39,9 @@ public struct PrintSession: Sendable {
     public var safeEdge = 0.25
     /// Inches of black between the safe edge and the photo (0 = none).
     public var outline = 0.0
+    /// Darkroom marks in black: in a negative's safe edge, or a white border round a print.
+    public var guide = false  // a guide line round the image
+    public var registration = false  // crosshair targets and corner crop marks
     /// How the summary shows lengths.
     public var units = LengthUnit.inches
 
@@ -97,11 +100,16 @@ public struct PrintSession: Sendable {
 
     public var negative: Bool { mode == .negative }
 
-    /// Inches round the photo in a negative: the black outline plus the safe edge.
-    var border: Double { outline + safeEdge }
+    /// Inches round the photo: in a negative the black outline plus the safe edge; in a
+    /// print the white border carrying its darkroom marks (if any).
+    var border: Double {
+        if negative { return outline + safeEdge }
+        return guide || registration ? Marks.printBorder : 0
+    }
 
     var negativeSettings: NegativeSettings {
-        NegativeSettings(colour: negativeColour, mirror: mirror, safeEdge: safeEdge, outline: outline)
+        NegativeSettings(colour: negativeColour, mirror: mirror, safeEdge: safeEdge, outline: outline, guide: guide,
+                         registration: registration)
     }
 
     // MARK: size
@@ -114,12 +122,11 @@ public struct PrintSession: Sendable {
     public func effectivePPI() throws -> Double {
         let photo = try currentPhoto()
         if fit {
-            var ppi = negative
+            var ppi = border != 0
                 ? try Paper.negativePPI(width: photo.width, height: photo.height, paper: paper, safeEdge: border, margin: margin)
                 : try Paper.fitPPI(width: photo.width, height: photo.height, paper: paper, margin: margin)
             if let maxSize {  // smaller of the page and the box (never past the page)
-                ppi = max(ppi, try Paper.boxPPI(width: photo.width, height: photo.height, box: maxSize,
-                                                border: negative ? border : 0))
+                ppi = max(ppi, try Paper.boxPPI(width: photo.width, height: photo.height, box: maxSize, border: border))
             }
             return ppi
         }
@@ -129,12 +136,8 @@ public struct PrintSession: Sendable {
 
     public func sizeInches() throws -> (Double, Double) {
         let photo = try currentPhoto(), ppi = try effectivePPI()
-        var (width, height) = (Double(photo.width) / ppi, Double(photo.height) / ppi)
-        if negative {  // the outline and safe edge go round the photo
-            width += 2 * border
-            height += 2 * border
-        }
-        return (width, height)
+        // A negative's safe edge, or a print's border for its marks, goes round the photo.
+        return (Double(photo.width) / ppi + 2 * border, Double(photo.height) / ppi + 2 * border)
     }
 
     public func fitsOnPaper() throws -> Bool {
@@ -153,7 +156,8 @@ public struct PrintSession: Sendable {
             return Negative.make(shaped, width: width, height: height, settings: negativeSettings, dpi: try dpi ?? effectivePPI())
         }
         let rgb = Composite.composite(pixels, layers: Composite.presets[preset]!)
-        return RGBImage(width: width, height: height, pixels: calibration?.apply(rgb) ?? rgb)
+        return Marks.addPrintMarks(RGBImage(width: width, height: height, pixels: calibration?.apply(rgb) ?? rgb),
+                                   dpi: try dpi ?? effectivePPI(), guide: guide, registration: registration)
     }
 
     /// The full-resolution print.
@@ -174,7 +178,8 @@ public struct PrintSession: Sendable {
             pixels = Self.resize(photo.pixels, from: (photo.width, photo.height), to: (width, height))
         }
         if negative { return try render(pixels, width: width, height: height, dpi: try effectivePPI() * scale) }
-        return RGBImage(width: width, height: height, pixels: Composite.composite(pixels, layers: Composite.presets[preset]!))
+        let toned = RGBImage(width: width, height: height, pixels: Composite.composite(pixels, layers: Composite.presets[preset]!))
+        return Marks.addPrintMarks(toned, dpi: try effectivePPI() * scale, guide: guide, registration: registration)
     }
 
     /// Smooth 16-bit greyscale resampling (for previews only).
@@ -194,6 +199,11 @@ public struct PrintSession: Sendable {
             }
         }
         return out
+    }
+
+    var marksLine: [String] {
+        let marks = [(guide, "guide line"), (registration, "registration marks")].filter(\.0).map(\.1)
+        return marks.isEmpty ? [] : ["Darkroom marks: \(marks.joined(separator: " and "))"]
     }
 
     /// Lines for the print confirmation.
@@ -218,7 +228,7 @@ public struct PrintSession: Sendable {
                 "Colour: \(negativeColour)",
                 "Process curve: \(processPath?.lastPathComponent ?? "none (uncalibrated)")",
                 "Mirrored: \(mirror ? "yes" : "no")",
-            ]
+            ] + marksLine
         }
         return [
             "Photo: \(photoName)",
@@ -228,7 +238,7 @@ public struct PrintSession: Sendable {
             "Size: \(size) at \(String(format: "%.0f", try effectivePPI())) ppi",
             "Toning: \(preset)",
             "Calibration: \(calibrationPath?.lastPathComponent ?? "none")",
-        ]
+        ] + marksLine
     }
 
     // MARK: output
@@ -272,6 +282,9 @@ public struct AppSettings: Sendable, Equatable {
     /// The Negative tab's own printer and paper (nil: the ones above).
     public var negativePrinter: String?
     public var negativePaper: String?
+    /// The test sheets' preferred size (the blocking test and process charts): fit within
+    /// (width, height) inches; nil for their own size.
+    public var chartSize: [Double]?
 
     public init() {}
 
@@ -301,6 +314,7 @@ public struct AppSettings: Sendable, Equatable {
         settings.units = (object["units"] as? String).flatMap(LengthUnit.init(rawValue:)) ?? .inches
         settings.negativePrinter = object["negative_printer"] as? String
         settings.negativePaper = (object["negative_paper"] as? String).flatMap { Paper.sizes[$0] != nil ? $0 : nil }
+        if let size = object["chart_size"] as? [NSNumber], size.count == 2 { settings.chartSize = size.map(\.doubleValue) }
         return settings
     }
 
@@ -312,6 +326,7 @@ public struct AppSettings: Sendable, Equatable {
             "process": process ?? NSNull(), "negative_colour": negativeColour, "max_size": maxSize ?? NSNull(),
             "units": units.rawValue,
             "negative_printer": negativePrinter ?? NSNull(), "negative_paper": negativePaper ?? NSNull(),
+            "chart_size": chartSize ?? NSNull(),
         ]
         var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         data.append(0x0a)

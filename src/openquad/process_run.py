@@ -23,6 +23,7 @@ from openquad.chart import (
     build_process_curve,
     chart_page,
     load_process,
+    page_scale,
     read_chart_page,
     reading_from_json,
     reading_to_json,
@@ -33,6 +34,7 @@ from openquad.escl import Fetch, ScanSettings, http_fetch, scan
 from openquad.imageio import save_rgb, srgb_profile
 from openquad.measure import load_scan
 from openquad.negative import NEGATIVE_COLOURS
+from openquad.paper import DEFAULT_MARGIN, PAPER_SIZES
 from openquad.printing import PrintJob, Runner, run_command, send
 
 TONE_GOAL = 3.0  # every patch within this many L* of its target
@@ -79,6 +81,11 @@ class ProcessRun:
     film: str = ""
     printing: str = ""
     rounds: list[ProcessRound] = field(default_factory=list)
+    # The page's preferred size: fit within (width, height) inches (never past the paper's
+    # margins); None for the charts' own size.
+    size: list[float] | None = None
+    guide: bool = False  # darkroom marks in the charts' safe edges
+    registration: bool = False
 
     @classmethod
     def start(
@@ -94,6 +101,9 @@ class ProcessRun:
         film: str = "",
         printing: str = "",
         starting: dict[str, ProcessCurve] | None = None,
+        size: tuple[float, float] | None = None,
+        guide: bool = False,
+        registration: bool = False,
     ) -> ProcessRun:
         if not name.strip() or any(c in name for c in "/\\"):
             raise ProcessRunError(f"invalid name {name!r}")
@@ -101,7 +111,8 @@ class ProcessRun:
             raise ProcessRunError(f"choose 1-5 colours from {', '.join(NEGATIVE_COLOURS)}")
         run = cls(
             Path(folder), name.strip(), list(colours), printer, paper, scanner_host,
-            mirror, film, printing,
+            mirror, film, printing, size=list(size) if size else None, guide=guide,
+            registration=registration,
         )  # fmt: skip
         run.folder.mkdir(parents=True, exist_ok=True)
         starting = starting or {}
@@ -145,11 +156,22 @@ class ProcessRun:
 
     # --- steps ----------------------------------------------------------------------
 
+    def scale(self) -> float:
+        """How much the charts are enlarged or shrunk to fit the preferred size."""
+        if not self.size:
+            return 1.0
+        paper_w, paper_h = PAPER_SIZES[self.paper]
+        room = (paper_w - 2 * DEFAULT_MARGIN, paper_h - 2 * DEFAULT_MARGIN)
+        count = len(self.colours)
+        box = (self.size[0], self.size[1])
+        return min(page_scale(count, box), page_scale(count, room, turn=False))
+
     def make_page(self) -> Path:
         """This round's page of charts (to print here or from GIMP at 300 ppi)."""
         path = self._file("page", ".tif")
         curves: list[ProcessCurve | None] = [self.curve(c) for c in self.colours]
-        page = chart_page(self.colours, curves, mirror=self.mirror, dpi=PAGE_PPI)
+        page = chart_page(self.colours, curves, self.mirror, PAGE_PPI, self.scale(),
+                          guide=self.guide, registration=self.registration)  # fmt: skip
         save_rgb(path, page, (PAGE_PPI, PAGE_PPI), srgb_profile())
         self.current.page = path.name
         self._save_log()

@@ -70,7 +70,25 @@ extension GreyBalance {
 
 extension Chart {
     /// Inches of clear film between stacked charts.
-    public static let pageGap = 0.3
+    public static let pageGap = 0.1
+    /// Each stacked chart's safe edge.
+    public static let pageEdge = 0.25
+
+    /// The scale (of `dpi`, with the safe edge divided by it) that makes one full-size chart
+    /// fit within `box` inches (turned to match unless `turn` is false).
+    public static func scale(box: (Double, Double), turn: Bool = true) throws -> Double {
+        let layout = ChartLayout()
+        return try Paper.fitScale(content: (layout.width, layout.height), fixed: (2 * pageEdge, 2 * pageEdge), box: box,
+                                  turn: turn)
+    }
+
+    /// The `scale` that makes a page of `count` stacked charts fit within `box` inches
+    /// (turned to match unless `turn` is false).
+    public static func pageScale(count: Int, box: (Double, Double), turn: Bool = true) throws -> Double {
+        let layout = ChartLayout.compact(), n = Double(count)
+        return try Paper.fitScale(content: (layout.width, n * layout.height),
+                                  fixed: (2 * pageEdge, n * 2 * pageEdge + (n - 1) * pageGap), box: box, turn: turn)
+    }
 
     /// The chart as the photo it stands for (before inversion): black background, the 101
     /// patches, the strip, the gradient, a white marker and `index` identification squares.
@@ -100,21 +118,26 @@ extension Chart {
 
     /// The chart printed as a negative, through `process` if given.
     public static func negative(colour: String = "green", process: ProcessCurve? = nil, mirror: Bool = false, dpi: Double = 300,
-                                layout: ChartLayout = ChartLayout(), index: Int = 0) -> RGBImage {
+                                layout: ChartLayout = ChartLayout(), index: Int = 0, safeEdge: Double = 0.25,
+                                guide: Bool = false, registration: Bool = false) -> RGBImage {
         let chart = photo(layout: layout, dpi: dpi, index: index)
         let shaped = process?.apply(chart.pixels) ?? chart.pixels
-        return Negative.make(shaped, width: chart.width, height: chart.height,
-                             settings: NegativeSettings(colour: colour, mirror: mirror), dpi: dpi)
+        let settings = NegativeSettings(colour: colour, mirror: mirror, safeEdge: safeEdge, guide: guide, registration: registration)
+        return Negative.make(shaped, width: chart.width, height: chart.height, settings: settings, dpi: dpi)
     }
 
     /// Several compact charts stacked on one page, one per colour; chart k carries k
-    /// identification squares, so a scan of the page says which is which.
-    public static func page(colours: [String], processes: [ProcessCurve?]? = nil, mirror: Bool = false, dpi: Double = 300) -> RGBImage {
+    /// identification squares, so a scan of the page says which is which. `scale` enlarges or
+    /// shrinks the charts (not their safe edges or the gaps) to fit a preferred size (see
+    /// `pageScale`); `guide` and `registration` add darkroom marks.
+    public static func page(colours: [String], processes: [ProcessCurve?]? = nil, mirror: Bool = false, dpi: Double = 300,
+                            scale: Double = 1, guide: Bool = false, registration: Bool = false) -> RGBImage {
         precondition((1...(ChartLayout.maxID + 1)).contains(colours.count), "a page holds 1-\(ChartLayout.maxID + 1) charts")
         let processes = processes ?? Array(repeating: nil, count: colours.count)
         precondition(processes.count == colours.count, "give one process curve (or none) per colour")
         let charts = zip(colours, processes).enumerated().map { k, pair in
-            negative(colour: pair.0, process: pair.1, mirror: mirror, dpi: dpi, layout: .compact(), index: k)
+            negative(colour: pair.0, process: pair.1, mirror: mirror, dpi: dpi * scale, layout: .compact(), index: k,
+                     safeEdge: pageEdge / scale, guide: guide, registration: registration)
         }
         let gap = pyRound(pageGap * dpi), width = charts[0].width
         let height = charts.map(\.height).reduce(0, +) + gap * (charts.count - 1)

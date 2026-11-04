@@ -178,19 +178,37 @@ def negative_vectors() -> dict[str, Any]:
 
     photo = np.tile(np.rint(np.linspace(0, 65535, 12)).astype(np.uint16), (10, 1))
     photo[3, 4] = 1234
-    cases: list[tuple[str, bool, float, bool, float, float]] = [
-        ("black", False, 0.0, True, 100.0, 0.0),
-        ("green", False, 0.2, True, 100.0, 0.0),
-        ("orange", True, 0.2, True, 100.0, 0.0),
-        ("red", False, 0.05, False, 100.0, 0.0),
-        ("green", True, 0.2, True, 100.0, 0.05),  # with a black outline
-        ("cyan", False, 0.0, False, 100.0, 0.03),  # an outline but no safe edge
+    cases: list[tuple[str, bool, float, bool, float, float, bool, bool]] = [
+        ("black", False, 0.0, True, 100.0, 0.0, False, False),
+        ("green", False, 0.2, True, 100.0, 0.0, False, False),
+        ("orange", True, 0.2, True, 100.0, 0.0, False, False),
+        ("red", False, 0.05, False, 100.0, 0.0, False, False),
+        ("green", True, 0.2, True, 100.0, 0.05, False, False),  # with a black outline
+        ("cyan", False, 0.0, False, 100.0, 0.03, False, False),  # an outline but no safe edge
+        ("orange", True, 0.2, True, 100.0, 0.05, True, True),  # darkroom marks
+        ("red", False, 0.3, True, 100.0, 0.0, True, False),
+        ("yellow", False, 0.1, False, 100.0, 0.0, False, True),
+        ("orange", False, 0.0, True, 100.0, 0.0, True, True),  # marks but no safe edge
     ]
     coverage = np.linspace(0.0, 1.0, 101)
+    from openquad.marks import add_print_marks, mark_mask
+
+    masks = []
+    for width, height, band, dpi, guide, registration in [
+        (60, 50, 10, 100.0, True, False), (61, 47, 13, 300.0, False, True),
+        (200, 160, 40, 300.0, True, True), (30, 30, 2, 300.0, True, True),
+        (180, 220, 75, 300.0, True, True),
+    ]:  # fmt: skip
+        mask = mark_mask(width, height, band, dpi, guide, registration)
+        masks.append({"width": width, "height": height, "band": band, "dpi": dpi,
+                      "guide": guide, "registration": registration,
+                      "on": _ints(np.flatnonzero(mask))})  # fmt: skip
+    printed = add_print_marks(np.stack([photo] * 3, -1), 40.0, True, True)
     rendered = []
-    for colour, mirror, edge, mark, dpi, outline in cases:
+    for colour, mirror, edge, mark, dpi, outline, guide, registration in cases:
         settings = NegativeSettings(colour=colour, mirror=mirror, safe_edge=edge, mark=mark,
-                                    outline=outline)  # fmt: skip
+                                    outline=outline, guide=guide,
+                                    registration=registration)  # fmt: skip
         negative = make_negative(photo, settings, dpi)
         rendered.append(
             {
@@ -200,6 +218,8 @@ def negative_vectors() -> dict[str, Any]:
                 "mark": mark,
                 "dpi": dpi,
                 "outline": outline,
+                "guide": guide,
+                "registration": registration,
                 "shape": list(negative.shape),
                 "rgb": _ints(negative),
             }
@@ -212,6 +232,8 @@ def negative_vectors() -> dict[str, Any]:
         },
         "photo": {"height": 10, "width": 12, "pixels": _ints(photo)},
         "cases": rendered,
+        "masks": masks,
+        "print_marks": {"dpi": 40.0, "shape": list(printed.shape), "rgb": _ints(printed)},
     }
 
 
@@ -839,6 +861,12 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         {"photo": "photo-grey16.tif", "mode": "negative", "max_size": [4.0, 5.0],
          "safe_edge": 0.25, "outline": 0.0625, "units": "mm"},
         {"photo": "photo-grey16.tif", "fit": False, "ppi": 7.0, "units": "mm"},
+        {"photo": "photo-grey16.tif", "fit": False, "ppi": 20.0, "guide": True,
+         "registration": True},
+        {"photo": "photo-grey16.tif", "registration": True, "max_size": [3.0, 2.0]},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 20.0,
+         "negative_colour": "orange", "safe_edge": 0.3, "outline": 0.05, "guide": True,
+         "registration": True},
     ]  # fmt: skip
     sessions = []
     for config in configurations:
@@ -859,6 +887,8 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         session.safe_edge = config.get("safe_edge", 0.25)
         session.max_size = tuple(config["max_size"]) if "max_size" in config else None
         session.outline = config.get("outline", 0.0)
+        session.guide = config.get("guide", False)
+        session.registration = config.get("registration", False)
         session.set_units(config.get("units", "in"))
         session.printer = "Canon_MG3600_series"
         rendered = session.render(session._photo().pixels)
@@ -911,7 +941,23 @@ def wizards_vectors(directory: Path) -> dict[str, Any]:
         "chart_photo_compact_2": _digest(chart_photo(ChartLayout.compact(), 50, index=2)),
         "chart_negative": _digest(chart_negative("green", green, mirror=True, dpi=50)),
         "chart_page": _digest(chart_page(["green", "orange"], [None, darker], dpi=60)),
-    }
+        "chart_page_marked": _digest(chart_page(["green", "orange"], [None, darker], True, 60,
+                                                0.8, guide=True, registration=True)),
+        "chart_negative_marked": _digest(chart_negative("orange", None, False, 50 * 1.3,
+                                                        safe_edge=0.25 / 1.3, guide=True,
+                                                        registration=True)),
+    }  # fmt: skip
+    from openquad.blocking import blocking_scale
+    from openquad.chart import chart_scale, page_scale
+
+    scales = {
+        "blocking": [[*box, blocking_scale(box)] for box in ((8.0, 10.0), (4.0, 6.0), (5.0, 3.0))],
+        "chart": [[*box, chart_scale(box)] for box in ((8.0, 10.0), (4.0, 4.0))],
+        "page": [[count, *box, page_scale(count, box)] for count, box in
+                 ((1, (8.0, 10.0)), (2, (8.0, 10.0)), (3, (4.0, 6.0)))],
+        "page_unturned": [[count, *box, page_scale(count, box, turn=False)] for count, box in
+                          ((1, (7.5, 10.0)), (2, (10.0, 7.5)))],
+    }  # fmt: skip
 
     assessments = []
     for session, prefix in (("2026-10-20", "m4"), ("2026-10-20", "m6"), ("2026-10-22", "m8")):
@@ -953,6 +999,8 @@ def wizards_vectors(directory: Path) -> dict[str, Any]:
         )
         mixtures = blocking.BlockingLayout(colours=MIXTURE_COLOURS)
         renders["blocking_sheet_mixtures"] = _digest(blocking.blocking_sheet(mixtures, dpi=50))
+        marked = blocking.blocking_sheet(dpi=50, scale=1.4, guide=True, registration=True)
+        renders["blocking_sheet_marked"] = _digest(marked)
     finally:
         blocking._draw_labels = labels
     return {
@@ -961,6 +1009,7 @@ def wizards_vectors(directory: Path) -> dict[str, Any]:
         "identity_levels": _ints(identity.levels),
         "identity_curves": _ints(identity.curves),
         "renders": renders,
+        "scales": scales,
         "assessments": assessments,
         "chart_results": results,
     }

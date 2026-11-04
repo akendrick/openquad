@@ -226,6 +226,19 @@ public final class AppModel {
         refreshPreview()
     }
 
+    /// The black guide line round the image (in a negative's safe edge, or a white border
+    /// round a print), visible under a red safelight.
+    public func setGuide(_ on: Bool) {
+        session.guide = on
+        refreshPreview()
+    }
+
+    /// Crosshair targets and corner crop marks, for lining the sheet up in the darkroom.
+    public func setRegistration(_ on: Bool) {
+        session.registration = on
+        refreshPreview()
+    }
+
     /// The black outline's width, kept while it is turned off so turning it back on restores it.
     public private(set) var outlineSize = 0.1
 
@@ -277,6 +290,7 @@ public final class AppModel {
             let curve = setupLibrary.processURL(setup)?.resolvingSymlinksInPath()
             return setup.colour == session.negativeColour && setup.mirror == session.mirror
                 && abs(setup.safeEdge - session.safeEdge) < 1e-9 && abs(setup.outline - session.outline) < 1e-9
+                && setup.guide == session.guide && setup.registration == session.registration
                 && curve == session.processPath?.resolvingSymlinksInPath()
                 && setup.printer == session.printer && setup.paper == session.paper
         }
@@ -294,6 +308,8 @@ public final class AppModel {
             setNegativeColour(setup.colour)
         }
         session.mirror = setup.mirror
+        session.guide = setup.guide
+        session.registration = setup.registration
         setSafeEdge(setup.safeEdge)
         if setup.outline > 0 { outlineSize = setup.outline }
         setOutline(setup.outline > 0)
@@ -309,8 +325,8 @@ public final class AppModel {
     public func saveSetup(named name: String) {
         attempt {
             let setup = NegativeSetup(name: name, colour: session.negativeColour, mirror: session.mirror,
-                                      safeEdge: session.safeEdge, outline: session.outline,
-                                      printer: session.printer, paper: session.paper)
+                                      safeEdge: session.safeEdge, outline: session.outline, guide: session.guide,
+                                      registration: session.registration, printer: session.printer, paper: session.paper)
             try setupLibrary.save(setup, process: session.processPath)
             setups = setupLibrary.all()
             // Point at the setup's own copy of the curve, so the setup shows as chosen.
@@ -375,6 +391,8 @@ public final class AppModel {
     public func blockingTest() -> BlockingTestModel {
         let test = BlockingTestModel(scannerHost: settings.scannerHost ?? "")
         test.units = settings.units
+        test.sheetSize = rememberedChartSize
+        test.rememberSize = { [weak self] size in self?.saveSettings { $0.chartSize = size.map { [$0.0, $0.1] } } }
         return test
     }
 
@@ -400,8 +418,17 @@ public final class AppModel {
     }
 
     public func processWizard() -> ProcessWizardModel {
-        ProcessWizardModel(folder: AppSettings.dataDirectory().appendingPathComponent("processes"),
-                           scannerHost: settings.scannerHost ?? "")
+        let wizard = ProcessWizardModel(folder: AppSettings.dataDirectory().appendingPathComponent("processes"),
+                                        scannerHost: settings.scannerHost ?? "")
+        wizard.units = settings.units
+        wizard.sheetSize = rememberedChartSize
+        wizard.rememberSize = { [weak self] size in self?.saveSettings { $0.chartSize = size.map { [$0.0, $0.1] } } }
+        return wizard
+    }
+
+    /// The test sheets' remembered preferred size (nil: their own).
+    var rememberedChartSize: (Double, Double)? {
+        AppSettings.load(settingsURL).chartSize.flatMap { $0.count == 2 ? ($0[0], $0[1]) : nil }
     }
 
     public func finishCalibration(_ path: URL, scannerHost: String) {

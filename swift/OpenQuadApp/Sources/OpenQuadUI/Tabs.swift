@@ -105,6 +105,7 @@ public final class AppRoot {
         negativeModel.followUnits()
         contactSheet.units = units
         blocking?.units = units
+        process?.units = units
     }
 
     /// Bring a tab up to date with the others when it is shown.

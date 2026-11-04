@@ -66,6 +66,25 @@ def test_log_and_resume(tmp_path: Path) -> None:
     assert resumed.film == "office" and resumed.printing == "Fine glossy"
 
 
+def test_preferred_size_and_marks_reach_the_page_and_still_read(tmp_path: Path) -> None:
+    lab = CarbonLab(scan_dpi=100)
+    run = start(tmp_path, size=(4.0, 6.0), guide=True, registration=True)
+    assert run.scale() < 1.0
+    page = tifffile.imread(run.make_page())
+    assert max(page.shape[:2]) / 300 <= 6.01 and min(page.shape[:2]) / 300 <= 4.01
+    run.print_page(lab.runner)
+    run.scan_page(lab.fetch)
+    assert set(run.measure()) == {"green", "orange"}
+    resumed = ProcessRun.resume(run.folder)
+    assert resumed.size == [4.0, 6.0] and resumed.guide and resumed.registration
+    huge = start(tmp_path / "huge", size=(20.0, 30.0))  # never past Letter's margins
+    page = tifffile.imread(huge.make_page())
+    assert page.shape[0] / 300 <= 10.01 and page.shape[1] / 300 <= 7.51
+    one = ProcessRun.start(tmp_path / "one", "one", ["green"], size=(20.0, 30.0))
+    page = tifffile.imread(one.make_page())  # a wide chart: the page itself doesn't turn
+    assert page.shape[1] / 300 <= 7.51 and page.shape[0] / 300 <= 10.01
+
+
 def test_steps_out_of_order_and_bad_input(tmp_path: Path) -> None:
     run = start(tmp_path)
     with pytest.raises(ProcessRunError, match="scan the contact print"):

@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 12
+    public static let version = 13
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -60,6 +60,10 @@ public struct GuideView: View {
                         + "correctly in the print when the mirror setting was right.",
                      "Outline in black adds a black border of the width you set between the safe edge and the "
                         + "photo: a natural frame for photos with white or light edges.",
+                     "Darkroom marks: a black guide line round the image and registration marks (targets on each "
+                        + "side, crop marks at the corners), in the safe edge. Red and orange negatives all but vanish "
+                        + "under a red safelight; black shows. The marks block UV like the safe edge, so they don't print. "
+                        + "The Print tab offers them too, in a thin white border round the print.",
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
                      "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",
@@ -77,13 +81,16 @@ public struct GuideView: View {
              text: "Process Calibration, step 1: a sheet of every negative colour, to find the one that blocks UV best.",
              steps: ["Choose the chart: Standard (six colours) or Ink mixtures (ten colours your printer makes "
                         + "from single inks and simple mixes). Print it on film and expose it at your usual time.",
+                     "Size: Standard, or Fit within a set size (e.g. your tissue) to enlarge or shrink the sheet; it "
+                        + "never goes past the page's margins. Darkroom marks help you place it under a red safelight.",
                      "Develop it, let it dry, and scan the print (or read a scan file).",
                      "OpenQuad reads the print any way up, tilted or mirrored, and reports which colours block "
                         + "fully and how many distinct steps each gives.",
                      "Use the best colour: the Negative tab prints in it, and step 2 calibrates in it."]),
         Page(symbol: "chart.line.uptrend.xyaxis", title: "Calibrate the process",
              text: "Process Calibration, step 2: process charts (101 tones each) on one page, one chart per colour.",
-             steps: ["Start, then print the chart page on film (or print it from another app at 100% and say so).",
+             steps: ["Set the page's size and darkroom marks if you like (as in step 1), Start, then print the chart "
+                        + "page on film (or print it from another app at 100% and say so).",
                      "Contact print it at your usual exposure, develop, dry, and scan the print.",
                      "Each colour's measured tones are drawn against the target; Refine the Curves and repeat "
                         + "until every patch is within 3 L*.",

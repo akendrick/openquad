@@ -58,4 +58,23 @@ public enum Paper {
         }
         return max(Double(width) / roomW, Double(height) / roomH)
     }
+
+    /// How much to enlarge (or shrink) a sheet so it fits within `box` (width, height in
+    /// inches, turned to match the sheet unless `turn` is false, as for the page itself):
+    /// `content` inches scale, `fixed` inches (its safe edges, the gaps between charts)
+    /// don't. Mirrors openquad/negative.py fit_scale.
+    public static func fitScale(content: (Double, Double), fixed: (Double, Double), box: (Double, Double),
+                                turn: Bool = true) throws -> Double {
+        guard min(box.0, box.1) > 0 else {
+            throw FitError(description: "the size must be positive, got \(String(format: "%g x %g", box.0, box.1)) in")
+        }
+        let totalW = content.0 + fixed.0, totalH = content.1 + fixed.1
+        let long = max(box.0, box.1), short = min(box.0, box.1)
+        let (boxW, boxH) = turn ? (totalW > totalH ? (long, short) : (short, long)) : box
+        let scale = min((boxW - fixed.0) / content.0, (boxH - fixed.1) / content.1)
+        guard scale > 0 else {
+            throw FitError(description: "no room for the sheet inside \(String(format: "%g x %g", boxW, boxH)) in")
+        }
+        return scale
+    }
 }

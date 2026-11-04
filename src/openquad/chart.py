@@ -36,7 +36,7 @@ from openquad.blocking import (
 )
 from openquad.colour import linear_rgb_to_lab, srgb_to_linear
 from openquad.linearize import target_lightness
-from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, make_negative
+from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, fit_scale, make_negative
 from openquad.quadfile import MAX_VALUE
 
 PATCHES = 101  # 0% .. 100% in 1% steps
@@ -164,15 +164,37 @@ def chart_negative(
     dpi: float = 300.0,
     layout: ChartLayout | None = None,
     index: int = 0,
+    safe_edge: float = 0.25,
+    guide: bool = False,
+    registration: bool = False,
 ) -> NDArray[np.uint16]:
     """The chart printed as a negative, through `process` if given (to check or refine it)."""
     photo = chart_photo(layout, dpi, index)
     if process is not None:
         photo = process.apply(photo)
-    return make_negative(photo, NegativeSettings(colour=colour, mirror=mirror), dpi)
+    settings = NegativeSettings(
+        colour=colour, mirror=mirror, safe_edge=safe_edge, guide=guide, registration=registration
+    )
+    return make_negative(photo, settings, dpi)
 
 
-PAGE_GAP = 0.3  # inches of clear film between stacked charts
+PAGE_GAP = 0.1  # inches of clear film between stacked charts
+PAGE_EDGE = 0.25  # each chart's safe edge
+
+
+def chart_scale(box: tuple[float, float], turn: bool = True) -> float:
+    """The scale (of `dpi`, with the safe edge divided by it) that makes one full-size
+    chart fit within `box` inches (turned to match unless `turn` is False)."""
+    layout = ChartLayout()
+    return fit_scale((layout.width, layout.height), (2 * PAGE_EDGE, 2 * PAGE_EDGE), box, turn)
+
+
+def page_scale(count: int, box: tuple[float, float], turn: bool = True) -> float:
+    """The `scale` that makes a page of `count` stacked charts fit within `box` inches
+    (turned to match unless `turn` is False)."""
+    layout = ChartLayout.compact()
+    fixed_h = count * 2 * PAGE_EDGE + (count - 1) * PAGE_GAP
+    return fit_scale((layout.width, count * layout.height), (2 * PAGE_EDGE, fixed_h), box, turn)
 
 
 def chart_page(
@@ -180,10 +202,15 @@ def chart_page(
     processes: list[ProcessCurve | None] | None = None,
     mirror: bool = False,
     dpi: float = 300.0,
+    scale: float = 1.0,
+    guide: bool = False,
+    registration: bool = False,
 ) -> NDArray[np.uint16]:
     """Several compact charts stacked on one page, one per colour, top to bottom.
 
     Chart k carries k identification squares, so a scan of the page says which is which.
+    `scale` enlarges or shrinks the charts (not their safe edges or the gaps) to fit a
+    preferred size; see `page_scale`. `guide` and `registration` add darkroom marks.
     """
     if not 1 <= len(colours) <= MAX_ID + 1:
         raise ValueError(f"a page holds 1-{MAX_ID + 1} charts, got {len(colours)}")
@@ -191,8 +218,9 @@ def chart_page(
     if len(processes) != len(colours):
         raise ValueError("give one process curve (or none) per colour")
     layout = ChartLayout.compact()
+    marks = {"guide": guide, "registration": registration}
     charts = [
-        chart_negative(c, pr, mirror, dpi, layout, index=k)
+        chart_negative(c, pr, mirror, dpi * scale, layout, k, PAGE_EDGE / scale, **marks)
         for k, (c, pr) in enumerate(zip(colours, processes, strict=True))
     ]
     gap = round(PAGE_GAP * dpi)

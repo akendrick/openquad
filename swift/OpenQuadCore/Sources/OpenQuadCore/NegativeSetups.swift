@@ -1,5 +1,5 @@
 // Saved digital-negative setups ("Cyanotype on Pictorico"): the process curve, ink
-// colour, mirror, safe edge, black outline, printer and paper that go together, so the
+// colour, mirror, safe edge, black outline, darkroom marks, printer and paper that go together, so the
 // app can switch between calibrated processes in one step. Each setup is an .oqsetup
 // file in the app's setups folder, with a copy of its process curve beside it, so it
 // keeps working if the original curve file is moved or deleted.
@@ -16,6 +16,9 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
     public var safeEdge: Double
     /// Inches of black outline (0 for none).
     public var outline: Double
+    /// Darkroom marks in the safe edge: a black guide line round the image, registration marks.
+    public var guide: Bool
+    public var registration: Bool
     /// The CUPS queue, or nil to choose in the macOS print panel.
     public var printer: String?
     public var paper: String
@@ -24,13 +27,16 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
     public var id: String { name }
 
     public init(name: String, colour: String, process: String? = nil, mirror: Bool = false, safeEdge: Double = 0.25,
-                outline: Double = 0, printer: String? = nil, paper: String = "Letter", created: String = "") {
+                outline: Double = 0, guide: Bool = false, registration: Bool = false, printer: String? = nil,
+                paper: String = "Letter", created: String = "") {
         self.name = name
         self.colour = colour
         self.process = process
         self.mirror = mirror
         self.safeEdge = safeEdge
         self.outline = outline
+        self.guide = guide
+        self.registration = registration
         self.printer = printer
         self.paper = paper
         self.created = created
@@ -45,6 +51,8 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
         var mirror: Bool
         var safe_edge: Double
         var outline: Double
+        var guide: Bool?  // absent in setups saved before darkroom marks
+        var registration: Bool?
         var printer: String?
         var paper: String
         var created: String?
@@ -61,12 +69,12 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
         guard Paper.sizes[file.paper] != nil else { throw FileFormatError(description: "unknown paper \(file.paper)") }
         return NegativeSetup(name: file.name, colour: file.colour, process: file.process, mirror: file.mirror,
                              safeEdge: min(max(file.safe_edge, 0), 2), outline: min(max(file.outline, 0), 1),
-                             printer: file.printer, paper: file.paper, created: file.created ?? "")
+                             guide: file.guide ?? false, registration: file.registration ?? false, printer: file.printer, paper: file.paper, created: file.created ?? "")
     }
 
     public func encode() throws -> Data {
         let file = File(format: "openquad-setup", version: 1, name: name, colour: colour, process: process, mirror: mirror,
-                        safe_edge: safeEdge, outline: outline, printer: printer, paper: paper, created: created)
+                        safe_edge: safeEdge, outline: outline, guide: guide, registration: registration, printer: printer, paper: paper, created: created)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return try encoder.encode(file)

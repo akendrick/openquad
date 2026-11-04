@@ -18,6 +18,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from openquad.colour import linear_to_srgb, srgb_to_linear
+from openquad.marks import mark_mask
 from openquad.quadfile import MAX_VALUE
 
 # Candidate negative colours (sRGB 0-1). UV blocking matters, not how dark they look:
@@ -67,6 +68,10 @@ class NegativeSettings:
     # Inches of black between the safe edge and the photo (0 for none): clear film on the
     # negative, so the deepest black the process gives; a border for light-edged photos.
     outline: float = 0.0
+    # Darkroom marks in black ink in the safe edge (they show under a red safelight, and
+    # block UV like the safe edge): a guide line round the image, registration marks.
+    guide: bool = False
+    registration: bool = False
 
     @property
     def border(self) -> float:
@@ -113,7 +118,8 @@ def make_negative(
 def add_safe_edge(
     image: NDArray[np.uint16], settings: NegativeSettings, dpi: float
 ) -> NDArray[np.uint16]:
-    """Surround with the opaque border (and orientation mark), then mirror if asked.
+    """Surround with the opaque border (with its orientation mark and any darkroom
+    marks), then mirror if asked.
 
     The mark is added before mirroring, so on the film it reads backwards exactly
     when the image does; in the contact print it reads correctly when mirroring
@@ -128,6 +134,10 @@ def add_safe_edge(
         framed = np.empty((h + 2 * edge, w + 2 * edge, 3), dtype=np.uint16)
         framed[:] = ink
         framed[edge : edge + h, edge : edge + w] = image
+        if settings.guide or settings.registration:
+            marks = mark_mask(w + 2 * edge, h + 2 * edge, edge, dpi, settings.guide,
+                              settings.registration)  # fmt: skip
+            framed[marks] = 0  # black ink
         if settings.mark:
             cell = max(1, edge * 6 // 10 // F_GLYPH.shape[0])
             glyph = np.kron(F_GLYPH, np.ones((cell, cell), dtype=bool))
@@ -154,3 +164,23 @@ def negative_ppi(
     if room_w <= 0 or room_h <= 0:
         raise ValueError(f"no room for the photo on {paper} with these margins and safe edge")
     return max(width_px / room_w, height_px / room_h)
+
+
+def fit_scale(
+    content: tuple[float, float],
+    fixed: tuple[float, float],
+    box: tuple[float, float],
+    turn: bool = True,
+) -> float:
+    """How much to enlarge (or shrink) a sheet so it fits within `box` (width, height in
+    inches, turned to match the sheet unless `turn` is False, as for the page itself):
+    `content` inches scale, `fixed` inches (its safe edges, the gaps between charts) don't."""
+    if min(box) <= 0:
+        raise ValueError(f"the size must be positive, got {box[0]:g} x {box[1]:g} in")
+    total_w, total_h = content[0] + fixed[0], content[1] + fixed[1]
+    long, short = max(box), min(box)
+    box_w, box_h = ((long, short) if total_w > total_h else (short, long)) if turn else box
+    scale = min((box_w - fixed[0]) / content[0], (box_h - fixed[1]) / content[1])
+    if scale <= 0:
+        raise ValueError(f"no room for the sheet inside {box_w:g} x {box_h:g} in")
+    return scale

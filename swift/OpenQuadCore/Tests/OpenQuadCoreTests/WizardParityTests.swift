@@ -76,6 +76,11 @@ struct WizardParity {
         check("chart_negative", [negative.height, negative.width, 3], negative.pixels)
         let page = Chart.page(colours: ["green", "orange"], processes: [nil, darker], dpi: 60)
         check("chart_page", [page.height, page.width, 3], page.pixels)
+        let markedPage = Chart.page(colours: ["green", "orange"], processes: [nil, darker], mirror: true, dpi: 60, scale: 0.8,
+                                    guide: true, registration: true)
+        check("chart_page_marked", [markedPage.height, markedPage.width, 3], markedPage.pixels)
+        let markedChart = Chart.negative(colour: "orange", dpi: 50 * 1.3, safeEdge: 0.25 / 1.3, guide: true, registration: true)
+        check("chart_negative_marked", [markedChart.height, markedChart.width, 3], markedChart.pixels)
 
         let sheet = Blocking.sheet(dpi: 50, labels: false)
         check("blocking_sheet", [sheet.height, sheet.width, 3], sheet.pixels)
@@ -85,6 +90,25 @@ struct WizardParity {
         #expect(Negative.mixtureColours == v["mixture_colours"] as? [String])
         let mixtures = Blocking.sheet(layout: BlockingLayout(colours: Negative.mixtureColours), dpi: 50, labels: false)
         check("blocking_sheet_mixtures", [mixtures.height, mixtures.width, 3], mixtures.pixels)
+        let marked = Blocking.sheet(dpi: 50, labels: false, scale: 1.4, guide: true, registration: true)
+        check("blocking_sheet_marked", [marked.height, marked.width, 3], marked.pixels)
+        let scales = try #require(v["scales"] as? [String: [[NSNumber]]])
+        for row in scales["blocking"]! {
+            let scale = try Blocking.scale(box: (row[0].doubleValue, row[1].doubleValue))
+            #expect(abs(scale - row[2].doubleValue) < 1e-12)
+        }
+        for row in scales["chart"]! {
+            #expect(abs(try Chart.scale(box: (row[0].doubleValue, row[1].doubleValue)) - row[2].doubleValue) < 1e-12)
+        }
+        for row in scales["page"]! {
+            let scale = try Chart.pageScale(count: row[0].intValue, box: (row[1].doubleValue, row[2].doubleValue))
+            #expect(abs(scale - row[3].doubleValue) < 1e-12)
+        }
+        for row in scales["page_unturned"]! {
+            let scale = try Chart.pageScale(count: row[0].intValue, box: (row[1].doubleValue, row[2].doubleValue), turn: false)
+            #expect(abs(scale - row[3].doubleValue) < 1e-12)
+        }
+        #expect(throws: Paper.FitError.self) { try Paper.fitScale(content: (1, 1), fixed: (2, 2), box: (1, 1)) }
         let labelled = Blocking.sheet(dpi: 50)
         let inked = zip(labelled.pixels, sheet.pixels).filter { $0 != $1 }.count
         #expect(inked > 0 && labelled.pixels.count == sheet.pixels.count)  // the names are drawn, nothing else changes
