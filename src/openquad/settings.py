@@ -41,6 +41,9 @@ class Settings:
     # The Mac app's Negative tab keeps its own printer and paper (None: as above).
     negative_printer: str | None = None
     negative_paper: str | None = None
+    # The test sheets' preferred size (blocking test, process charts): fit within (width,
+    # height) inches; None for their own size.
+    chart_size: list[float] | None = None
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:

@@ -313,6 +313,15 @@ public final class ProcessWizardModel: WizardModel {
     public var film = "inkjet-coated office transparency"
     public var printing = defaultPrinting
     public var useColour = "green"
+    /// Darkroom marks in black in the charts' safe edges.
+    public var guide = false
+    public var registration = false
+    /// Fit the chart page within (width, height) inches (never past the paper's margins);
+    /// nil for the charts' own size. Shared with the blocking test and remembered.
+    public var sheetSize: (Double, Double)? { didSet { rememberSize?(sheetSize) } }
+    @ObservationIgnored var rememberSize: (((Double, Double)?) -> Void)?
+    /// Lengths shown in the window (the app's setting).
+    public var units = LengthUnit.inches
     public private(set) var run: ProcessRun?
     public private(set) var readings: [(String, ChartReading)] = []
     public private(set) var result = ""
@@ -334,7 +343,8 @@ public final class ProcessWizardModel: WizardModel {
             let run = try ProcessRun.start(folder: folder.appendingPathComponent("\(name)-\(Self.timestamp())"), name: name,
                                            colours: orderedColours, scannerHost: scannerHost, mirror: mirror,
                                            film: film.trimmingCharacters(in: .whitespaces),
-                                           printing: printing.trimmingCharacters(in: .whitespaces))
+                                           printing: printing.trimmingCharacters(in: .whitespaces), size: sheetSize,
+                                           guide: guide, registration: registration)
             let page = try run.makePage()
             self.run = run
             useColour = run.colours[0]
@@ -817,9 +827,12 @@ public struct ProcessWizardView: View {
                 Toggle("Mirror the negatives", isOn: $model.mirror)
                 TextField("Film", text: $model.film)
                 TextField("Print settings", text: $model.printing)
+                SheetSize(size: model.sheetSize, units: model.units) { model.sheetSize = $0 }
+                DarkroomMarks(guide: model.guide, registration: model.registration, negative: true, units: model.units,
+                              setGuide: { model.guide = $0 }, setRegistration: { model.registration = $0 })
             }
             .formStyle(.grouped)
-            .frame(height: 290)
+            .frame(height: 330)  // the form scrolls
             }
             HStack {
                 Button("Start", action: model.start).disabled(model.started || model.colours.isEmpty || model.colours.count > 5)

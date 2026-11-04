@@ -18,6 +18,7 @@ from openquad.chart import ProcessCurve, load_process
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.greybalance import Calibration, load_calibration
 from openquad.imageio import save_rgb, srgb_profile
+from openquad.marks import PRINT_BORDER, add_print_marks
 from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, make_negative, negative_ppi
 from openquad.paper import DEFAULT_MARGIN, PAPER_SIZES, box_ppi, fit_ppi, oriented, print_size
 from openquad.photo import Photo, load_photo
@@ -55,6 +56,9 @@ class PrintSession:
     mirror: bool = False
     safe_edge: float = 0.25
     outline: float = 0.0  # inches of black between the safe edge and the photo (0 = none)
+    # Darkroom marks in black: in a negative's safe edge, or a white border round a print.
+    guide: bool = False  # a guide line round the image
+    registration: bool = False  # crosshair targets and corner crop marks
     units: str = "in"  # how the summary shows lengths: "in" or "mm"
 
     # --- choosing things ------------------------------------------------------------
@@ -114,6 +118,8 @@ class PrintSession:
             mirror=self.mirror,
             safe_edge=self.safe_edge,
             outline=self.outline,
+            guide=self.guide,
+            registration=self.registration,
         )
 
     def set_paper(self, paper: str) -> None:
@@ -131,13 +137,12 @@ class PrintSession:
     def effective_ppi(self) -> float:
         photo = self._photo()
         if self.fit:
-            if self.negative:
+            if self._border:
                 ppi = negative_ppi(*photo.size, self.paper, self._border, self.margin)
             else:
                 ppi = fit_ppi(*photo.size, self.paper, self.margin)
             if self.max_size:  # smaller of the page and the box (never past the page)
-                edge = self._border if self.negative else 0.0
-                ppi = max(ppi, box_ppi(*photo.size, self.max_size, edge))
+                ppi = max(ppi, box_ppi(*photo.size, self.max_size, self._border))
             return ppi
         if self.ppi:
             return self.ppi
@@ -145,9 +150,8 @@ class PrintSession:
 
     def size_inches(self) -> tuple[float, float]:
         width, height = print_size(*self._photo().size, self.effective_ppi())
-        if self.negative:  # the safe edge goes round the photo
-            width, height = width + 2 * self._border, height + 2 * self._border
-        return width, height
+        # A negative's safe edge, or a print's border for its marks, goes round the photo.
+        return width + 2 * self._border, height + 2 * self._border
 
     def fits_on_paper(self) -> bool:
         width, height = self.size_inches()
@@ -164,7 +168,8 @@ class PrintSession:
                 pixels = self.process.apply(pixels)
             return make_negative(pixels, self._negative_settings(), dpi or self.effective_ppi())
         rgb = composite(pixels, PRESETS[self.preset])
-        return self.calibration.apply(rgb) if self.calibration else rgb
+        rgb = self.calibration.apply(rgb) if self.calibration else rgb
+        return add_print_marks(rgb, dpi or self.effective_ppi(), self.guide, self.registration)
 
     def preview(self, max_side: int = 900) -> NDArray[np.uint8]:
         """An 8-bit RGB preview of the toned photo (without calibration: what you'll see).
@@ -181,13 +186,23 @@ class PrintSession:
         if self.negative:  # the negative as it will look on the film
             shown = self.render(pixels, dpi=self.effective_ppi() * scale)
         else:
-            shown = composite(pixels, PRESETS[self.preset])
+            toned = composite(pixels, PRESETS[self.preset])
+            ppi = self.effective_ppi() * scale
+            shown = add_print_marks(toned, ppi, self.guide, self.registration)
         return (shown >> 8).astype(np.uint8)
 
     @property
     def _border(self) -> float:
-        """Inches round the photo in a negative: the black outline plus the safe edge."""
-        return self.outline + self.safe_edge
+        """Inches round the photo: in a negative the black outline plus the safe edge; in a
+        print the white border carrying its darkroom marks (if any)."""
+        if self.negative:
+            return self.outline + self.safe_edge
+        return PRINT_BORDER if self.guide or self.registration else 0.0
+
+    def _marks_line(self) -> list[str]:
+        named = ((self.guide, "guide line"), (self.registration, "registration marks"))
+        marks = [name for on, name in named if on]
+        return [f"Darkroom marks: {' and '.join(marks)}"] if marks else []
 
     def _length(self, inches: float) -> str:
         return length(inches, self.units)
@@ -216,6 +231,7 @@ class PrintSession:
                 f"Colour: {self.negative_colour}",
                 f"Process curve: {process}",
                 f"Mirrored: {'yes' if self.mirror else 'no'}",
+                *self._marks_line(),
             ]
         return [
             f"Photo: {self.source.name if self.source else 'untitled'}",
@@ -225,6 +241,7 @@ class PrintSession:
             f"Size: {size(width, height, self.units)} at {self.effective_ppi():.0f} ppi",
             f"Toning: {self.preset}",
             f"Calibration: {calibration}",
+            *self._marks_line(),
         ]
 
     # --- output ---------------------------------------------------------------------

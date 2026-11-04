@@ -45,6 +45,9 @@ opens on first launch (and later from **Help** or the **?** button).
   contact print (carbon, or another UV process).
 - **Contact sheets:** the Contact Sheet tab (⌘3) puts up to 16 photos on one sheet, to print or
   to make a negative of.
+- **Darkroom marks:** the guide line and registration marks (Darkroom marks, in the Print and
+  Negative tabs and both calibration wizards). Can you see and line up a red or orange negative
+  under your safelight?
 - **Tabs:** Print, Negative, Contact Sheet, Printer Calibration and Process Calibration each keep
   their own work. Does moving between them while working feel natural?
 - **The guide:** is anything unclear or missing?
@@ -149,6 +152,16 @@ openquad negative photo.tif -o neg.tif --colour green --fit Letter   # 2. a nega
 
 The orientation **F** in the safe edge prints in the carbon print: if it reads backwards, flip
 `--mirror`.
+
+Red and orange negatives are hard to see under a red safelight: `--guide` adds a black line round
+the image and `--registration` adds targets and corner crop marks, all in black ink in the safe
+edge (it blocks UV like the safe edge, so they don't print). Test sheets take `--size WxH` to fit
+your tissue:
+
+```bash
+openquad negative photo.tif -o neg.tif --colour orange --fit Letter --guide --registration
+openquad target --kind blocking --size 5x7 --guide -o blocking.tif
+```
 
 Then calibrate the process from a ChartThrob-style chart (after Kevin Bjorke's ChartThrob):
 

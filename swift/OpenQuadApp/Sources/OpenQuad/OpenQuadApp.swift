@@ -120,6 +120,16 @@ enum Snapshot {
             model.setOutlineSize(outline)
             model.setOutline(true)
         }
+        if arguments.contains("--guide") { model.setGuide(true) }
+        if arguments.contains("--registration") { model.setRegistration(true) }
+        if arguments.contains("--sheet-size") {  // the test sheets' set size, and their marks
+            root.show(.processCalibration)
+            root.blocking?.sheetSize = (8, 10)
+            root.process?.sheetSize = (8, 10)
+            root.blocking?.guide = arguments.contains("--guide")
+            root.blocking?.registration = arguments.contains("--registration")
+            root.show(tab)
+        }
         if let notice = value("--notice") { root.notice = notice }
         if tab == .contactSheet { fillSheet(root.contactSheet) }
         return root

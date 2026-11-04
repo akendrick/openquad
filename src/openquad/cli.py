@@ -15,14 +15,17 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from openquad import __version__
-from openquad.blocking import BlockingLayout, analyse, blocking_sheet
+from openquad.blocking import BlockingLayout, analyse, blocking_scale, blocking_sheet
 from openquad.chart import (
+    PAGE_EDGE,
     ChartReading,
     ProcessCurve,
     build_process_curve,
     chart_negative,
     chart_page,
+    chart_scale,
     load_process,
+    page_scale,
     read_chart,
     read_chart_page,
     save_process,
@@ -97,6 +100,10 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("--dpi", type=float, default=DEFAULT_DPI, help="resolution (default 300)")
     target.add_argument("--calibration", type=Path, help="grey-balance: apply this calibration")
     target.add_argument("--mirror", action="store_true", help="blocking/chart: mirror the sheet")
+    target.add_argument("--size", metavar="WxH", type=_inches_pair,
+                        help="blocking/chart: enlarge or shrink the sheet to fit within W x H "
+                             "inches, safe edge included (turned to match)")  # fmt: skip
+    _mark_arguments(target, "blocking/chart: ")
     target.add_argument(
         "--mixtures",
         action="store_true",
@@ -166,6 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     neg.add_argument("--outline", type=float, default=0.0, metavar="INCHES",
                      help="black outline inside the safe edge (default none)")  # fmt: skip
     neg.add_argument("--process", type=Path, help="process curve (.oqproc) to apply first")
+    _mark_arguments(neg)
     size = neg.add_mutually_exclusive_group()
     size.add_argument("--dpi", type=float, help="print resolution (default: the photo's own)")
     size.add_argument("--fit", metavar="PAPER", help="size photo + safe edge to fit PAPER")
@@ -266,12 +274,21 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _mark_arguments(parser: argparse.ArgumentParser, prefix: str = "") -> None:
+    parser.add_argument("--guide", action="store_true",
+                        help=f"{prefix}black guide line round the image, in the safe edge "
+                             "(shows under a red safelight)")  # fmt: skip
+    parser.add_argument("--registration", action="store_true",
+                        help=f"{prefix}black registration marks in the safe edge")  # fmt: skip
+
+
 def _calibration(path: Path | None) -> Calibration | None:
     return load_calibration(path) if path else None
 
 
 def _target(args: argparse.Namespace) -> None:
     dpi = (args.dpi, args.dpi)
+    marks = {"guide": args.guide, "registration": args.registration}
     if args.kind == "chart":
         processes = [load_process(path) for path in args.process]
         colours = [pr.colour for pr in processes] if processes else args.colour
@@ -279,10 +296,13 @@ def _target(args: argparse.Namespace) -> None:
             raise ValueError("give one --process per colour")
         if len(colours) > 1:
             curves: list[ProcessCurve | None] = list(processes) or [None] * len(colours)
-            sheet = chart_page(colours, curves, mirror=args.mirror, dpi=args.dpi)
+            scale = page_scale(len(colours), args.size) if args.size else 1.0
+            sheet = chart_page(colours, curves, args.mirror, args.dpi, scale, **marks)
         else:
             process = processes[0] if processes else None
-            sheet = chart_negative(colours[0], process, mirror=args.mirror, dpi=args.dpi)
+            scale = chart_scale(args.size) if args.size else 1.0
+            sheet = chart_negative(colours[0], process, args.mirror, args.dpi * scale,
+                                   safe_edge=PAGE_EDGE / scale, **marks)  # fmt: skip
         colour = " over ".join(colours)
         save_rgb(args.output, sheet, dpi, srgb_profile())
         width, height = sheet.shape[1] / args.dpi, sheet.shape[0] / args.dpi
@@ -293,7 +313,9 @@ def _target(args: argparse.Namespace) -> None:
         print("print it on film, contact print it, then scan the print: openquad chart SCAN")
         return
     if args.kind == "blocking":
-        sheet = blocking_sheet(_blocking_layout(args.mixtures), dpi=args.dpi, mirror=args.mirror)
+        layout = _blocking_layout(args.mixtures)
+        scale = blocking_scale(args.size, layout) if args.size else 1.0
+        sheet = blocking_sheet(layout, args.dpi, args.mirror, scale=scale, **marks)
         save_rgb(args.output, sheet, dpi, srgb_profile())
         width, height = sheet.shape[1] / args.dpi, sheet.shape[0] / args.dpi
         print(f"wrote {args.output} (blocking test, {width:.2f} x {height:.2f} in): print it on")
@@ -442,6 +464,8 @@ def _negative(args: argparse.Namespace) -> None:
         safe_edge=args.safe_edge,
         mark=not args.no_mark,
         outline=args.outline,
+        guide=args.guide,
+        registration=args.registration,
     )
     if args.max_size and not args.fit:
         raise ValueError("--max-size works with --fit PAPER")

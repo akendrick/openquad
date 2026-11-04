@@ -336,9 +336,16 @@ public final class ProcessRun: @unchecked Sendable {
     public let film: String
     public let printing: String
     public private(set) var rounds: [ProcessRound]
+    /// The page's preferred size: fit within (width, height) inches (never past the paper's
+    /// margins); nil for the charts' own size.
+    public let size: (Double, Double)?
+    /// Darkroom marks in the charts' safe edges.
+    public let guide: Bool
+    public let registration: Bool
 
     init(folder: URL, name: String, colours: [String], printer: String, paper: String, scannerHost: String,
-         mirror: Bool, film: String, printing: String, rounds: [ProcessRound]) {
+         mirror: Bool, film: String, printing: String, rounds: [ProcessRound], size: (Double, Double)? = nil,
+         guide: Bool = false, registration: Bool = false) {
         self.folder = folder
         self.name = name
         self.colours = colours
@@ -349,17 +356,22 @@ public final class ProcessRun: @unchecked Sendable {
         self.film = film
         self.printing = printing
         self.rounds = rounds
+        self.size = size
+        self.guide = guide
+        self.registration = registration
     }
 
     public static func start(folder: URL, name: String, colours: [String], printer: String = "", paper: String = "Letter",
                              scannerHost: String = "", mirror: Bool = false, film: String = "", printing: String = "",
-                             starting: [String: ProcessCurve] = [:]) throws -> ProcessRun {
+                             starting: [String: ProcessCurve] = [:], size: (Double, Double)? = nil, guide: Bool = false,
+                             registration: Bool = false) throws -> ProcessRun {
         guard validRunName(name) else { throw RunError(description: "invalid name \(pyRepr(name))") }
         guard (1...5).contains(colours.count), colours.allSatisfy({ Negative.colours[$0] != nil }) else {
             throw RunError(description: "choose 1-5 colours from \(Negative.colourOrder.joined(separator: ", "))")
         }
         let run = ProcessRun(folder: folder, name: name.trimmingCharacters(in: .whitespaces), colours: colours, printer: printer,
-                             paper: paper, scannerHost: scannerHost, mirror: mirror, film: film, printing: printing, rounds: [])
+                             paper: paper, scannerHost: scannerHost, mirror: mirror, film: film, printing: printing, rounds: [],
+                             size: size, guide: guide, registration: registration)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         try run.newRound(Dictionary(uniqueKeysWithValues: colours.map { ($0, starting[$0] ?? .identity(colour: $0)) }))
         return run
@@ -374,13 +386,16 @@ public final class ProcessRun: @unchecked Sendable {
         return ProcessRun(folder: folder, name: name, colours: colours, printer: d["printer"] as? String ?? "",
                           paper: d["paper"] as? String ?? "Letter", scannerHost: d["scanner_host"] as? String ?? "",
                           mirror: d["mirror"] as? Bool ?? false, film: d["film"] as? String ?? "",
-                          printing: d["printing"] as? String ?? "", rounds: try rounds.map(ProcessRound.init))
+                          printing: d["printing"] as? String ?? "", rounds: try rounds.map(ProcessRound.init),
+                          size: (d["size"] as? [Double]).flatMap { $0.count == 2 ? ($0[0], $0[1]) : nil },
+                          guide: d["guide"] as? Bool ?? false, registration: d["registration"] as? Bool ?? false)
     }
 
     func saveLog() throws {
         try writeText(try jsonText(["name": name, "colours": colours, "printer": printer, "paper": paper,
                                     "scanner_host": scannerHost, "mirror": mirror, "film": film, "printing": printing,
-                                    "rounds": rounds.map(\.dictionary)] as [String: Any]),
+                                    "rounds": rounds.map(\.dictionary), "size": size.map { [$0.0, $0.1] as Any } ?? NSNull(),
+                                    "guide": guide, "registration": registration] as [String: Any]),
                       to: folder.appendingPathComponent("run.json"))
     }
 
@@ -404,11 +419,21 @@ public final class ProcessRun: @unchecked Sendable {
         folder.appendingPathComponent("\(name)-v\(current.version)-\(kind)\(suffix)")
     }
 
+    /// How much the charts are enlarged or shrunk to fit the preferred size.
+    public func scale() throws -> Double {
+        guard let size else { return 1 }
+        let (paperW, paperH) = Paper.sizes[paper] ?? Paper.sizes["Letter"]!
+        let room = (paperW - 2 * Paper.defaultMargin, paperH - 2 * Paper.defaultMargin)
+        return min(try Chart.pageScale(count: colours.count, box: size),
+                   try Chart.pageScale(count: colours.count, box: room, turn: false))
+    }
+
     /// This round's page of charts (to print here or from another app at 300 ppi).
     @discardableResult
     public func makePage() throws -> URL {
         let url = file("page", ".tif")
-        let page = Chart.page(colours: colours, processes: try colours.map { try curve($0) }, mirror: mirror, dpi: Self.pagePPI)
+        let page = Chart.page(colours: colours, processes: try colours.map { try curve($0) }, mirror: mirror, dpi: Self.pagePPI,
+                              scale: try scale(), guide: guide, registration: registration)
         try ImageFiles.saveRGB(url, page, dpi: (Self.pagePPI, Self.pagePPI), iccProfile: ImageFiles.srgbProfile())
         rounds[rounds.count - 1].page = url.lastPathComponent
         try saveLog()

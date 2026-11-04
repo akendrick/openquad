@@ -178,8 +178,12 @@ extension Blocking {
     /// colour a full-strength patch and an 11-step wedge, inside a black safe edge.
     /// Mirrors openquad/blocking.py blocking_sheet; the colour names are drawn with the
     /// system font (Python uses Pillow's), so `labels: false` gives the identical sheet.
+    /// `scale` enlarges or shrinks the sheet (not its safe edge) to fit a preferred size
+    /// (see `scale(box:)`); `guide` and `registration` add darkroom marks.
     public static func sheet(layout: BlockingLayout = BlockingLayout(), dpi: Double = 300, mirror: Bool = false,
-                             safeEdge: Double = 0.25, labels: Bool = true) -> RGBImage {
+                             safeEdge: Double = 0.25, labels: Bool = true, scale: Double = 1,
+                             guide: Bool = false, registration: Bool = false) -> RGBImage {
+        let dpi = dpi * scale, safeEdge = safeEdge / scale  // the same edge in inches
         let height = pyRound(layout.height * dpi), width = pyRound(layout.width * dpi)
         var pixels = [UInt16](repeating: UInt16(maxValue), count: width * height * 3)
         func fill(_ box: (Double, Double, Double, Double), _ rgb: (UInt16, UInt16, UInt16)) {
@@ -205,6 +209,14 @@ extension Blocking {
             for (i, on) in mask.enumerated() where on { (pixels[i * 3], pixels[i * 3 + 1], pixels[i * 3 + 2]) = (0, 0, 0) }
         }
         return Negative.addSafeEdge(RGBImage(width: width, height: height, pixels: pixels),
-                                    settings: NegativeSettings(mirror: mirror, safeEdge: safeEdge), dpi: dpi)
+                                    settings: NegativeSettings(mirror: mirror, safeEdge: safeEdge, guide: guide,
+                                                               registration: registration), dpi: dpi)
+    }
+
+    /// The `scale` that makes the sheet, safe edge included, fit within `box` inches (turned
+    /// to match unless `turn` is false).
+    public static func scale(box: (Double, Double), layout: BlockingLayout = BlockingLayout(),
+                             safeEdge: Double = 0.25, turn: Bool = true) throws -> Double {
+        try Paper.fitScale(content: (layout.width, layout.height), fixed: (2 * safeEdge, 2 * safeEdge), box: box, turn: turn)
     }
 }

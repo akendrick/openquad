@@ -46,6 +46,8 @@ struct SessionParity {
             session.safeEdge = (c["safe_edge"] as? NSNumber)?.doubleValue ?? 0.25
             if let box = c["max_size"] as? [NSNumber] { session.maxSize = (box[0].doubleValue, box[1].doubleValue) }
             session.outline = (c["outline"] as? NSNumber)?.doubleValue ?? 0
+            session.guide = c["guide"] as? Bool ?? false
+            session.registration = c["registration"] as? Bool ?? false
             session.units = LengthUnit(rawValue: c["units"] as? String ?? "in")!
             session.printer = "Canon_MG3600_series"
 
@@ -101,6 +103,7 @@ struct SessionParity {
         settings.units = .millimetres
         settings.negativePrinter = "Epson_ET_2900"
         settings.negativePaper = "A4"
+        settings.chartSize = [8, 10]
         try settings.save(url)
         #expect(AppSettings.load(url) == settings)
         let text = try String(contentsOf: url, encoding: .utf8)

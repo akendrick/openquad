@@ -18,6 +18,13 @@ public final class BlockingTestModel: WizardModel {
     public var chart = ChartKind.standard
     public var mirror = false
     public var safeEdge = 0.25
+    /// Darkroom marks in black in the safe edge.
+    public var guide = false
+    public var registration = false
+    /// Fit within (width, height) inches (never past Letter's margins); nil for the sheet's
+    /// own size. Shared with the process charts and remembered (see `rememberSize`).
+    public var sheetSize: (Double, Double)? { didSet { rememberSize?(sheetSize) } }
+    @ObservationIgnored var rememberSize: (((Double, Double)?) -> Void)?
     /// Lengths shown in the window (the app's setting).
     public var units = LengthUnit.inches
     public private(set) var report: BlockingReport?
@@ -32,7 +39,21 @@ public final class BlockingTestModel: WizardModel {
         BlockingLayout(colours: chart == .mixtures ? Negative.mixtureColours : Negative.standardColours)
     }
 
-    public func sheet() -> RGBImage { Blocking.sheet(layout: layout, dpi: 300, mirror: mirror, safeEdge: safeEdge) }
+    public func sheet() -> RGBImage {
+        Blocking.sheet(layout: layout, dpi: 300, mirror: mirror, safeEdge: safeEdge, scale: scale, guide: guide,
+                       registration: registration)
+    }
+
+    /// How much the sheet is enlarged or shrunk: to fit the set size and Letter's margins.
+    public var scale: Double {
+        guard let sheetSize else { return 1 }
+        let (paperW, paperH) = Paper.sizes["Letter"]!
+        let room = (paperW - 2 * Paper.defaultMargin, paperH - 2 * Paper.defaultMargin)
+        func fit(_ box: (Double, Double), turn: Bool) -> Double {
+            (try? Blocking.scale(box: box, layout: layout, safeEdge: safeEdge, turn: turn)) ?? 1
+        }
+        return min(fit(sheetSize, turn: true), fit(room, turn: false))  // the page doesn't turn
+    }
 
     public func printRequest() -> (RGBImage, Double, Double, String, String) {
         let sheet = sheet()
@@ -132,10 +153,13 @@ public struct BlockingTestView: View {
                 Toggle("Mirror the sheet", isOn: $model.mirror)
                 LengthStepper(title: "Safe edge", inches: model.safeEdge, range: 0...1, inchStep: 0.05, mmStep: 1,
                               units: model.units) { model.safeEdge = $0 }
+                SheetSize(size: model.sheetSize, units: model.units) { model.sheetSize = $0 }
+                DarkroomMarks(guide: model.guide, registration: model.registration, negative: true, units: model.units,
+                              setGuide: { model.guide = $0 }, setRegistration: { model.registration = $0 })
                 LabeledContent("Scanner") { ScannerField(model: model) }
             }
             .formStyle(.grouped)
-            .frame(height: 170)
+            .frame(height: 300)  // the form scrolls
             HStack {
                 Button("1. Print Test Sheet…") {
                     if printWithPanel(model.printRequest()) { model.say("Printed the test sheet. Contact print it, then scan the print.") }

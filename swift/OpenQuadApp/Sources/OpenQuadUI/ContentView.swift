@@ -34,7 +34,7 @@ public struct ContentView: View {
                 .disabled(setupName.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Remembers the process curve, ink colour, mirror, safe edge, black outline, printer and paper. "
+            Text("Remembers the process curve, ink colour, mirror, safe edge, black outline, darkroom marks, printer and paper. "
                  + "A setup with the same name is replaced.")
         }
         .confirmationDialog("Delete the setup “\(deletingSetup?.name ?? "")”?", isPresented: Binding(
@@ -63,6 +63,11 @@ public struct ContentView: View {
                 }
                 Section(model.session.negative ? "Negative" : "Toning and calibration") {
                     if model.session.negative { negativeControls } else { printControls }
+                }
+                Section("Darkroom marks") {
+                    DarkroomMarks(guide: model.session.guide, registration: model.session.registration,
+                                  negative: model.session.negative, units: model.units,
+                                  setGuide: model.setGuide, setRegistration: model.setRegistration)
                 }
                 Section("Page") {
                     Picker("Printer", selection: Binding(get: { model.session.printer }, set: { model.setPrinter($0) })) {

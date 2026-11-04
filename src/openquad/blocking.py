@@ -29,6 +29,7 @@ from openquad.negative import (
     STANDARD_COLOURS,
     NegativeSettings,
     add_safe_edge,
+    fit_scale,
     ink_to_rgb,
 )
 from openquad.quadfile import MAX_VALUE
@@ -113,9 +114,17 @@ def blocking_sheet(
     dpi: float = 300.0,
     mirror: bool = False,
     safe_edge: float = 0.25,
+    scale: float = 1.0,
+    guide: bool = False,
+    registration: bool = False,
 ) -> NDArray[np.uint16]:
-    """The test sheet as a negative: (H, W, 3) uint16 sRGB, clear film = 65535."""
+    """The test sheet as a negative: (H, W, 3) uint16 sRGB, clear film = 65535.
+
+    `scale` enlarges or shrinks the sheet (not its safe edge) to fit a preferred size;
+    see `blocking_scale`. `guide` and `registration` add darkroom marks.
+    """
     layout = layout or BlockingLayout()
+    dpi, safe_edge = dpi * scale, safe_edge / scale  # the same edge in inches
     for name in layout.colours:
         if name not in NEGATIVE_COLOURS:
             raise BlockingError(f"unknown colour {name!r}")
@@ -134,8 +143,22 @@ def blocking_sheet(
             coverage = np.array([1.0 - step / (STEPS - 1)])  # 100% next to the full patch
             sheet[px(layout.step_box(row, step))] = ink_to_rgb(coverage, colour)[0]
     _draw_labels(sheet, layout, dpi)
-    settings = NegativeSettings(mirror=mirror, safe_edge=safe_edge)
+    settings = NegativeSettings(
+        mirror=mirror, safe_edge=safe_edge, guide=guide, registration=registration
+    )
     return add_safe_edge(sheet, settings, dpi)
+
+
+def blocking_scale(
+    box: tuple[float, float],
+    layout: BlockingLayout | None = None,
+    safe_edge: float = 0.25,
+    turn: bool = True,
+) -> float:
+    """The `scale` that makes the sheet, safe edge included, fit within `box` inches
+    (turned to match unless `turn` is False)."""
+    layout = layout or BlockingLayout()
+    return fit_scale((layout.width, layout.height), (2 * safe_edge, 2 * safe_edge), box, turn)
 
 
 def _draw_labels(sheet: NDArray[np.uint16], layout: BlockingLayout, dpi: float) -> None:

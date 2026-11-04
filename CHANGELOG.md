@@ -6,6 +6,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Darkroom marks: a black guide line round the image and registration marks (a crosshair target
+  on each side, crop marks at the corners), each a checkbox. On negatives they go in the safe edge
+  in black ink, which shows under a red safelight (red and orange negatives all but vanish there)
+  and blocks UV like the safe edge, so nothing prints; saved setups remember them. Prints get them
+  in a 0.25 in white border. The blocking test and process charts offer them too. Command line:
+  `--guide` and `--registration` on `negative` and `target --kind blocking|chart`.
+- Test sheets take a preferred size: the blocking test and process chart page can be enlarged or
+  shrunk to fit within W x H (turned to match, safe edge included, never past the page's margins);
+  the patches keep their shape, so scans read as before. Remembered between sessions. Command
+  line: `openquad target --kind blocking --size 8x10`.
 - Tabs: the Mac app is one window with five tabs along the toolbar (⌘1–⌘5): Print, Negative,
   Contact Sheet, Printer Calibration and Process Calibration (blocking colour, then process curve).
   Each tab keeps its own work, so one printer can be calibrating while another prints; the Print
@@ -43,6 +53,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   process's deepest black. Part of the negative's size, so Fit to page and Fit within allow for
   it. App: "Outline in black" with its width under the safe edge; command line:
   `openquad negative --outline 0.1`.
+
+### Changed
+- Stacked process charts sit closer together: 0.1 in of film between them instead of 0.3 in.
 
 ## [0.1.0-beta.3] - 2026-10-27
 
