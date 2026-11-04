@@ -6,6 +6,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+
+- Process calibration shows a preview of the chart page it will print (before Start, from the
+  settings; after, this round's page through its curves) with its size on film.
+- Process calibration can continue a kept run ("Continue a Previous Run"), start a new run from
+  an earlier run's latest curves or from .oqproc files ("Start from"), and go back to the settings
+  with "New Run…" to adjust a finished calibration further.
+- The process run's print-settings note can be edited after Start; it is saved with the run and
+  recorded in later curves.
 - Darkroom marks: a black guide line round the image and registration marks (a crosshair target
   on each side, crop marks at the corners), each a checkbox. On negatives they go in the safe edge
   in black ink, which shows under a red safelight (red and orange negatives all but vanish there)
@@ -55,6 +63,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   `openquad negative --outline 0.1`.
 
 ### Changed
+
+- The process print-settings note no longer defaults to "600 x 600"; it starts empty, since the
+  quality and resolution are chosen in the print panel.
 - Stacked process charts sit closer together: 0.1 in of film between them instead of 0.3 in.
 
 ## [0.1.0-beta.3] - 2026-10-27
