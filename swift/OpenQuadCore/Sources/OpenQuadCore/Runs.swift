@@ -334,7 +334,8 @@ public final class ProcessRun: @unchecked Sendable {
     public var scannerHost: String
     public let mirror: Bool
     public let film: String
-    public let printing: String
+    /// How the film is printed (a note kept with the run and its curves); can change.
+    public private(set) var printing: String
     public private(set) var rounds: [ProcessRound]
     /// The page's preferred size: fit within (width, height) inches (never past the paper's
     /// margins); nil for the charts' own size.
@@ -420,12 +421,22 @@ public final class ProcessRun: @unchecked Sendable {
     }
 
     /// How much the charts are enlarged or shrunk to fit the preferred size.
-    public func scale() throws -> Double {
+    public func scale() throws -> Double { try Self.scale(count: colours.count, size: size, paper: paper) }
+
+    /// The scale for a page of `count` charts fitting `size` (nil: their own size) and the
+    /// paper's margins (the page doesn't turn).
+    public static func scale(count: Int, size: (Double, Double)?, paper: String = "Letter") throws -> Double {
         guard let size else { return 1 }
         let (paperW, paperH) = Paper.sizes[paper] ?? Paper.sizes["Letter"]!
         let room = (paperW - 2 * Paper.defaultMargin, paperH - 2 * Paper.defaultMargin)
-        return min(try Chart.pageScale(count: colours.count, box: size),
-                   try Chart.pageScale(count: colours.count, box: room, turn: false))
+        return min(try Chart.pageScale(count: count, box: size), try Chart.pageScale(count: count, box: room, turn: false))
+    }
+
+    /// Change the note of how the film is printed (e.g. after choosing 2400 x 1200 in the
+    /// print panel); later curves record the new one.
+    public func setPrinting(_ text: String) throws {
+        printing = text.trimmingCharacters(in: .whitespaces)
+        try saveLog()
     }
 
     /// This round's page of charts (to print here or from another app at 300 ppi).

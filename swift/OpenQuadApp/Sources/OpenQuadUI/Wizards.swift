@@ -306,12 +306,13 @@ public final class CalibrationWizardModel: WizardModel {
 @MainActor
 @Observable
 public final class ProcessWizardModel: WizardModel {
-    public static let defaultPrinting = "Fine glossy paper, Extra detail, Diffusion, 600 x 600"
     public var name = "carbon-office-film"
     public var colours: Set<String> = ["green", "orange"]
     public var mirror = false
     public var film = "inkjet-coated office transparency"
-    public var printing = defaultPrinting
+    /// A note of how the film is printed (the print panel's paper type, quality and
+    /// resolution), kept with the run so every round is printed the same way.
+    public var printing = ""
     public var useColour = "green"
     /// Darkroom marks in black in the charts' safe edges.
     public var guide = false
@@ -322,6 +323,10 @@ public final class ProcessWizardModel: WizardModel {
     @ObservationIgnored var rememberSize: (((Double, Double)?) -> Void)?
     /// Lengths shown in the window (the app's setting).
     public var units = LengthUnit.inches
+    /// Curves the next run starts from, by colour (an earlier run's latest round or
+    /// .oqproc files), so a finished calibration can be adjusted further; empty for none.
+    public private(set) var startingCurves: [String: ProcessCurve] = [:]
+    public private(set) var startingName: String?
     public private(set) var run: ProcessRun?
     public private(set) var readings: [(String, ChartReading)] = []
     public private(set) var result = ""
@@ -337,13 +342,101 @@ public final class ProcessWizardModel: WizardModel {
     public var printed: Bool { run?.current.job != nil }
     public var measured: Bool { run.map { $0.current.readings.count == $0.colours.count } ?? false }
 
+    /// Process runs kept in the folder, newest first.
+    public var savedRuns: [CalibrationWizardModel.SavedRun] {
+        let fm = FileManager.default
+        guard let folders = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else { return [] }
+        let format = DateFormatter()
+        format.dateFormat = "d MMM, HH:mm"
+        let runs = folders.compactMap { url -> CalibrationWizardModel.SavedRun? in
+            guard let run = try? ProcessRun.resume(url),
+                  let modified = (try? url.appendingPathComponent("run.json").resourceValues(
+                      forKeys: [.contentModificationDateKey]))?.contentModificationDate else { return nil }
+            let label = "\(run.name), \(run.colours.joined(separator: " over ")): round \(run.current.version) "
+                + "(\(format.string(from: modified)))"
+            return CalibrationWizardModel.SavedRun(folder: url, label: label, modified: modified)
+        }
+        return Array(runs.sorted { $0.modified > $1.modified }.prefix(10))
+    }
+
+    /// Carry on with a kept run: its settings, its latest round and any readings.
+    public func resume(_ saved: URL) {
+        do {
+            let run = try ProcessRun.resume(saved)
+            self.run = run
+            name = run.name
+            colours = Set(run.colours)
+            mirror = run.mirror
+            film = run.film
+            printing = run.printing
+            guide = run.guide
+            registration = run.registration
+            let remember = rememberSize
+            rememberSize = nil  // the run's own size, not a new preference
+            sheetSize = run.size
+            rememberSize = remember
+            if !run.scannerHost.isEmpty { scannerHost = run.scannerHost }
+            let read = (try? run.readings()) ?? [:]
+            readings = run.colours.compactMap { c in read[c].map { (c, $0) } }
+            useColour = run.bestColour() ?? run.colours[0]
+            result = ""
+            error = nil
+            say("Continuing \(run.name), round \(run.current.version).")
+        } catch {
+            self.error = "Couldn't continue that run: \(error)"
+        }
+    }
+
+    /// Start the next run from a kept run's latest curves (its colours chosen too).
+    public func startFrom(run saved: URL) {
+        do {
+            let run = try ProcessRun.resume(saved)
+            startingCurves = Dictionary(uniqueKeysWithValues: try run.colours.map { ($0, try run.curve($0)) })
+            startingName = "\(run.name) round \(run.current.version)"
+            colours = Set(run.colours)
+            if film.isEmpty { film = run.film }
+            say("Starting from \(startingName!): \(run.colours.joined(separator: ", ")).")
+        } catch {
+            self.error = "Couldn't read that run's curves: \(error)"
+        }
+    }
+
+    /// Start the next run from .oqproc process curves (one per colour; a later file wins).
+    public func startFrom(files: [URL]) {
+        do {
+            let curves = try files.map { try ProcessCurve.decode(Data(contentsOf: $0)) }
+            guard !curves.isEmpty else { return }
+            startingCurves = Dictionary(curves.map { ($0.colour, $0) }) { _, later in later }
+            startingName = files.count == 1 ? files[0].deletingPathExtension().lastPathComponent : "\(files.count) curve files"
+            colours.formUnion(startingCurves.keys)
+            say("Starting from \(startingName!): \(Negative.colourOrder.filter(startingCurves.keys.contains).joined(separator: ", ")).")
+        } catch {
+            self.error = "Couldn't read those curves: \(error)"
+        }
+    }
+
+    public func startFromScratch() {
+        startingCurves = [:]
+        startingName = nil
+    }
+
+    /// Back to the settings to start another run (this one stays kept, to continue).
+    public func closeRun() {
+        guard let run else { return }
+        self.run = nil
+        readings = []
+        result = ""
+        say("Put \(run.name) aside; continue it any time.")
+    }
+
     public func start() {
         let name = self.name.trimmingCharacters(in: .whitespaces)
         do {
             let run = try ProcessRun.start(folder: folder.appendingPathComponent("\(name)-\(Self.timestamp())"), name: name,
                                            colours: orderedColours, scannerHost: scannerHost, mirror: mirror,
                                            film: film.trimmingCharacters(in: .whitespaces),
-                                           printing: printing.trimmingCharacters(in: .whitespaces), size: sheetSize,
+                                           printing: printing.trimmingCharacters(in: .whitespaces),
+                                           starting: startingCurves.filter { orderedColours.contains($0.key) }, size: sheetSize,
                                            guide: guide, registration: registration)
             let page = try run.makePage()
             self.run = run
@@ -362,6 +455,35 @@ public final class ProcessWizardModel: WizardModel {
         let image = RGBImage(width: page.width, height: page.height, pixels: page.samples)
         return (image, Double(page.width) / ProcessRun.pagePPI, Double(page.height) / ProcessRun.pagePPI, run.paper,
                 "OpenQuad process chart: \(run.name) v\(run.current.version)")
+    }
+
+    /// Pixels per inch of `preview()`.
+    public static let previewPPI = 30.0
+
+    /// The chart page as it will print, small: this round's (through its curves) once
+    /// started, otherwise what Start would make from the settings. Nil with no colours.
+    public func preview() -> RGBImage? {
+        if let run {
+            guard let curves = try? run.colours.map({ try run.curve($0) }) else { return nil }
+            return Chart.page(colours: run.colours, processes: curves, mirror: run.mirror, dpi: Self.previewPPI,
+                              scale: (try? run.scale()) ?? 1, guide: run.guide, registration: run.registration)
+        }
+        let colours = orderedColours
+        guard (1...5).contains(colours.count) else { return nil }
+        let scale = (try? ProcessRun.scale(count: colours.count, size: sheetSize)) ?? 1
+        return Chart.page(colours: colours, processes: colours.map { startingCurves[$0] }, mirror: mirror, dpi: Self.previewPPI, scale: scale, guide: guide,
+                          registration: registration)
+    }
+
+    /// Keep an edited print-settings note with the run.
+    public func savePrinting() {
+        guard let run, run.printing != printing.trimmingCharacters(in: .whitespaces) else { return }
+        do {
+            try run.setPrinting(printing)
+            say("Print settings: \(run.printing.isEmpty ? "none noted" : run.printing)")
+        } catch {
+            self.error = "\(error)"
+        }
     }
 
     public func printed(_ note: String) {
@@ -811,7 +933,11 @@ public struct ProcessWizardView: View {
                 Text([model.run?.colours.joined(separator: " over ") ?? "", model.film, model.mirror ? "mirrored" : "not mirrored",
                       "scanner \(model.scannerHost.isEmpty ? "not set" : model.scannerHost)"].joined(separator: " · "))
                     .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Form { printSettings }
+                    .formStyle(.grouped)
+                    .frame(height: 110)
             } else {
+            previousRuns
             Form {
                 TextField("Name", text: $model.name)
                 LabeledContent("Colours") {
@@ -826,7 +952,24 @@ public struct ProcessWizardView: View {
                 LabeledContent("Scanner") { ScannerField(model: model) }
                 Toggle("Mirror the negatives", isOn: $model.mirror)
                 TextField("Film", text: $model.film)
-                TextField("Print settings", text: $model.printing)
+                LabeledContent("Start from") {
+                    HStack {
+                        Text(model.startingName.map { "\($0) (adjusted further)" } ?? "No correction")
+                            .lineLimit(1).truncationMode(.middle)
+                        Menu("Change") {
+                            Button("No Correction", action: model.startFromScratch)
+                            let saved = model.savedRuns
+                            if !saved.isEmpty {
+                                Section("A previous run's latest curves") {
+                                    ForEach(saved) { run in Button(run.label) { model.startFrom(run: run.folder) } }
+                                }
+                            }
+                            Button("Process Curve Files…", action: chooseCurves)
+                        }
+                        .fixedSize()
+                    }
+                }
+                printSettings
                 SheetSize(size: model.sheetSize, units: model.units) { model.sheetSize = $0 }
                 DarkroomMarks(guide: model.guide, registration: model.registration, negative: true, units: model.units,
                               setGuide: { model.guide = $0 }, setRegistration: { model.registration = $0 })
@@ -838,6 +981,7 @@ public struct ProcessWizardView: View {
                 Button("Start", action: model.start).disabled(model.started || model.colours.isEmpty || model.colours.count > 5)
                 Button("1. Print Chart Page…", action: printPage).disabled(!model.started || model.busy)
                 Button("…or I Printed It Elsewhere") { model.printed("printed elsewhere") }.disabled(!model.started || model.busy)
+                if model.started { Button("New Run…", action: model.closeRun).disabled(model.busy) }
                 if model.busy { ProgressView().controlSize(.small) }
             }
             HStack {
@@ -845,8 +989,13 @@ public struct ProcessWizardView: View {
                 Button("…or Read a Scan File", action: readFile).disabled(!model.printed || model.busy)
                 Button("3. Refine the Curves", action: model.refine).disabled(!model.measured || model.busy)
             }
-            ToneChartView(readings: model.readings)
-                .frame(minHeight: 260, maxHeight: .infinity)
+            HStack(alignment: .top, spacing: 16) {
+                SheetPreview(image: model.preview(), ppi: ProcessWizardModel.previewPPI, units: model.units,
+                             title: model.started ? "This round's page" : "The page Start makes")
+                    .frame(width: 220)
+                ToneChartView(readings: model.readings)
+            }
+            .frame(minHeight: 260, maxHeight: .infinity, alignment: .top)
             if !model.result.isEmpty { Text(model.result).fixedSize(horizontal: false, vertical: true) }
             if let error = model.error { Text(error).foregroundStyle(.red) }
             HStack {
@@ -867,7 +1016,44 @@ public struct ProcessWizardView: View {
         }
     }
 
+    /// Kept runs to carry on with (another round, or adjust an earlier calibration further).
+    @ViewBuilder private var previousRuns: some View {
+        let saved = model.savedRuns
+        if !saved.isEmpty {
+            HStack {
+                Text("Or carry on with a kept run:").foregroundStyle(.secondary)
+                Menu("Continue a Previous Run") {
+                    ForEach(saved) { run in Button(run.label) { model.resume(run.folder) } }
+                }
+                .fixedSize()
+            }
+        }
+    }
+
+    private func chooseCurves() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [UTType(filenameExtension: "oqproc") ?? .data]
+        panel.allowsMultipleSelection = true
+        panel.directoryURL = model.folder
+        panel.message = "Choose process curves to adjust further (one per colour)"
+        if panel.runModal() == .OK { model.startFrom(files: panel.urls) }
+    }
+
+    /// The print-settings note: editable before and after Start.
+    private var printSettings: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            TextField("Print settings", text: $model.printing,
+                      prompt: Text("e.g. Glossy film, Highest quality, 2400 x 1200"))
+                .onSubmit(model.savePrinting)
+            Text("A note of the paper type, quality and resolution you choose in the print panel (it opens at Print "
+                 + "Chart Page…), so every round prints the same way. OpenQuad doesn't set them; the page itself is 300 ppi.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private func printPage() {
+        model.savePrinting()
         do {
             guard let request = try model.pageForPrinting() else { return }
             if printWithPanel(request) { model.printed("print panel") }

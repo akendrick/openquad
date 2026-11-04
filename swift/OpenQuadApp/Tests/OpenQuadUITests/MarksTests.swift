@@ -84,4 +84,54 @@ struct MarksTests {
         let resumed = try ProcessRun.resume(run.folder)
         #expect(resumed.size.map { [$0.0, $0.1] } == [4, 6] && resumed.registration)
     }
+
+    @Test func processWizardPreviewsThePageAndKeepsAnEditedPrintNote() throws {
+        let wizard = ProcessWizardModel(folder: folder.appendingPathComponent("processes"), scannerHost: "")
+        #expect(wizard.printing.isEmpty)
+        wizard.colours = ["green", "red"]
+        let before = try #require(wizard.preview())
+        wizard.sheetSize = (4, 6)
+        let small = try #require(wizard.preview())
+        #expect(small.width < before.width || small.height < before.height)
+        #expect(Double(max(small.width, small.height)) / ProcessWizardModel.previewPPI <= 6.1)
+        wizard.start()
+        let run = try #require(wizard.run)
+        let started = try #require(wizard.preview())
+        #expect(started.width == small.width && started.height == small.height)
+        wizard.printing = "Glossy film, Highest quality, 2400 x 1200 "
+        wizard.savePrinting()
+        #expect(run.printing == "Glossy film, Highest quality, 2400 x 1200")
+        #expect(try ProcessRun.resume(run.folder).printing == run.printing)
+    }
+
+    @Test func processRunsCanBeContinuedOrAdjustedFurther() throws {
+        let processes = folder.appendingPathComponent("processes")
+        let first = ProcessWizardModel(folder: processes, scannerHost: "")
+        first.colours = ["green", "red"]
+        first.printing = "2400 x 1200"
+        first.start()
+        let run = try #require(first.run)
+        var bent = ProcessCurve.identity(colour: "red")
+        bent.curve = bent.curve.map { $0 / 2 }
+        let file = folder.appendingPathComponent("red.oqproc")
+        try bent.encode().write(to: file)
+
+        let later = ProcessWizardModel(folder: processes, scannerHost: "")
+        #expect(later.savedRuns.map(\.folder.lastPathComponent) == [run.folder.lastPathComponent])
+        later.resume(run.folder)
+        #expect(later.started && later.colours == ["green", "red"] && later.printing == "2400 x 1200")
+        later.closeRun()
+        #expect(!later.started)
+
+        later.startFrom(files: [file])
+        #expect(later.startingCurves["red"]?.curve == bent.curve && later.colours.contains("red"))
+        later.name = "adjusted"
+        later.start()
+        #expect(try later.run?.curve("red").curve == bent.curve)
+        #expect(try later.run?.curve("green").curve == ProcessCurve.identity(colour: "green").curve)
+
+        let third = ProcessWizardModel(folder: processes, scannerHost: "")
+        third.startFrom(run: try #require(later.run).folder)
+        #expect(third.startingCurves["red"]?.curve == bent.curve && third.startingName?.hasPrefix("adjusted") == true)
+    }
 }

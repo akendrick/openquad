@@ -73,3 +73,33 @@ struct SheetSize: View {
         }
     }
 }
+
+/// A small picture of a sheet as it will print, with its size.
+struct SheetPreview: View {
+    let image: RGBImage?
+    /// Pixels per inch of `image`.
+    let ppi: Double
+    let units: LengthUnit
+    let title: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.headline)
+            if let image, let picture = image.cgImage(eightBit: true) {
+                Image(decorative: picture, scale: 1)
+                    .resizable()
+                    .interpolation(.medium)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 360, alignment: .topLeading)
+                    .overlay(Rectangle().stroke(.separator))
+                Text("\(units.size(Double(image.width) / ppi, Double(image.height) / ppi)) on film")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                Text("Choose 1 to 5 colours to see the page.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
