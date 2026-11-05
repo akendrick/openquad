@@ -74,6 +74,57 @@ struct BuildParity {
         }
     }
 
+    @Test func smoothingAndAscendingFit() throws {
+        let v = try vectors("builds")
+        let levels = ints(v["patch_levels"]).map { UInt16($0) }
+        let cases = try #require(v["smoothing"] as? [[String: Any]])
+        #expect(cases.map { $0["reach"] as! Int } == Smoothing.reaches.map(\.1))
+        let noisy = try #require(v["smoothing_input"] as? [Double])
+        let x = linspace(0, 65535, levels.count)
+        for c in cases {
+            let reach = c["reach"] as! Int
+            for (got, expected) in zip(Smoothing.response(x, noisy, reach: reach), doubles(c["smoothed"])) {
+                #expect(abs(got - expected) <= 1e-9 * max(1, abs(expected)))
+            }
+            let reading = ChartReading(levels: levels, lightness: noisy, paper: 90)
+            #expect(try ProcessCurve.build(reading, smoothing: reach).curve.map(Int.init) == ints(c["curve"]))
+        }
+        for c in try #require(v["ascending"] as? [[String: Any]]) {
+            #expect(Smoothing.ascending(doubles(c["input"])) == doubles(c["output"]))
+        }
+    }
+
+    @Test func lostTones() throws {
+        let v = try vectors("builds")
+        let levels = ints(v["patch_levels"]).map { UInt16($0) }
+        for c in try #require(v["clipped"] as? [[String: Any]]) {
+            let lost = Clipping.lost(ChartReading(levels: levels, lightness: doubles(c["lightness"]), paper: 90))
+            let counts = ints(c["counts"])
+            #expect([lost.0, lost.1] == counts)
+            #expect(Clipping.advice(highlights: lost.0, shadows: lost.1) == c["advice"] as? String)
+        }
+    }
+
+    @Test func exportedCurveFiles() throws {
+        let v = try vectors("builds")
+        let e = try #require(v["export"] as? [String: Any])
+        let curve = ProcessCurve(levels: ints(e["levels"]).map { UInt16($0) }, curve: ints(e["curve"]).map { UInt16($0) })
+        #expect([UInt8](CurveExport.amp(curve)) == ints(e["amp"]).map { UInt8($0) })
+        #expect([UInt8](CurveExport.acv(curve)) == ints(e["acv"]).map { UInt8($0) })
+        let spline = stride(from: 0, to: 256, by: 5).map { CurveExport.spline([0, 40, 130, 255], [0, 70, 150, 255], $0) }
+        for (got, expected) in zip(spline, doubles(e["spline"])) { #expect(abs(got - expected) < 1e-9) }
+        #expect(CurveExport.csv(curve) == e["csv"] as? String)
+        #expect(CurveExport.cube(curve, size: 5) == e["cube"] as? String)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("oq-export-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        for format in CurveExport.formats {
+            let url = folder.appendingPathComponent("c.\(format)")
+            try CurveExport.write(curve, to: url)
+            #expect(try Data(contentsOf: url).count > 50)
+        }
+        #expect(throws: BuildError.self) { try CurveExport.write(curve, to: folder.appendingPathComponent("c.txt")) }
+    }
+
     @Test func badInputIsRejected() throws {
         let flat = ChartReading(levels: [0, 32768, 65535], lightness: [50, 51, 52])
         #expect(throws: BuildError.self) { try ProcessCurve.build(flat) }

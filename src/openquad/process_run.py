@@ -19,9 +19,11 @@ from pathlib import Path
 import numpy as np
 
 from openquad.chart import (
+    DEFAULT_SMOOTHING,
     ProcessCurve,
     build_process_curve,
     chart_page,
+    clipped_tones,
     load_process,
     page_scale,
     read_chart_page,
@@ -51,6 +53,8 @@ class ColourResult:
     mean: float
     white: float
     black: float
+    highlights_lost: int = 0  # tones (1% steps) printing as paper white that shouldn't
+    shadows_lost: int = 0  # ... and as full black
 
     @property
     def done(self) -> bool:
@@ -86,6 +90,7 @@ class ProcessRun:
     size: list[float] | None = None
     guide: bool = False  # darkroom marks in the charts' safe edges
     registration: bool = False
+    smoothing: int = DEFAULT_SMOOTHING  # patches each side the curves even out (SMOOTHING)
 
     @classmethod
     def start(
@@ -225,15 +230,20 @@ class ProcessRun:
             self.current.readings[colour] = path.name
             errors = np.abs(tone_errors(reading))
             result = ColourResult(
-                float(errors.max()), float(errors.mean()), reading.white, reading.black
-            )
+                float(errors.max()), float(errors.mean()), reading.white, reading.black,
+                *clipped_tones(reading),
+            )  # fmt: skip
             self.current.results[colour] = asdict(result)
             results[colour] = result
         self._save_log()
         return results
 
     def results(self) -> dict[str, ColourResult]:
-        return {c: ColourResult(**r) for c, r in self.current.results.items()}
+        def result(r: dict[str, float]) -> ColourResult:
+            lost = int(r.get("highlights_lost", 0)), int(r.get("shadows_lost", 0))
+            return ColourResult(r["worst"], r["mean"], r["white"], r["black"], *lost)
+
+        return {c: result(r) for c, r in self.current.results.items()}
 
     def best_colour(self) -> str | None:
         """The colour closest to target (smallest worst error) in this round."""
@@ -248,8 +258,9 @@ class ProcessRun:
         for colour in self.colours:
             text = (self.folder / self.current.readings[colour]).read_text(encoding="utf-8")
             curves[colour] = build_process_curve(
-                reading_from_json(text), self.curve(colour), film=self.film, printing=self.printing
-            )
+                reading_from_json(text), self.curve(colour), smoothing=self.smoothing,
+                film=self.film, printing=self.printing,
+            )  # fmt: skip
         self.current.refined = True
         self._new_round(curves)
         return {c: self.curve_path(c) for c in self.colours}

@@ -7,6 +7,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Export process curves for other software, as with ChartThrob: Photoshop Curves (.acv, up to 16
+  spline points placed where they matter), Photoshop arbitrary map (.amp, exact), a 3D LUT (.cube)
+  and CSV. In the app: "Export Curve…" in Process Calibration. Command line: `openquad curve
+  CURVE OUTPUT`, and `--image PHOTO` with a .tif output for the photo with the curve applied.
+- Process curves are smoothed (a local straight-line fit over neighbouring patches), so noise in
+  the print or the scan no longer kinks the curve; None, Light, Medium (default) or Strong, kept
+  with the run (`openquad chart --smoothing`).
+- Lost tones are reported: when more patches than should print as paper white or full black,
+  the reading says how many and what to change (exposure or blocking colour).
+
 - Process calibration shows a preview of the chart page it will print (before Start, from the
   settings; after, this round's page through its curves) with its size on film.
 - Process calibration can continue a kept run ("Continue a Previous Run"), start a new run from
@@ -63,6 +73,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   `openquad negative --outline 0.1`.
 
 ### Changed
+
+- Process curves are fitted with the least-squares never-falling fit (pooling adjacent
+  patches) instead of a running maximum, which leaned towards the lightest noisy patch.
 
 - The process print-settings note no longer defaults to "600 x 600"; it starts empty, since the
   quality and resolution are chosen in the print panel.

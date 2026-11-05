@@ -314,6 +314,13 @@ public final class ProcessWizardModel: WizardModel {
     /// resolution), kept with the run so every round is printed the same way.
     public var printing = ""
     public var useColour = "green"
+    /// Patches each side the curves even out (Smoothing.reaches); kept with the run.
+    public var smoothing = Smoothing.standard {
+        didSet {
+            guard let run, run.smoothing != smoothing else { return }
+            do { try run.setSmoothing(smoothing) } catch { self.error = "\(error)" }
+        }
+    }
     /// Darkroom marks in black in the charts' safe edges.
     public var guide = false
     public var registration = false
@@ -371,6 +378,7 @@ public final class ProcessWizardModel: WizardModel {
             printing = run.printing
             guide = run.guide
             registration = run.registration
+            smoothing = run.smoothing
             let remember = rememberSize
             rememberSize = nil  // the run's own size, not a new preference
             sheetSize = run.size
@@ -438,6 +446,7 @@ public final class ProcessWizardModel: WizardModel {
                                            printing: printing.trimmingCharacters(in: .whitespaces),
                                            starting: startingCurves.filter { orderedColours.contains($0.key) }, size: sheetSize,
                                            guide: guide, registration: registration)
+            try run.setSmoothing(smoothing)
             let page = try run.makePage()
             self.run = run
             useColour = run.colours[0]
@@ -518,8 +527,11 @@ public final class ProcessWizardModel: WizardModel {
             }
             let best = run.bestColour()
             if let best { self.useColour = best }
-            self.result = lines.joined(separator: "; ") + String(format: ". Goal: every patch within %g L*. Best: %@.",
-                                                                  ProcessResult.toneGoal, best ?? "none")
+            let warnings = run.colours.compactMap { c in results[c]?.advice.map { "\(c.capitalized): \($0)" } }
+            self.result = ([lines.joined(separator: "; ") + String(format: ". Goal: every patch within %g L*. Best: %@.",
+                                                                   ProcessResult.toneGoal, best ?? "none")] + warnings)
+                .joined(separator: "\n")
+            for warning in warnings { self.say("Warning: " + warning) }
             self.say("Read: " + lines.joined(separator: "; "))
         }
     }
@@ -538,6 +550,17 @@ public final class ProcessWizardModel: WizardModel {
     }
 
     public var curvePath: URL? { run?.curvePath(useColour) }
+
+    /// Save the chosen colour's current curve for other software (.amp, .acv, .cube, .csv).
+    public func exportCurve(to url: URL) {
+        guard let run else { return }
+        do {
+            try CurveExport.write(try run.curve(useColour), to: url)
+            say("Exported the \(useColour) curve (round \(run.current.version)) to \(url.lastPathComponent).")
+        } catch {
+            self.error = "Couldn't export the curve: \(error)"
+        }
+    }
 }
 
 // MARK: - views
@@ -933,9 +956,12 @@ public struct ProcessWizardView: View {
                 Text([model.run?.colours.joined(separator: " over ") ?? "", model.film, model.mirror ? "mirrored" : "not mirrored",
                       "scanner \(model.scannerHost.isEmpty ? "not set" : model.scannerHost)"].joined(separator: " · "))
                     .foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                Form { printSettings }
-                    .formStyle(.grouped)
-                    .frame(height: 110)
+                Form {
+                    printSettings
+                    smoothingPicker
+                }
+                .formStyle(.grouped)
+                .frame(height: 150)
             } else {
             previousRuns
             Form {
@@ -952,6 +978,7 @@ public struct ProcessWizardView: View {
                 LabeledContent("Scanner") { ScannerField(model: model) }
                 Toggle("Mirror the negatives", isOn: $model.mirror)
                 TextField("Film", text: $model.film)
+                smoothingPicker
                 LabeledContent("Start from") {
                     HStack {
                         Text(model.startingName.map { "\($0) (adjusted further)" } ?? "No correction")
@@ -1006,6 +1033,7 @@ public struct ProcessWizardView: View {
                 }
                 .fixedSize()
                 .disabled(!model.started)
+                Button("Export Curve…", action: exportCurve).disabled(!model.started)
                 Button("Use This Colour's Curve") {
                     if let path = model.curvePath { use(path) }
                     close?()
@@ -1028,6 +1056,25 @@ public struct ProcessWizardView: View {
                 .fixedSize()
             }
         }
+    }
+
+    private var smoothingPicker: some View {
+        Picker("Smoothing", selection: $model.smoothing) {
+            ForEach(Smoothing.reaches, id: \.1) { name, reach in Text(name.capitalized).tag(reach) }
+        }
+        .help("How much the curves even out patch-to-patch noise from the print and the scan (used at Refine)")
+    }
+
+    /// Save this colour's curve as Photoshop Curves (.acv), an arbitrary map (.amp), a LUT
+    /// (.cube) or CSV, to make negatives in other software as with ChartThrob.
+    private func exportCurve() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = CurveExport.formats.compactMap { UTType(filenameExtension: $0) }
+        panel.allowsOtherFileTypes = true
+        panel.nameFieldStringValue = "\(model.run?.name ?? "process")-\(model.useColour).acv"
+        panel.message = "Photoshop Curves (.acv, up to 16 points), arbitrary map (.amp, exact), LUT (.cube) or CSV. "
+            + "Apply it to the greyscale photo, then invert it, to make the negative."
+        if panel.runModal() == .OK, let url = panel.url { model.exportCurve(to: url) }
     }
 
     private func chooseCurves() {

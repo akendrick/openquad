@@ -173,6 +173,18 @@ openquad chart carbon-chart2.jpg --process carbon.oqproc -o carbon-v2.oqproc
 openquad negative photo.tif -o neg.tif --process carbon-v2.oqproc --fit Letter
 ```
 
+The curve evens out patch-to-patch noise (`--smoothing none|light|medium|strong`, default
+medium), and the report warns when tones are lost: highlights printing as paper white or shadows
+as full black, which no curve can bring back. To make negatives in other software, as with
+ChartThrob, export the curve, apply it to the greyscale photo there and invert:
+
+```bash
+openquad curve carbon-v2.oqproc carbon.acv       # Photoshop Curves (up to 16 points)
+openquad curve carbon-v2.oqproc carbon.amp       # Photoshop arbitrary map (exact, 256 levels)
+openquad curve carbon-v2.oqproc carbon.cube      # 3D LUT; or .csv for the 257 levels
+openquad curve carbon-v2.oqproc curved.tif --image photo.tif   # the photo with the curve applied
+```
+
 ### Contact sheets
 
 Up to 16 photos as thumbnails on one greyscale sheet, which then prints like any photo (or becomes a

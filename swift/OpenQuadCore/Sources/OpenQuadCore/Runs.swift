@@ -270,7 +270,11 @@ public final class CalibrationRun: @unchecked Sendable {
 public struct ProcessResult: Sendable, Equatable {
     public static let toneGoal = 3.0  // every patch within this many L* of its target
     public var worst, mean, white, black: Double
+    /// Tones (1% steps) printing as paper white, or full black, that shouldn't.
+    public var highlightsLost = 0, shadowsLost = 0
     public var done: Bool { worst < Self.toneGoal }
+    /// What to change when tones are lost, or nil.
+    public var advice: String? { Clipping.advice(highlights: highlightsLost, shadows: shadowsLost) }
 
     public init(_ reading: ChartReading) {
         let errors = reading.toneErrors().map(abs)
@@ -278,13 +282,18 @@ public struct ProcessResult: Sendable, Equatable {
         mean = npMean(errors)
         white = reading.white
         black = reading.black
+        (highlightsLost, shadowsLost) = Clipping.lost(reading)
     }
 
-    init(worst: Double, mean: Double, white: Double, black: Double) {
+    init(worst: Double, mean: Double, white: Double, black: Double, highlightsLost: Int = 0, shadowsLost: Int = 0) {
         (self.worst, self.mean, self.white, self.black) = (worst, mean, white, black)
+        (self.highlightsLost, self.shadowsLost) = (highlightsLost, shadowsLost)
     }
 
-    var dictionary: [String: Double] { ["worst": worst, "mean": mean, "white": white, "black": black] }
+    var dictionary: [String: Double] {
+        ["worst": worst, "mean": mean, "white": white, "black": black, "highlights_lost": Double(highlightsLost),
+         "shadows_lost": Double(shadowsLost)]
+    }
 }
 
 public struct ProcessRound: Sendable, Equatable {
@@ -343,10 +352,13 @@ public final class ProcessRun: @unchecked Sendable {
     /// Darkroom marks in the charts' safe edges.
     public let guide: Bool
     public let registration: Bool
+    /// Patches each side the next curves even out (Smoothing.reaches); can change.
+    public private(set) var smoothing: Int
 
     init(folder: URL, name: String, colours: [String], printer: String, paper: String, scannerHost: String,
          mirror: Bool, film: String, printing: String, rounds: [ProcessRound], size: (Double, Double)? = nil,
-         guide: Bool = false, registration: Bool = false) {
+         guide: Bool = false, registration: Bool = false, smoothing: Int = Smoothing.standard) {
+        self.smoothing = smoothing
         self.folder = folder
         self.name = name
         self.colours = colours
@@ -389,14 +401,15 @@ public final class ProcessRun: @unchecked Sendable {
                           mirror: d["mirror"] as? Bool ?? false, film: d["film"] as? String ?? "",
                           printing: d["printing"] as? String ?? "", rounds: try rounds.map(ProcessRound.init),
                           size: (d["size"] as? [Double]).flatMap { $0.count == 2 ? ($0[0], $0[1]) : nil },
-                          guide: d["guide"] as? Bool ?? false, registration: d["registration"] as? Bool ?? false)
+                          guide: d["guide"] as? Bool ?? false, registration: d["registration"] as? Bool ?? false,
+                          smoothing: d["smoothing"] as? Int ?? Smoothing.standard)
     }
 
     func saveLog() throws {
         try writeText(try jsonText(["name": name, "colours": colours, "printer": printer, "paper": paper,
                                     "scanner_host": scannerHost, "mirror": mirror, "film": film, "printing": printing,
                                     "rounds": rounds.map(\.dictionary), "size": size.map { [$0.0, $0.1] as Any } ?? NSNull(),
-                                    "guide": guide, "registration": registration] as [String: Any]),
+                                    "guide": guide, "registration": registration, "smoothing": smoothing] as [String: Any]),
                       to: folder.appendingPathComponent("run.json"))
     }
 
@@ -436,6 +449,12 @@ public final class ProcessRun: @unchecked Sendable {
     /// print panel); later curves record the new one.
     public func setPrinting(_ text: String) throws {
         printing = text.trimmingCharacters(in: .whitespaces)
+        try saveLog()
+    }
+
+    /// Change how much the next curves are smoothed.
+    public func setSmoothing(_ reach: Int) throws {
+        smoothing = max(0, reach)
         try saveLog()
     }
 
@@ -513,7 +532,8 @@ public final class ProcessRun: @unchecked Sendable {
     public func results() -> [String: ProcessResult] {
         current.results.compactMapValues { r in
             guard let worst = r["worst"], let mean = r["mean"], let white = r["white"], let black = r["black"] else { return nil }
-            return ProcessResult(worst: worst, mean: mean, white: white, black: black)
+            return ProcessResult(worst: worst, mean: mean, white: white, black: black,
+                                 highlightsLost: Int(r["highlights_lost"] ?? 0), shadowsLost: Int(r["shadows_lost"] ?? 0))
         }
     }
 
@@ -530,7 +550,8 @@ public final class ProcessRun: @unchecked Sendable {
         let readings = try readings()
         var curves: [String: ProcessCurve] = [:]
         for colour in colours {
-            curves[colour] = try ProcessCurve.build(readings[colour]!, previous: try curve(colour), film: film, printing: printing)
+            curves[colour] = try ProcessCurve.build(readings[colour]!, previous: try curve(colour), smoothing: smoothing,
+                                                    film: film, printing: printing)
         }
         rounds[rounds.count - 1].refined = true
         try newRound(curves)

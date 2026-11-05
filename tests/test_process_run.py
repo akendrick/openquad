@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import tifffile
 
-from openquad.chart import ProcessCurve, save_process
+from openquad.chart import DEFAULT_SMOOTHING, SMOOTHING, ProcessCurve, save_process
 from openquad.process_run import ProcessRun, ProcessRunError
 from openquad.session import PrintSession, SessionError
 from tests.simulation import CarbonLab
@@ -64,6 +64,24 @@ def test_log_and_resume(tmp_path: Path) -> None:
     assert set(resumed.rounds[0].results) == {"green", "orange"}
     assert resumed.current.curves["green"] == "carbon-sim-green-v1.oqproc"
     assert resumed.film == "office" and resumed.printing == "Fine glossy"
+
+
+def test_results_count_lost_tones_and_smoothing_is_kept(tmp_path: Path) -> None:
+    lab, run = CarbonLab(scan_dpi=100), start(tmp_path)
+    assert run.smoothing == DEFAULT_SMOOTHING
+    run.smoothing = SMOOTHING["strong"]
+    run.print_page(lab.runner)
+    run.scan_page(lab.fetch)
+    measured = run.measure()
+    resumed = ProcessRun.resume(run.folder)
+    assert resumed.smoothing == SMOOTHING["strong"]
+    for colour, result in resumed.results().items():
+        assert result == measured[colour]
+        assert result.highlights_lost >= 0 and result.shadows_lost >= 0
+    # Runs saved before lost tones were counted still load.
+    for r in resumed.current.results.values():
+        del r["highlights_lost"], r["shadows_lost"]
+    assert all(r.highlights_lost == 0 for r in resumed.results().values())
 
 
 def test_preferred_size_and_marks_reach_the_page_and_still_read(tmp_path: Path) -> None:
