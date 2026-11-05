@@ -18,12 +18,15 @@ from openquad import __version__
 from openquad.blocking import BlockingLayout, analyse, blocking_scale, blocking_sheet
 from openquad.chart import (
     PAGE_EDGE,
+    SMOOTHING,
     ChartReading,
     ProcessCurve,
     build_process_curve,
     chart_negative,
     chart_page,
     chart_scale,
+    clipped_tones,
+    clipping_advice,
     load_process,
     page_scale,
     read_chart,
@@ -33,6 +36,7 @@ from openquad.chart import (
 )
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.contactsheet import BACKGROUNDS, MAX_PHOTOS, SheetLayout, make_sheet
+from openquad.curve_export import FORMATS, export_curve
 from openquad.escl import INTENTS, Fetch, ScanError, ScanSettings, http_fetch, scan
 from openquad.greybalance import (
     Calibration,
@@ -157,6 +161,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     crt.add_argument("--film", default="", help="film it was made for")
     crt.add_argument("--printing", default="", help="printer and print dialog settings")
+    crt.add_argument(
+        "--smoothing",
+        choices=list(SMOOTHING),
+        default="medium",
+        help="how much the curve evens out patch-to-patch noise (default medium)",
+    )
+
+    crv = commands.add_parser(
+        "curve", help="export a process curve for other software, or apply it to a photo"
+    )
+    crv.add_argument("curve", type=Path, help="process curve (.oqproc)")
+    crv.add_argument(
+        "output",
+        type=Path,
+        help=f"file to write: {', '.join(FORMATS)}, or .tif (with --image) for the curved photo",
+    )
+    crv.add_argument("--image", type=Path, help="photo to apply the curve to (16-bit grey TIFF)")
 
     blk = commands.add_parser("blocking", help="read a scanned print of the blocking test")
     blk.add_argument("scan", type=Path, help="scan of the exposed print (JPEG, PNG or TIFF)")
@@ -398,6 +419,9 @@ def _report_chart(reading: ChartReading, label: str) -> None:
         )
     worst, mean = abs(errors).max(), abs(errors).mean()
     print(f"tone error: worst {worst:.1f} L*, mean {mean:.2f} (goal under 3)")
+    advice = clipping_advice(*clipped_tones(reading))
+    if advice:
+        print(f"warning: {advice}")
 
 
 def _chart(args: argparse.Namespace) -> None:
@@ -414,12 +438,29 @@ def _chart(args: argparse.Namespace) -> None:
             before = previous[k] if previous else None
             if before is None and colour:
                 before = ProcessCurve.identity(colour)
-            curve = build_process_curve(reading, before, film=args.film, printing=args.printing)
+            curve = build_process_curve(
+                reading, before, smoothing=SMOOTHING[args.smoothing], film=args.film,
+                printing=args.printing,
+            )  # fmt: skip
             path = args.output
             if args.colours:
                 path = args.output.with_name(f"{args.output.stem}-{colour}{args.output.suffix}")
             save_process(curve, path)
             print(f"wrote {path}")
+
+
+def _curve(args: argparse.Namespace) -> None:
+    curve = load_process(args.curve)
+    if args.output.suffix.lower() in (".tif", ".tiff"):
+        if not args.image:
+            raise ValueError("give --image PHOTO to write a curved photo")
+        photo = load_photo(args.image)
+        save_grey(args.output, GreyImage(curve.apply(photo.pixels), photo.dpi))
+    elif args.image:
+        raise ValueError("--image needs a .tif output")
+    else:
+        export_curve(curve, args.output)
+    print(f"wrote {args.output}")
 
 
 def _inches_pair(text: str) -> tuple[float, float]:
@@ -622,6 +663,8 @@ def main(
             _blocking(args)
         elif args.command == "chart":
             _chart(args)
+        elif args.command == "curve":
+            _curve(args)
         elif args.command == "print":
             _print(args, runner)
         elif args.command == "printers":

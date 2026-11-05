@@ -176,15 +176,95 @@ public struct ChartReading: Sendable {
     }
 }
 
+/// Evening out the chart's patch-to-patch noise (openquad/chart.py SMOOTHING).
+public enum Smoothing {
+    /// How far the smoothing reaches, in patches each side, by name.
+    public static let reaches: [(String, Int)] = [("none", 0), ("light", 3), ("medium", 5), ("strong", 9)]
+    public static let standard = 5
+
+    /// Each y replaced by a weighted (tricube) straight-line fit to its neighbours within
+    /// `reach` patches; x ascending. reach 0 leaves y as it is.
+    public static func response(_ x: [Double], _ y: [Double], reach: Int) -> [Double] {
+        guard reach > 0 else { return y }
+        let n = y.count
+        return (0..<n).map { i in
+            let lo = max(0, i - reach), hi = min(n, i + reach + 1)
+            let w = (lo..<hi).map { j -> Double in
+                let d = Double(abs(j - i)) / Double(reach + 1)
+                let t = 1.0 - d * d * d
+                return t * t * t
+            }
+            let dx = (lo..<hi).map { x[$0] - x[i] }
+            let ys = Array(y[lo..<hi])
+            let s0 = pairwiseSum(w), s1 = pairwiseSum(zip(w, dx).map { $0 * $1 })
+            let s2 = pairwiseSum(zip(w, dx).map { $0 * $1 * $1 })
+            let t0 = pairwiseSum(zip(w, ys).map { $0 * $1 })
+            let t1 = pairwiseSum((0..<w.count).map { w[$0] * dx[$0] * ys[$0] })
+            let det = s0 * s2 - s1 * s1
+            return det > 1e-9 * s0 * s2 ? (s2 * t0 - s1 * t1) / det : t0 / s0
+        }
+    }
+
+    /// The closest never-falling sequence to y (least squares; pool adjacent violators).
+    public static func ascending(_ y: [Double]) -> [Double] {
+        var sums: [Double] = [], counts: [Int] = []
+        for value in y {
+            sums.append(value)
+            counts.append(1)
+            while sums.count > 1, sums[sums.count - 2] / Double(counts[counts.count - 2]) > sums[sums.count - 1] / Double(counts[counts.count - 1]) {
+                let total = sums.removeLast(), count = counts.removeLast()
+                sums[sums.count - 1] += total
+                counts[counts.count - 1] += count
+            }
+        }
+        return zip(sums, counts).flatMap { Array(repeating: $0 / Double($1), count: $1) }
+    }
+}
+
+/// Tones lost to paper white or full black (openquad/chart.py clipped_tones).
+public enum Clipping {
+    public static let tolerance = 1.0  // L*: this close to the print's white (or black) looks the same
+    public static let warn = 3  // lost tones (1% steps) worth a warning
+
+    /// (highlights, shadows): how many more patches print as the print's white (or black)
+    /// than should; the curve can only squeeze the rest into fewer steps.
+    public static func lost(_ reading: ChartReading, tolerance: Double = tolerance) -> (Int, Int) {
+        let white = reading.white, black = reading.black
+        let target = reading.levels.map { Linearize.targetLightness(Double($0), paper: white, black: black) }
+        let light = reading.lightness.filter { $0 >= white - tolerance }.count - target.filter { $0 >= white - tolerance }.count
+        let dark = reading.lightness.filter { $0 <= black + tolerance }.count - target.filter { $0 <= black + tolerance }.count
+        return (max(0, light), max(0, dark))
+    }
+
+    /// What to change when tones are lost, or nil when few are.
+    public static func advice(highlights: Int, shadows: Int) -> String? {
+        switch (highlights >= warn, shadows >= warn) {
+        case (true, true):
+            return "\(highlights)% of the highlights print as paper white and \(shadows)% of the shadows as full black: "
+                + "the negative's range is longer than the process's. Try a less blocking colour (see the blocking test); "
+                + "meanwhile the curve squeezes those tones into fewer steps."
+        case (true, false):
+            return "The lightest \(highlights)% of tones print as paper white (the negative blocks them fully): give more "
+                + "exposure, or use a less blocking colour."
+        case (false, true):
+            return "The darkest \(shadows)% of tones print as full black: give less exposure, or use a more blocking colour."
+        case (false, false):
+            return nil
+        }
+    }
+}
+
 extension ProcessCurve {
-    /// The curve that puts each grey level on target, from a chart printed through `previous`.
-    public static func build(_ reading: ChartReading, previous: ProcessCurve? = nil, film: String = "",
-                             printing: String = "") throws -> ProcessCurve {
+    /// The curve that puts each grey level on target, from a chart printed through `previous`;
+    /// `smoothing` is how many patches each side even out noise (Smoothing.reaches).
+    public static func build(_ reading: ChartReading, previous: ProcessCurve? = nil, smoothing: Int = Smoothing.standard,
+                             film: String = "", printing: String = "") throws -> ProcessCurve {
         let previous = previous ?? .identity()
         let sent = previous.apply(reading.levels).map(Double.init)
         let order = stableOrder(sent)
         let x = order.map { sent[$0] }
-        let response = runningMax(order.map { reading.lightness[$0] }).enumerated().map { $1 + Double($0) * 1e-6 }
+        let smoothed = Smoothing.response(x, order.map { reading.lightness[$0] }, reach: smoothing)
+        let response = Smoothing.ascending(smoothed).enumerated().map { $1 + Double($0) * 1e-6 }
         guard response[response.count - 1] - response[0] >= 10 else {
             throw BuildError(description: "the patches barely differ; check the exposure and the scan")
         }

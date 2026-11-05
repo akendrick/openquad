@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 13
+    public static let version = 14
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -93,8 +93,11 @@ public struct GuideView: View {
                         + "page on film (or print it from another app at 100% and say so).",
                      "Contact print it at your usual exposure, develop, dry, and scan the print.",
                      "Each colour's measured tones are drawn against the target; Refine the Curves and repeat "
-                        + "until every patch is within 3 L*.",
-                     "Use This Colour's Curve: the Negative tab uses it and offers to save it as a setup."]),
+                        + "until every patch is within 3 L*. Smoothing evens out noise from the print and the scan.",
+                     "If highlights print as paper white or shadows as full black, OpenQuad says so and what to "
+                        + "change: those tones are lost, and the curve can only squeeze the rest.",
+                     "Use This Colour's Curve: the Negative tab uses it and offers to save it as a setup. Export Curve "
+                        + "saves it for Photoshop (.acv, .amp), as a LUT (.cube) or CSV."]),
         Page(symbol: "lightbulb", title: "Good to know",
              text: "A few things that make results repeatable.",
              steps: ["Scans are made in Document mode with fixed settings so days compare; Photo mode alters colour.",

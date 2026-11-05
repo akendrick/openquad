@@ -311,12 +311,18 @@ def builds_vectors() -> dict[str, Any]:
     """Building calibrations from measurements: grey balance, linearization, process curves."""
     from openquad.chart import (
         PATCHES,
+        SMOOTHING,
         ChartReading,
         ProcessCurve,
+        ascending_fit,
         build_process_curve,
+        clipped_tones,
+        clipping_advice,
         patch_level,
+        smooth_response,
         tone_errors,
     )
+    from openquad.curve_export import acv_bytes, amp_bytes, csv_text, cube_text, spline
     from openquad.greybalance import build_calibration, load_calibration
     from openquad.linearize import linearize, srgb_lightness, target_lightness, tone_curve
     from openquad.measure import Measurement
@@ -392,8 +398,48 @@ def builds_vectors() -> dict[str, Any]:
         )
         previous = curve
 
+    # Smoothing, lost tones and the exported curve files.
+    noisy_rng = np.random.default_rng(23)
+    noisy = 18.0 + 70.0 * (patch_levels / 65535.0) ** 0.6 + noisy_rng.normal(0, 0.6, PATCHES)
+    noisy_reading = ChartReading(patch_levels, noisy, np.zeros(21), "F", 90.0)
+    smoothing = [
+        {
+            "reach": reach,
+            "smoothed": _floats(smooth_response(np.linspace(0, 65535, PATCHES), noisy, reach)),
+            "curve": _ints(build_process_curve(noisy_reading, smoothing=reach).curve),
+        }
+        for reach in SMOOTHING.values()
+    ]
+    ascending = [[1.0, 3.0, 2.0, 4.0], [5.0, 1.0], _floats(noisy[::-1][:20])]
+    clipped = []
+    for top, bottom in ((99.0, 0.0), (80.0, 0.0), (99.0, 40.0), (75.0, 35.0)):
+        lightness = np.clip(10.0 + 80.0 * (patch_levels / 65535.0), bottom, top)
+        lightness = lightness + noisy_rng.normal(0, 0.2, PATCHES)
+        counts = clipped_tones(ChartReading(patch_levels, lightness, np.zeros(21), "F", 90.0))
+        clipped.append(
+            {"lightness": _floats(lightness), "counts": list(counts),
+             "advice": clipping_advice(*counts)}
+        )  # fmt: skip
+    exported = previous or ProcessCurve.identity()
+    export = {
+        "levels": _ints(exported.levels),
+        "curve": _ints(exported.curve),
+        "amp": list(amp_bytes(exported)),
+        "acv": list(acv_bytes(exported)),
+        "spline": [spline([0, 40, 130, 255], [0, 70, 150, 255], x) for x in range(0, 256, 5)],
+        "csv": csv_text(exported),
+        "cube": cube_text(exported, size=5),
+    }
+
     probe = np.linspace(0.0, 65535.0, 103)
     return {
+        "smoothing": smoothing,
+        "smoothing_input": _floats(noisy),
+        "ascending": [
+            {"input": a, "output": _floats(ascending_fit(np.array(a)))} for a in ascending
+        ],
+        "clipped": clipped,
+        "export": export,
         "probe": _floats(probe),
         "srgb_lightness": _floats(srgb_lightness(probe)),
         "target_lightness": _floats(target_lightness(probe, 92.5, 23.5)),

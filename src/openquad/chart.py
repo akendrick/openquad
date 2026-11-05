@@ -419,21 +419,108 @@ def tone_errors(reading: ChartReading) -> NDArray[np.float64]:
     return result
 
 
+# How far the smoothing reaches, in patches (1% steps) each side: a local straight-line
+# fit (tricube weights, as LOESS) that evens out patch-to-patch noise from the print and
+# the scan but keeps the response's real bends.
+SMOOTHING = {"none": 0, "light": 3, "medium": 5, "strong": 9}
+DEFAULT_SMOOTHING = SMOOTHING["medium"]
+
+
+def smooth_response(
+    x: NDArray[np.float64], y: NDArray[np.float64], reach: int
+) -> NDArray[np.float64]:
+    """Each y replaced by a weighted straight-line fit to its neighbours within `reach`
+    patches (x ascending: the levels sent). reach 0 leaves y as it is."""
+    n = len(y)
+    if reach <= 0:
+        return y.copy()
+    result = np.empty(n)
+    for i in range(n):
+        lo, hi = max(0, i - reach), min(n, i + reach + 1)
+        d = np.abs(np.arange(lo, hi, dtype=np.float64) - i) / (reach + 1)
+        t = 1.0 - d * d * d
+        w = t * t * t
+        dx = x[lo:hi] - x[i]
+        s0, s1, s2 = float(np.sum(w)), float(np.sum(w * dx)), float(np.sum(w * dx * dx))
+        t0, t1 = float(np.sum(w * y[lo:hi])), float(np.sum(w * dx * y[lo:hi]))
+        det = s0 * s2 - s1 * s1
+        result[i] = (s2 * t0 - s1 * t1) / det if det > 1e-9 * s0 * s2 else t0 / s0
+    return result
+
+
+def ascending_fit(y: NDArray[np.float64]) -> NDArray[np.float64]:
+    """The closest never-falling sequence to y (least squares; pool adjacent violators)."""
+    sums: list[float] = []
+    counts: list[int] = []
+    for value in y:
+        sums.append(float(value))
+        counts.append(1)
+        while len(sums) > 1 and sums[-2] / counts[-2] > sums[-1] / counts[-1]:
+            total, count = sums.pop(), counts.pop()
+            sums[-1] += total
+            counts[-1] += count
+    return np.repeat([t / c for t, c in zip(sums, counts, strict=True)], counts)
+
+
+# --- lost tones ----------------------------------------------------------------------
+
+CLIP_TOLERANCE = 1.0  # L*: a patch this close to the print's white (or black) looks the same
+CLIP_WARN = 3  # lost tones (1% steps) worth a warning
+
+
+def clipped_tones(reading: ChartReading, tolerance: float = CLIP_TOLERANCE) -> tuple[int, int]:
+    """(highlights, shadows): how many more patches print as the print's white (or black)
+    than should. Those tones are lost, so the curve can only squeeze the rest into
+    fewer steps (what ChartThrob can't see and reads as a contrasty process)."""
+    target = target_lightness(reading.levels.astype(np.float64), reading.white, reading.black)
+    light = int(np.sum(reading.lightness >= reading.white - tolerance))
+    light -= int(np.sum(target >= reading.white - tolerance))
+    dark = int(np.sum(reading.lightness <= reading.black + tolerance))
+    dark -= int(np.sum(target <= reading.black + tolerance))
+    return max(0, light), max(0, dark)
+
+
+def clipping_advice(highlights: int, shadows: int) -> str | None:
+    """What to change when tones are lost, or None when few are."""
+    lost_light, lost_dark = highlights >= CLIP_WARN, shadows >= CLIP_WARN
+    if lost_light and lost_dark:
+        return (
+            f"{highlights}% of the highlights print as paper white and {shadows}% of the "
+            "shadows as full black: the negative's range is longer than the process's. Try a "
+            "less blocking colour (see the blocking test); meanwhile the curve squeezes those "
+            "tones into fewer steps."
+        )
+    if lost_light:
+        return (
+            f"The lightest {highlights}% of tones print as paper white (the negative blocks "
+            "them fully): give more exposure, or use a less blocking colour."
+        )
+    if lost_dark:
+        return (
+            f"The darkest {shadows}% of tones print as full black: give less exposure, or use "
+            "a more blocking colour."
+        )
+    return None
+
+
 def build_process_curve(
     reading: ChartReading,
     previous: ProcessCurve | None = None,
     *,
+    smoothing: int = DEFAULT_SMOOTHING,
     film: str = "",
     printing: str = "",
 ) -> ProcessCurve:
     """The curve that puts each grey level on target, from a reading of a chart printed
-    through `previous` (default: no curve). Each pass uses what was actually sent."""
+    through `previous` (default: no curve). Each pass uses what was actually sent.
+    `smoothing` is how many patches each side even out noise (SMOOTHING)."""
     previous = previous or ProcessCurve.identity()
     sent = previous.apply(reading.levels).astype(np.float64)
     order = np.argsort(sent, kind="stable")
     x, measured = sent[order], reading.lightness[order]
     # More ink (a lighter photo level) must never print darker; tiny ramp keeps it invertible.
-    response = np.maximum.accumulate(measured) + np.arange(len(measured)) * 1e-6
+    smoothed = smooth_response(x, measured, smoothing)
+    response = ascending_fit(smoothed) + np.arange(len(measured)) * 1e-6
     if response[-1] - response[0] < 10:
         raise ValueError("the patches barely differ; check the exposure and the scan")
     grid = np.rint(np.linspace(0, MAX_VALUE, 257)).astype(np.uint16)
