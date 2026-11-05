@@ -27,10 +27,12 @@ public enum CurveExport {
     public static func spline(_ xs: [Int], _ ys: [Int], _ at: Int) -> Double {
         let n = xs.count
         if n == 2 { return Double(ys[0]) + Double((ys[1] - ys[0]) * (at - xs[0])) / Double(xs[1] - xs[0]) }
-        let h = (0..<(n - 1)).map { Double(xs[$0 + 1] - xs[$0]) }
-        var diag = (1..<(n - 1)).map { 2.0 * (h[$0 - 1] + h[$0]) }
-        var rhs = (1..<(n - 1)).map { k in
-            6.0 * (Double(ys[k + 1] - ys[k]) / h[k] - Double(ys[k] - ys[k - 1]) / h[k - 1])
+        let h: [Double] = (0..<(n - 1)).map { Double(xs[$0 + 1] - xs[$0]) }
+        var diag: [Double] = (1..<(n - 1)).map { 2.0 * (h[$0 - 1] + h[$0]) }
+        var rhs: [Double] = (1..<(n - 1)).map { (k: Int) -> Double in
+            let rise: Double = Double(ys[k + 1] - ys[k]) / h[k]
+            let fall: Double = Double(ys[k] - ys[k - 1]) / h[k - 1]
+            return 6.0 * (rise - fall)
         }
         if n > 3 {
             for k in 1..<(n - 2) {
@@ -48,10 +50,12 @@ public enum CurveExport {
         var k = 0
         while k < n - 2 && at > xs[k + 1] { k += 1 }
         let a = Double(xs[k + 1] - at), b = Double(at - xs[k])
-        return m[k] * a * a * a / (6.0 * h[k])
-            + m[k + 1] * b * b * b / (6.0 * h[k])
-            + (Double(ys[k]) - m[k] * h[k] * h[k] / 6.0) * a / h[k]
-            + (Double(ys[k + 1]) - m[k + 1] * h[k] * h[k] / 6.0) * b / h[k]
+        let hk: Double = h[k]
+        let left: Double = m[k] * a * a * a / (6.0 * hk)
+        let right: Double = m[k + 1] * b * b * b / (6.0 * hk)
+        let lower: Double = (Double(ys[k]) - m[k] * hk * hk / 6.0) * a / hk
+        let upper: Double = (Double(ys[k + 1]) - m[k + 1] * hk * hk / 6.0) * b / hk
+        return left + right + lower + upper
     }
 
     /// (input, output) points (0-255) whose spline follows the curve within half a level, or
