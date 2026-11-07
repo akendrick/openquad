@@ -9,6 +9,10 @@ block UV like the rest of the safe edge and never reach the contact print:
 - registration marks: a crosshair target centred on each side, and corner crop marks
   that continue the image's edges out to the edge of the sheet.
 
+For separations (several negatives printed in register on one sheet of paper) the targets can
+instead be cut clear, like the F: they expose onto the paper with the first coat, and each
+later negative is lined up on them.
+
 Everything is in whole pixels from the band's width, so Swift (Marks.swift) matches.
 """
 
@@ -49,27 +53,40 @@ def mark_mask(
         for y in (band - line, bottom):
             mask[y : y + line, :crop] = True
             mask[y : y + line, width - crop :] = True
-        radius, arm = band * 3 // 10, band * 2 // 5
-        if radius > line:
-            middle_x, middle_y = width // 2, height // 2
-            centres = [
-                (middle_x, band // 2), (middle_x, height - 1 - band // 2),
-                (band // 2, middle_y), (width - 1 - band // 2, middle_y),
-            ]  # fmt: skip
-            reach = max(radius, arm) + line  # every mark pixel is this close to its centre
-            for cx, cy in centres:
-                top, left = max(0, cy - reach), max(0, cx - reach)
-                ys, xs = np.mgrid[
-                    top : min(height, cy + reach + 1), left : min(width, cx + reach + 1)
-                ]
-                dx, dy = xs - cx, ys - cy
-                distance = dx * dx + dy * dy
-                target = (distance < radius * radius) & (distance >= (radius - line) ** 2)
-                across = (dx >= -(line // 2)) & (dx < line - line // 2)
-                down = (dy >= -(line // 2)) & (dy < line - line // 2)
-                target |= (across & (np.abs(dy) <= arm)) | (down & (np.abs(dx) <= arm))
-                mask[top : top + target.shape[0], left : left + target.shape[1]] |= target
+        _draw_targets(mask, band, line)
     return mask
+
+
+def target_mask(width: int, height: int, band: int, dpi: float) -> NDArray[np.bool_]:
+    """Just the crosshair targets of the registration marks (no crop marks)."""
+    mask = np.zeros((height, width), dtype=bool)
+    line = line_width(band, dpi)
+    if band > line:
+        _draw_targets(mask, band, line)
+    return mask
+
+
+def _draw_targets(mask: NDArray[np.bool_], band: int, line: int) -> None:
+    """A crosshair target centred in the band on each side of the sheet."""
+    height, width = mask.shape
+    radius, arm = band * 3 // 10, band * 2 // 5
+    if radius > line:
+        middle_x, middle_y = width // 2, height // 2
+        centres = [
+            (middle_x, band // 2), (middle_x, height - 1 - band // 2),
+            (band // 2, middle_y), (width - 1 - band // 2, middle_y),
+        ]  # fmt: skip
+        reach = max(radius, arm) + line  # every mark pixel is this close to its centre
+        for cx, cy in centres:
+            top, left = max(0, cy - reach), max(0, cx - reach)
+            ys, xs = np.mgrid[top : min(height, cy + reach + 1), left : min(width, cx + reach + 1)]
+            dx, dy = xs - cx, ys - cy
+            distance = dx * dx + dy * dy
+            target = (distance < radius * radius) & (distance >= (radius - line) ** 2)
+            across = (dx >= -(line // 2)) & (dx < line - line // 2)
+            down = (dy >= -(line // 2)) & (dy < line - line // 2)
+            target |= (across & (np.abs(dy) <= arm)) | (down & (np.abs(dx) <= arm))
+            mask[top : top + target.shape[0], left : left + target.shape[1]] |= target
 
 
 def add_print_marks(

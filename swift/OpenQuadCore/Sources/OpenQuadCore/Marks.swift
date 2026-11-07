@@ -6,6 +6,8 @@
 // - the guide line: a thin black line right against the image;
 // - registration marks: a crosshair target centred on each side, and corner crop marks
 //   that continue the image's edges out to the edge of the sheet.
+// For separations the targets can instead be cut clear, like the F: they expose onto the
+// paper with the first coat, and each later negative is lined up on them.
 
 public enum Marks {
     /// Inches of white paper added round a print to carry its marks.
@@ -46,27 +48,40 @@ public enum Marks {
                 set(y..<(y + line), 0..<crop)
                 set(y..<(y + line), (width - crop)..<width)
             }
-            let radius = band * 3 / 10, arm = band * 2 / 5
-            if radius > line {
-                let centres = [(width / 2, band / 2), (width / 2, height - 1 - band / 2),
-                               (band / 2, height / 2), (width - 1 - band / 2, height / 2)]
-                let low = -(line / 2), high = line - line / 2
-                let reach = max(radius, arm) + line  // every mark pixel is this close to its centre
-                for (cx, cy) in centres {
-                    for y in max(0, cy - reach)..<min(height, cy + reach + 1) {
-                        let dy = y - cy
-                        for x in max(0, cx - reach)..<min(width, cx + reach + 1) {
-                            let dx = x - cx, distance = dx * dx + dy * dy
-                            let ring = distance < radius * radius && distance >= (radius - line) * (radius - line)
-                            let across = dx >= low && dx < high && abs(dy) <= arm
-                            let down = dy >= low && dy < high && abs(dx) <= arm
-                            if ring || across || down { mask[y * width + x] = true }
-                        }
+            drawTargets(&mask, width: width, height: height, band: band, line: line)
+        }
+        return mask
+    }
+
+    /// Just the crosshair targets of the registration marks (no crop marks).
+    public static func targetMask(width: Int, height: Int, band: Int, dpi: Double) -> [Bool] {
+        var mask = [Bool](repeating: false, count: width * height)
+        let line = lineWidth(band: band, dpi: dpi)
+        if band > line { drawTargets(&mask, width: width, height: height, band: band, line: line) }
+        return mask
+    }
+
+    /// A crosshair target centred in the band on each side of the sheet.
+    static func drawTargets(_ mask: inout [Bool], width: Int, height: Int, band: Int, line: Int) {
+        let radius = band * 3 / 10, arm = band * 2 / 5
+        if radius > line {
+            let centres = [(width / 2, band / 2), (width / 2, height - 1 - band / 2),
+                           (band / 2, height / 2), (width - 1 - band / 2, height / 2)]
+            let low = -(line / 2), high = line - line / 2
+            let reach = max(radius, arm) + line  // every mark pixel is this close to its centre
+            for (cx, cy) in centres {
+                for y in max(0, cy - reach)..<min(height, cy + reach + 1) {
+                    let dy = y - cy
+                    for x in max(0, cx - reach)..<min(width, cx + reach + 1) {
+                        let dx = x - cx, distance = dx * dx + dy * dy
+                        let ring = distance < radius * radius && distance >= (radius - line) * (radius - line)
+                        let across = dx >= low && dx < high && abs(dy) <= arm
+                        let down = dy >= low && dy < high && abs(dx) <= arm
+                        if ring || across || down { mask[y * width + x] = true }
                     }
                 }
             }
         }
-        return mask
     }
 
     /// A print inside a white border carrying its marks in black.

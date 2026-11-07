@@ -64,6 +64,9 @@ public struct ContentView: View {
                 Section(model.session.negative ? "Negative" : "Toning and calibration") {
                     if model.session.negative { negativeControls } else { printControls }
                 }
+                if model.session.negative {
+                    Section("Separations") { SeparationControls(model: model) }
+                }
                 Section("Darkroom marks") {
                     DarkroomMarks(guide: model.session.guide, registration: model.session.registration,
                                   negative: model.session.negative, units: model.units,

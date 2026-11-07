@@ -7,6 +7,7 @@ import shlex
 import sys
 import tempfile
 from collections.abc import Sequence
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -59,6 +60,7 @@ from openquad.negative import (
 from openquad.paper import DEFAULT_MARGIN, box_ppi, fit_ppi
 from openquad.photo import load_photo
 from openquad.printing import PrintError, PrintJob, Runner, list_printers, run_command, send
+from openquad.separations import DEFAULT_STEPS, MAX_SEPARATIONS, SeparationPlan, coat_image
 from openquad.targets import framed_target, step_wedge, wedge_levels
 
 DEFAULT_DPI = 300.0
@@ -201,6 +203,22 @@ def build_parser() -> argparse.ArgumentParser:
     neg.add_argument("--max-size", metavar="WxH", type=_inches_pair,
                      help="with --fit: also keep within W x H inches, safe edge included "
                           "(e.g. 8x10 for the tissue; turned to match the photo)")  # fmt: skip
+    seps = neg.add_argument_group(
+        "separations", "split the negative by tone into several, printed one after another in "
+        "register on one sheet (writes OUTPUT-1of3.tif, OUTPUT-2of3.tif, ...)")  # fmt: skip
+    seps.add_argument("--separations", type=int, default=1, metavar="N",
+                      help=f"how many negatives (1-{MAX_SEPARATIONS}; default 1)")  # fmt: skip
+    seps.add_argument("--splits", type=_step_list, metavar="STEPS",
+                      help="where the bands meet, in steps from paper white, lightest first "
+                           "(e.g. 10,20; default: even bands)")  # fmt: skip
+    seps.add_argument("--steps", type=int, default=DEFAULT_STEPS,
+                      help=f"the step scale --splits and --overlap count on "
+                           f"(default {DEFAULT_STEPS})")  # fmt: skip
+    seps.add_argument("--overlap", type=float, default=0.0, metavar="STEPS",
+                      help="how many steps neighbouring bands blend over (default 0)")  # fmt: skip
+    seps.add_argument("--layer-process", action="append", default=[], metavar="K=CURVE",
+                      help="process curve for negative K alone "
+                           "(repeat; the others use --process)")  # fmt: skip
 
     sheet = commands.add_parser("contact-sheet", help="up to 16 photos as thumbnails on one sheet")
     sheet.add_argument("inputs", type=Path, nargs="+", metavar="PHOTO", help="photos (1-16)")
@@ -463,6 +481,44 @@ def _curve(args: argparse.Namespace) -> None:
     print(f"wrote {args.output}")
 
 
+def _step_list(text: str) -> list[float]:
+    """'10,20' -> [10.0, 20.0]."""
+    try:
+        return [float(part) for part in text.replace(" ", "").split(",")]
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected steps like 10,20, got {text!r}") from None
+
+
+def _separation(args: argparse.Namespace) -> SeparationPlan | None:
+    """The separation the negative command asks for, or None for one negative."""
+    if args.separations == 1 and args.splits is None:
+        if args.layer_process:
+            raise ValueError("--layer-process needs --separations")
+        return None
+    if args.splits is None:
+        plan = SeparationPlan.even(args.separations, args.overlap / args.steps, args.steps)
+    else:
+        if args.separations not in (1, len(args.splits) + 1):
+            raise ValueError(
+                f"{len(args.splits)} split points make {len(args.splits) + 1} negatives, "
+                f"not {args.separations}"
+            )
+        plan = SeparationPlan(
+            tuple(s / args.steps for s in args.splits), args.overlap / args.steps, args.steps
+        )
+    return plan if plan.count > 1 else None
+
+
+def _layer_processes(args: argparse.Namespace, count: int) -> dict[int, ProcessCurve]:
+    curves = {}
+    for item in args.layer_process:
+        number, _, path = item.partition("=")
+        if not number.isdigit() or not path or not 1 <= int(number) <= count:
+            raise ValueError(f"--layer-process takes K=CURVE with K 1-{count}, got {item!r}")
+        curves[int(number) - 1] = load_process(Path(path))
+    return curves
+
+
 def _inches_pair(text: str) -> tuple[float, float]:
     """'8x10' (or '8 x 10', '8.5X11') -> (8.0, 10.0)."""
     parts = text.lower().replace(" ", "").split("x")
@@ -516,12 +572,27 @@ def _negative(args: argparse.Namespace) -> None:
             dpi = max(dpi, box_ppi(*photo.size, args.max_size, settings.border))
     else:
         dpi = args.dpi or (photo.dpi[0] if photo.dpi else DEFAULT_DPI)
-    pixels = process.apply(photo.pixels) if process else photo.pixels
-    save_rgb(args.output, make_negative(pixels, settings, dpi), (dpi, dpi), srgb_profile())
     width, height = (n / dpi + 2 * settings.border for n in photo.size)
     flip = ", mirrored" if settings.mirror else ""
     size = f"{width:.2f} x {height:.2f} in at {dpi:.0f} dpi"
-    print(f"wrote {args.output} ({settings.colour}{flip}, {size})")
+    plan = _separation(args)
+    if plan is None:
+        pixels = process.apply(photo.pixels) if process else photo.pixels
+        save_rgb(args.output, make_negative(pixels, settings, dpi), (dpi, dpi), srgb_profile())
+        print(f"wrote {args.output} ({settings.colour}{flip}, {size})")
+        return
+    own = _layer_processes(args, plan.count)
+    print(plan.describe())
+    for k, (lower, upper) in enumerate(plan.bands):
+        curve = own.get(k, process)
+        pixels = coat_image(photo.pixels, plan, k)
+        pixels = curve.apply(pixels) if curve else pixels
+        layer = replace(settings, colour=curve.colour if curve else colour, label=k + 1,
+                        clear_targets=True)  # fmt: skip
+        path = args.output.with_name(f"{args.output.stem}-{k + 1}of{plan.count}.tif")
+        save_rgb(path, make_negative(pixels, layer, dpi), (dpi, dpi), srgb_profile())
+        band = f"steps {lower * plan.steps:g}-{upper * plan.steps:g}"
+        print(f"wrote {path} ({band}, {layer.colour}{flip}, {size})")
 
 
 def _composite(args: argparse.Namespace) -> None:

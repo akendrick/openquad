@@ -7,6 +7,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Separations for multi-coat processes: split a photo by tone into 2-6 negatives, printed one
+  after another in register on one sheet. Choose where the bands meet on a step scale (default
+  30) and an overlap that blends the seams; the coats add up to the photo exactly. Each negative
+  can have its own process curve. With registration marks, the targets are cut clear and each
+  negative is numbered in its own place, so the first coat records them on the paper. App:
+  the Negative tab's Separations section (band diagram, which negative to show and print, Save
+  All Negatives…). Command line: `openquad negative --separations N --splits ... --overlap ...
+  --layer-process K=CURVE`.
 - Export process curves for other software, as with ChartThrob: Photoshop Curves (.acv, up to 16
   spline points placed where they matter), Photoshop arbitrary map (.amp, exact), a 3D LUT (.cube)
   and CSV. In the app: "Export Curve…" in Process Calibration. Command line: `openquad curve

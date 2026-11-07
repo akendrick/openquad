@@ -185,6 +185,22 @@ openquad curve carbon-v2.oqproc carbon.cube      # 3D LUT; or .csv for the 257 l
 openquad curve carbon-v2.oqproc curved.tif --image photo.tif   # the photo with the curve applied
 ```
 
+Some processes (gum bichromate, multi-coat cyanotype) build their tones up in several coats,
+each exposed under its own negative. `--separations N` splits the photo by tone into N negatives
+(up to 6), from the lightest band to the darkest: each prints nothing in tones lighter than its
+band and full strength in darker ones, so the coats add up to the photo. Set where the bands meet
+with `--splits`, counted on a `--steps` scale (default 30), and blend the seams with `--overlap`.
+Each negative can have its own curve. With `--registration` the targets are cut clear and each
+negative is numbered, so the first coat records them on the paper to line the others up on:
+
+```bash
+openquad negative photo.tif -o gum.tif --process gum.oqproc --registration \
+    --separations 3 --splits 10,20 --overlap 1 --layer-process 3=gum-shadows.oqproc
+#    -> gum-1of3.tif (steps 0-10), gum-2of3.tif (10-20), gum-3of3.tif (20-30)
+```
+
+The app has the same in the Negative tab's Separations section, with a diagram of the bands.
+
 ### Contact sheets
 
 Up to 16 photos as thumbnails on one greyscale sheet, which then prints like any photo (or becomes a

@@ -44,8 +44,55 @@ public struct PrintSession: Sendable {
     public var registration = false  // crosshair targets and corner crop marks
     /// How the summary shows lengths.
     public var units = LengthUnit.inches
+    /// Separations: the photo split into several negatives by tone, printed one after another
+    /// in register on one sheet. nil for a single negative. `layer` is the negative shown and
+    /// printed (0 = the lightest band); a negative can have its own process curve.
+    public private(set) var separation: SeparationPlan?
+    public private(set) var layer = 0
+    public private(set) var layerProcesses: [Int: ProcessCurve] = [:]
+    public private(set) var layerProcessPaths: [Int: URL] = [:]
 
     public init() {}
+
+    /// How many negatives the photo is printed with.
+    public var negativeCount: Int { separation?.count ?? 1 }
+
+    /// Split the negative into `plan.count` negatives by tone (nil or 1: just one).
+    public mutating func setSeparation(_ plan: SeparationPlan?) {
+        separation = plan.flatMap { $0.count > 1 ? $0 : nil }
+        layer = min(layer, negativeCount - 1)
+        for k in layerProcesses.keys where k >= negativeCount {
+            layerProcesses[k] = nil
+            layerProcessPaths[k] = nil
+        }
+    }
+
+    public mutating func setLayer(_ layer: Int) throws {
+        guard (0..<negativeCount).contains(layer) else {
+            throw SessionError(description: "there is no negative \(layer + 1) of \(negativeCount)")
+        }
+        self.layer = layer
+    }
+
+    /// Give one negative of the separation its own process curve (nil: the shared one).
+    public mutating func setLayerProcess(_ layer: Int, _ url: URL?) throws {
+        guard (0..<negativeCount).contains(layer) else {
+            throw SessionError(description: "there is no negative \(layer + 1) of \(negativeCount)")
+        }
+        guard let url else {
+            (layerProcesses[layer], layerProcessPaths[layer]) = (nil, nil)
+            return
+        }
+        layerProcesses[layer] = try ProcessCurve.decode(Data(contentsOf: url))
+        layerProcessPaths[layer] = url
+    }
+
+    /// The process curve negative `layer` is made with: its own, or the shared one.
+    public func layerProcess(_ layer: Int) -> ProcessCurve? { layerProcesses[layer] ?? process }
+
+    func layerProcessName(_ layer: Int) -> String {
+        (layerProcessPaths[layer] ?? processPath)?.lastPathComponent ?? "none (uncalibrated)"
+    }
 
     // MARK: choosing things
 
@@ -107,9 +154,14 @@ public struct PrintSession: Sendable {
         return guide || registration ? Marks.printBorder : 0
     }
 
-    var negativeSettings: NegativeSettings {
-        NegativeSettings(colour: negativeColour, mirror: mirror, safeEdge: safeEdge, outline: outline, guide: guide,
-                         registration: registration)
+    var negativeSettings: NegativeSettings { negativeSettings(nil) }
+
+    /// The settings for negative `layer` of the separation (nil: the whole negative).
+    func negativeSettings(_ layer: Int?) -> NegativeSettings {
+        let separated = separation != nil && layer != nil
+        let colour = separated ? layerProcess(layer!)?.colour ?? negativeColour : negativeColour
+        return NegativeSettings(colour: colour, mirror: mirror, safeEdge: safeEdge, outline: outline, guide: guide,
+                                registration: registration, label: separated ? layer! + 1 : 0, clearTargets: separated)
     }
 
     // MARK: size
@@ -151,13 +203,23 @@ public struct PrintSession: Sendable {
     /// What is sent to the printer: a toned, calibrated print, or (in negative mode) the
     /// negative through the process curve, with its safe edge at `dpi`.
     public func render(_ pixels: [UInt16], width: Int, height: Int, dpi: Double? = nil) throws -> RGBImage {
-        if negative {
-            let shaped = process?.apply(pixels) ?? pixels
-            return Negative.make(shaped, width: width, height: height, settings: negativeSettings, dpi: try dpi ?? effectivePPI())
-        }
+        if negative { return try renderLayer(pixels, width: width, height: height, layer: layer, dpi: dpi) }
         let rgb = Composite.composite(pixels, layers: Composite.presets[preset]!)
         return Marks.addPrintMarks(RGBImage(width: width, height: height, pixels: calibration?.apply(rgb) ?? rgb),
                                    dpi: try dpi ?? effectivePPI(), guide: guide, registration: registration)
+    }
+
+    /// Negative `layer` of the separation (any layer is the whole negative without one).
+    public func renderLayer(_ pixels: [UInt16], width: Int, height: Int, layer: Int, dpi: Double? = nil) throws -> RGBImage {
+        var shaped = pixels
+        var curve = process
+        if let separation {
+            shaped = separation.coatImage(pixels, layer: layer)
+            curve = layerProcess(layer)
+        }
+        shaped = curve?.apply(shaped) ?? shaped
+        return Negative.make(shaped, width: width, height: height, settings: negativeSettings(separation != nil ? layer : nil),
+                             dpi: try dpi ?? effectivePPI())
     }
 
     /// The full-resolution print.
@@ -206,6 +268,22 @@ public struct PrintSession: Sendable {
         return marks.isEmpty ? [] : ["Darkroom marks: \(marks.joined(separator: " and "))"]
     }
 
+    var separationLines: [String] {
+        guard let separation else {
+            return ["Colour: \(negativeColour)",
+                    "Process curve: \(processPath?.lastPathComponent ?? "none (uncalibrated)")"]
+        }
+        let (lower, upper) = separation.bands[layer]
+        let steps = Double(separation.steps)
+        return [
+            "Separation: \(separation.describe())",
+            "This negative: \(layer + 1) of \(separation.count) (steps \(SeparationPlan.g(lower * steps))-"
+                + "\(SeparationPlan.g(upper * steps)), then full strength)",
+            "Colour: \(negativeSettings(layer).colour)",
+            "Process curve: \(layerProcessName(layer))",
+        ]
+    }
+
     /// Lines for the print confirmation.
     public func summary() throws -> [String] {
         let (width, height) = try sizeInches()
@@ -225,8 +303,7 @@ public struct PrintSession: Sendable {
             ] + within + [
                 "Size: \(size) with a \(units.length(safeEdge)) safe edge"
                     + (outline != 0 ? " and a \(units.length(outline)) black outline" : ""),
-                "Colour: \(negativeColour)",
-                "Process curve: \(processPath?.lastPathComponent ?? "none (uncalibrated)")",
+            ] + separationLines + [
                 "Mirrored: \(mirror ? "yes" : "no")",
             ] + marksLine
         }
@@ -249,11 +326,31 @@ public struct PrintSession: Sendable {
         try ImageFiles.saveRGB(url, try renderPrint(), dpi: (ppi, ppi), iccProfile: ImageFiles.srgbProfile())
     }
 
+    /// Every negative of the separation as `<stem>-<k>of<n>.tif` in `folder`.
+    @discardableResult
+    public func writeSeparations(_ folder: URL, stem: String? = nil) throws -> [URL] {
+        guard let separation, negative else { throw SessionError(description: "set up a separation of the negative first") }
+        let photo = try currentPhoto(), ppi = try effectivePPI()
+        let stem = stem ?? source?.deletingPathExtension().lastPathComponent ?? "negative"
+        return try (0..<separation.count).map { k in
+            let url = folder.appendingPathComponent("\(stem)-\(k + 1)of\(separation.count).tif")
+            let image = try renderLayer(photo.pixels, width: photo.width, height: photo.height, layer: k, dpi: ppi)
+            try ImageFiles.saveRGB(url, image, dpi: (ppi, ppi), iccProfile: ImageFiles.srgbProfile())
+            return url
+        }
+    }
+
+    /// The print job's title, naming the negative of a separation.
+    public var jobTitle: String {
+        let title = source.map { "OpenQuad: \($0.lastPathComponent)" } ?? "OpenQuad"
+        guard negative, let separation else { return title }
+        return title + " (negative \(layer + 1) of \(separation.count))"
+    }
+
     public func printJob(_ path: URL) throws -> PrintJob {
         guard let printer, !printer.isEmpty else { throw SessionError(description: "choose a printer first") }
         guard try fitsOnPaper() else { throw SessionError(description: "the photo is larger than the paper at this size") }
-        return try PrintJob(path: path.path, printer: printer, paper: paper, ppi: try effectivePPI(),
-                            title: source.map { "OpenQuad: \($0.lastPathComponent)" } ?? "OpenQuad")
+        return try PrintJob(path: path.path, printer: printer, paper: paper, ppi: try effectivePPI(), title: jobTitle)
     }
 
     /// Render into `scratch` and send to the printer through lp; returns the CUPS job id.
