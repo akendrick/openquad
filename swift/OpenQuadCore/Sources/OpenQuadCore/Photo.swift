@@ -1,7 +1,8 @@
 // Loading a photo for printing: any greyscale image, whatever it was saved as.
 // Mirrors openquad/photo.py: transparent edges are cropped, partly transparent pixels
 // go onto paper white, greyscale stored as RGB is read as grey, and a true colour image
-// is converted by luminance (`converted` says so).
+// is converted by luminance (`converted` says so); its colour (on white, 16-bit) and
+// embedded RGB ICC profile are kept too, for printing in colour.
 
 import CoreGraphics
 import Foundation
@@ -17,23 +18,44 @@ public struct Photo: Sendable {
     public var converted = false
     /// Transparent edges were removed.
     public var cropped = false
+    /// A colour image's own colour, 16-bit RGB on white, row-major; nil for a greyscale image.
+    public var colour: [UInt16]?
+    /// A colour image's embedded RGB ICC profile (nil: untagged, read as sRGB).
+    public var iccProfile: Data?
 
     public var size: (width: Int, height: Int) { (width, height) }
 
     public init(width: Int, height: Int, pixels: [UInt16], dpi: (Double, Double)? = nil, converted: Bool = false,
-                cropped: Bool = false) {
+                cropped: Bool = false, colour: [UInt16]? = nil, iccProfile: Data? = nil) {
         precondition(pixels.count == width * height, "pixels must be width x height")
+        precondition(colour == nil || colour!.count == width * height * 3, "colour must be width x height x 3")
         self.width = width
         self.height = height
         self.pixels = pixels
         self.dpi = dpi
         self.converted = converted
         self.cropped = cropped
+        self.colour = colour
+        self.iccProfile = iccProfile
     }
 }
 
 public enum Photos {
     static let greyTolerance = 2.0 / 255.0  // channels within this count as grey (JPEG noise)
+
+    /// The profile if it is an RGB ICC profile (data colour space "RGB "), else nil.
+    public static func rgbProfile(_ profile: Data?) -> Data? {
+        guard let profile, profile.count >= 20, profile[profile.startIndex + 16 ..< profile.startIndex + 20] == Data("RGB ".utf8)
+        else { return nil }
+        return profile
+    }
+
+    /// A value 0-1 placed on white paper (premultiplied: + (1 - alpha), else blended), as 16-bit.
+    static func onWhite(_ value: Double, alpha: Double?, premultiplied: Bool) -> UInt16 {
+        var v = value
+        if let a = alpha { v = premultiplied ? v + (1.0 - a) : v * a + (1.0 - a) }
+        return UInt16(rint(clip(v, 0.0, 1.0) * Double(maxValue)))
+    }
 
     /// Load a photo as 16-bit greyscale.
     public static func load(_ url: URL) throws -> Photo {
@@ -82,8 +104,13 @@ public enum Photos {
             converted = spread > greyTolerance
         }
         var out = [UInt16](repeating: 0, count: outWidth * outHeight)
+        var colour = converted ? [UInt16](repeating: 0, count: outWidth * outHeight * 3) : nil
         for y in 0..<outHeight {
             for x in 0..<outWidth {
+                let a = hasAlpha ? at(y, x, channels - 1) : nil
+                if converted {
+                    for c in 0..<3 { colour![(y * outWidth + x) * 3 + c] = onWhite(at(y, x, c), alpha: a, premultiplied: premultiplied) }
+                }
                 var grey: Double
                 if colours == 3 {
                     let r = at(y, x, 0), g = at(y, x, 1), b = at(y, x, 2)
@@ -94,15 +121,14 @@ public enum Photos {
                     grey = at(y, x, 0)
                 }
                 if minIsWhite { grey = 1.0 - grey }
-                if hasAlpha {
-                    let a = at(y, x, channels - 1)
-                    grey = premultiplied ? grey + (1.0 - a) : grey * a + (1.0 - a)
-                }
-                out[y * outWidth + x] = UInt16(rint(clip(grey, 0.0, 1.0) * Double(maxValue)))
+                out[y * outWidth + x] = onWhite(grey, alpha: a, premultiplied: premultiplied)
             }
         }
+        // ImageIO names a profile only when the file embeds one.
+        let embedded = properties[kCGImagePropertyProfileName] != nil ? image.colorSpace?.copyICCData() as Data? : nil
         return Photo(width: outWidth, height: outHeight, pixels: out, dpi: dpi(properties, isTIFF: isTIFF, source: source),
-                     converted: converted, cropped: cropped)
+                     converted: converted, cropped: cropped, colour: colour,
+                     iccProfile: converted ? rgbProfile(embedded) : nil)
     }
 
     /// The resolution as Python reads it: TIFF tags, or a PNG's pixels per metre x 0.0254.

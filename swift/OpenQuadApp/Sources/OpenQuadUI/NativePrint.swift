@@ -1,6 +1,7 @@
 // Printing through the standard macOS print panel. The image is laid out at its exact
 // physical size (pixels / ppi inches), centred on the page, so the print matches the
-// size OpenQuad reports; the printer, media and quality are chosen in the panel.
+// size OpenQuad reports; the printer, media and quality are chosen in the panel. The image
+// carries its ICC profile (sRGB, or a colour print's own), so macOS colour-manages it.
 
 import AppKit
 import OpenQuadCore
@@ -31,8 +32,8 @@ public enum NativePrint {
     /// image at its real size in the middle of the page.
     @MainActor
     public static func operation(for image: RGBImage, widthInches: Double, heightInches: Double,
-                                 paper: String, title: String) -> NSPrintOperation? {
-        guard let cgImage = image.cgImage(), let (paperWidth, paperHeight) = Paper.sizes[paper] else { return nil }
+                                 paper: String, title: String, iccProfile: Data? = nil) -> NSPrintOperation? {
+        guard let cgImage = image.cgImage(iccProfile: iccProfile), let (paperWidth, paperHeight) = Paper.sizes[paper] else { return nil }
         let info = (NSPrintInfo.shared.copy() as? NSPrintInfo) ?? NSPrintInfo()
         info.paperSize = NSSize(width: paperWidth * 72, height: paperHeight * 72)
         info.orientation = .portrait

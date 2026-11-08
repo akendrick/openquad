@@ -5,9 +5,10 @@ import Foundation
 import OpenQuadCore
 
 extension RGBImage {
-    /// A CGImage of the 16-bit sRGB pixels; `eightBit` for previews on screen.
-    public func cgImage(eightBit: Bool = false) -> CGImage? {
-        let space = ImageFiles.srgbProfile().flatMap { CGColorSpace(iccData: $0 as CFData) }
+    /// A CGImage of the 16-bit pixels, in `iccProfile` (a colour print's own) or else sRGB;
+    /// `eightBit` for previews on screen.
+    public func cgImage(eightBit: Bool = false, iccProfile: Data? = nil) -> CGImage? {
+        let space = (iccProfile ?? ImageFiles.srgbProfile()).flatMap { CGColorSpace(iccData: $0 as CFData) }
             ?? CGColorSpace(name: CGColorSpace.sRGB)!
         let data: Data
         let bits: Int

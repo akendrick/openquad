@@ -7,7 +7,8 @@ turns all of these into 16-bit greyscale (0 black, 65535 white):
 - fully transparent edges are cropped off;
 - partly transparent pixels are placed on paper white (not black);
 - greyscale stored as RGB is read as greyscale;
-- a true colour image is converted by luminance, and `converted` says so.
+- a true colour image is converted by luminance, and `converted` says so; its colour
+  (on white, 16-bit) and embedded RGB ICC profile are kept too, for printing in colour.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from openquad.colour import linear_to_srgb, luminance, srgb_to_linear
 from openquad.imageio import ImageFormatError, read_dpi
 from openquad.quadfile import MAX_VALUE
 
+_ICC_TAG = 34675
 GREY_TOLERANCE = 2 / 255  # channels within this count as grey (JPEG noise)
 
 
@@ -35,6 +37,10 @@ class Photo:
     dpi: tuple[float, float] | None
     converted: bool = False  # was a colour image, converted by luminance
     cropped: bool = False  # transparent edges were removed
+    # A colour image's own colour, (H, W, 3) 16-bit on white, and its embedded RGB ICC
+    # profile (None: untagged, read as sRGB). Both None for a greyscale image.
+    colour: NDArray[np.uint16] | None = None
+    icc_profile: bytes | None = None
 
     @property
     def size(self) -> tuple[int, int]:
@@ -42,8 +48,16 @@ class Photo:
         return (int(self.pixels.shape[1]), int(self.pixels.shape[0]))
 
 
-def _read(path: Path) -> tuple[NDArray[np.float64], bool, bool, tuple[float, float] | None]:
-    """Pixels as floats 0-1 (H, W, C), whether alpha is premultiplied, min-is-white, dpi."""
+def rgb_profile(profile: bytes | None) -> bytes | None:
+    """The profile if it is an RGB ICC profile (data colour space 'RGB '), else None."""
+    return profile if profile and len(profile) >= 20 and profile[16:20] == b"RGB " else None
+
+
+def _read(
+    path: Path,
+) -> tuple[NDArray[np.float64], bool, bool, tuple[float, float] | None, bytes | None]:
+    """Pixels as floats 0-1 (H, W, C), whether alpha is premultiplied, min-is-white, dpi,
+    and the embedded ICC profile."""
     if path.suffix.lower() in (".tif", ".tiff"):
         with tifffile.TiffFile(path) as tif:
             page = tif.pages.first
@@ -52,10 +66,13 @@ def _read(path: Path) -> tuple[NDArray[np.float64], bool, bool, tuple[float, flo
             raw = np.asarray(page.asarray())
             premultiplied = tifffile.EXTRASAMPLE.ASSOCALPHA in tuple(page.extrasamples or ())
             min_is_white = page.photometric == tifffile.PHOTOMETRIC.MINISWHITE
+            tag = page.tags.get(_ICC_TAG)
+            profile = bytes(tag.value) if tag is not None else None
         dpi = read_dpi(path)
     else:
         with Image.open(path) as image:
             info_dpi = image.info.get("dpi")
+            profile = image.info.get("icc_profile") or None
             if image.mode in ("I;16", "I;16B", "I"):
                 raw = np.asarray(image).astype(np.uint16)
             else:
@@ -74,13 +91,13 @@ def _read(path: Path) -> tuple[NDArray[np.float64], bool, bool, tuple[float, flo
         pixels = pixels[..., np.newaxis]
     if pixels.ndim != 3 or pixels.shape[-1] not in (1, 2, 3, 4):
         raise ImageFormatError(f"{path}: unsupported image shape {raw.shape}")
-    return pixels, premultiplied, min_is_white, dpi
+    return pixels, premultiplied, min_is_white, dpi, profile
 
 
 def load_photo(path: str | Path) -> Photo:
     """Load a photo as 16-bit greyscale; see the module docstring for what's handled."""
     path = Path(path)
-    pixels, premultiplied, min_is_white, dpi = _read(path)
+    pixels, premultiplied, min_is_white, dpi, profile = _read(path)
     channels = pixels.shape[-1]
     has_alpha = channels in (2, 4)
     colour = pixels[..., : channels - 1] if has_alpha else pixels
@@ -98,11 +115,13 @@ def load_photo(path: str | Path) -> Photo:
             colour, alpha = colour[window], alpha[window]
 
     converted = False
+    kept: NDArray[np.uint16] | None = None
     if colour.shape[-1] == 3:
         spread = colour.max(axis=-1) - colour.min(axis=-1)
         if spread.max() > GREY_TOLERANCE:
             converted = True
             grey = linear_to_srgb(luminance(srgb_to_linear(colour)))
+            kept = _on_white(colour, alpha, premultiplied)
         else:
             grey = colour.mean(axis=-1)
     else:
@@ -110,8 +129,19 @@ def load_photo(path: str | Path) -> Photo:
 
     if min_is_white:
         grey = 1.0 - grey
+    out = _on_white(grey, alpha, premultiplied)
+    return Photo(
+        pixels=out, dpi=dpi, converted=converted, cropped=cropped, colour=kept,
+        icc_profile=rgb_profile(profile) if converted else None,
+    )  # fmt: skip
+
+
+def _on_white(
+    values: NDArray[np.float64], alpha: NDArray[np.float64] | None, premultiplied: bool
+) -> NDArray[np.uint16]:
+    """Grey (H, W) or colour (H, W, 3) values placed on white paper, as 16-bit."""
     if alpha is not None:
+        a = alpha if values.ndim == 2 else alpha[..., np.newaxis]
         # Place on white paper: premultiplied colour + (1 - alpha), else blend.
-        grey = grey + (1.0 - alpha) if premultiplied else grey * alpha + (1.0 - alpha)
-    out = np.rint(np.clip(grey, 0.0, 1.0) * MAX_VALUE).astype(np.uint16)
-    return Photo(pixels=out, dpi=dpi, converted=converted, cropped=cropped)
+        values = values + (1.0 - a) if premultiplied else values * a + (1.0 - a)
+    return np.rint(np.clip(values, 0.0, 1.0) * MAX_VALUE).astype(np.uint16)

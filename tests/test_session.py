@@ -7,6 +7,7 @@ import pytest
 import tifffile
 
 from openquad.greybalance import Calibration, save_calibration
+from openquad.imageio import srgb_profile
 from openquad.session import PrintSession, SessionError
 from tests.test_printing import FakeRunner
 
@@ -193,3 +194,93 @@ def test_summary_shows_lengths_in_millimetres(tmp_path: Path) -> None:
     assert "Fit within: 101.6 x 127 mm" in session.summary()
     with pytest.raises(ValueError, match="units"):
         session.set_units("cm")
+
+
+RGB_PROFILE = bytes(16) + b"RGB " + bytes(108)  # a stand-in ICC profile header
+
+
+def colour_file(tmp_path: Path, profile: bytes | None = RGB_PROFILE) -> Path:
+    path = tmp_path / "colour.tif"
+    rgb = np.zeros((40, 30, 3), dtype=np.uint16)
+    rgb[..., 0] = np.linspace(0, 65535, 30).astype(np.uint16)
+    rgb[..., 2] = 20000
+    tifffile.imwrite(path, rgb, photometric="rgb", resolution=(10, 10), resolutionunit="INCH",
+                     iccprofile=profile)  # fmt: skip
+    return path
+
+
+def colour_session(tmp_path: Path, profile: bytes | None = RGB_PROFILE) -> PrintSession:
+    session = PrintSession(printer="Canon_MG3600_series", fit=False)
+    session.open(colour_file(tmp_path, profile))
+    session.set_colour_print(True)
+    return session
+
+
+def test_colour_print_is_off_and_only_for_colour_photos(tmp_path: Path) -> None:
+    session = opened(tmp_path)
+    assert not session.colour_print and not session.prints_colour
+    with pytest.raises(SessionError, match="only a colour photo"):
+        session.set_colour_print(True)
+    with pytest.raises(SessionError, match="only a colour photo"):
+        PrintSession().set_colour_print(True)
+    session.set_colour_print(False)  # turning it off is always fine
+    colour = colour_session(tmp_path)
+    assert colour.prints_colour
+    colour.open(colour_file(tmp_path))
+    assert not colour.colour_print  # every photo starts in greyscale
+
+
+def test_colour_print_is_the_photos_own_colour_without_toning(tmp_path: Path) -> None:
+    session = colour_session(tmp_path)
+    session.set_preset("black-red")
+    calibration = tmp_path / "c.oqcal"
+    save_calibration(Calibration.identity(), calibration)
+    session.set_calibration(calibration)
+    assert session.photo is not None and session.photo.colour is not None
+    assert np.array_equal(session.render_print(), session.photo.colour)
+    summary = session.summary()
+    assert "Output: colour print (colour-managed by macOS)" in summary
+    assert "Colour profile: embedded in the photo" in summary
+    assert not any(line.startswith(("Toning", "Calibration")) for line in summary)
+    session.set_colour_print(False)
+    assert session.render_print().shape == (40, 30, 3)
+    assert "Toning: black-red" in session.summary()
+
+
+def test_colour_print_file_carries_the_photos_profile(tmp_path: Path) -> None:
+    session = colour_session(tmp_path)
+    out = session.write_print_file(tmp_path / "print.tif")
+    with tifffile.TiffFile(out) as tif:
+        page = tif.pages.first
+        assert isinstance(page, tifffile.TiffPage)
+        assert bytes(page.tags[34675].value) == RGB_PROFILE
+        assert np.array_equal(page.asarray(), session.render_print())
+
+
+def test_untagged_colour_print_is_read_as_srgb(tmp_path: Path) -> None:
+    session = colour_session(tmp_path, profile=None)
+    assert "Colour profile: none (read as sRGB)" in session.summary()
+    assert session.print_profile() == srgb_profile()
+
+
+def test_colour_print_sends_the_colour_file(tmp_path: Path) -> None:
+    session = colour_session(tmp_path)
+    session.guide = True
+    runner = FakeRunner(stdout=REPLY)
+    assert session.print(tmp_path, runner) == "Canon_MG3600_series-9"
+    assert runner.commands[0][-1].endswith("openquad-print.tif")
+    printed = tifffile.imread(tmp_path / "openquad-print.tif")
+    assert printed.shape[0] > 40 and printed.shape[2] == 3  # the marks' white border
+
+
+def test_colour_preview_is_in_colour_and_negatives_stay_grey(tmp_path: Path) -> None:
+    session = colour_session(tmp_path)
+    preview = session.preview(max_side=20).astype(int)
+    assert preview.shape == (20, 15, 3)
+    assert (preview[..., 0] - preview[..., 1]).max() > 100  # red, not grey
+    assert session.preview(max_side=900).shape == (40, 30, 3)
+    session.set_mode("negative")
+    assert not session.prints_colour
+    assert "Output: digital negative" in session.summary()
+    negative = session.render_print()
+    assert negative.shape[0] > 40  # the negative's safe edge, from the greyscale photo

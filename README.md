@@ -77,7 +77,7 @@ The app keeps its calibration runs, scans and measurements in
 
 | Part | State |
 | --- | --- |
-| Mac app (SwiftUI): print window, toning, digital negatives, print panel or direct printing | beta |
+| Mac app (SwiftUI): print window, toning, colour prints (colour-managed, soft-proof), digital negatives, print panel or direct printing | beta |
 | Printer calibration wizard (grey balance, tone), calibration library per printer | beta, tested on Canon MG3600 |
 | Blocking test and process calibration wizards (carbon) | beta, partly tested |
 | Python CLI and desktop app (PySide6) | working; the reference implementation |

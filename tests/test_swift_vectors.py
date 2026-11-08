@@ -77,7 +77,9 @@ def test_main_writes_all_files(tmp_path: Path, capsys) -> None:  # type: ignore[
         "measure.json",
         "negative.json",
         "paper.json",
+        "photo-colour-icc.png",
         "photo-colour.png",
+        "photo-colour16.tif",
         "photo-grey.png",
         "photo-grey16.tif",
         "photo-la.png",
@@ -97,4 +99,4 @@ def test_main_writes_all_files(tmp_path: Path, capsys) -> None:  # type: ignore[
         "wedge-single.png",
         "wizards.json",
     ]
-    assert capsys.readouterr().out.count("wrote") == 40
+    assert capsys.readouterr().out.count("wrote") == 42

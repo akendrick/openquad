@@ -158,3 +158,43 @@ def test_fit_landscape_is_limited_by_width() -> None:
 def test_fit_errors(args: tuple, message: str) -> None:  # type: ignore[type-arg]
     with pytest.raises(ValueError, match=message):
         fit_ppi(*args)
+
+
+def _profile(space: bytes) -> bytes:
+    """A stand-in ICC profile: just a header naming its data colour space."""
+    return bytes(16) + space + bytes(108)
+
+
+def test_colour_photo_keeps_its_colour_and_rgb_profile(tmp_path: Path) -> None:
+    rgba = np.zeros((3, 2, 4), dtype=np.uint8)
+    rgba[..., :3] = (200, 40, 10)
+    rgba[..., 3] = 255
+    rgba[0, :, 3] = 0  # a transparent band: cropped off the colour too
+    rgba[1, 0] = (0, 0, 255, 0)  # transparent inside: paper white
+    path = tmp_path / "colour.png"
+    Image.fromarray(rgba, "RGBA").save(path, icc_profile=_profile(b"RGB "))
+    photo = load_photo(path)
+    assert photo.converted and photo.colour is not None
+    assert photo.colour.shape == (2, 2, 3) and photo.colour.dtype == np.uint16
+    assert photo.colour[1, 1].tolist() == [200 * 257, 40 * 257, 10 * 257]
+    assert photo.colour[0, 0].tolist() == [65535] * 3
+    assert photo.icc_profile == _profile(b"RGB ")
+
+
+def test_colour_tiff_profile_is_kept_but_not_a_cmyk_one(tmp_path: Path) -> None:
+    rgb = np.zeros((2, 2, 3), dtype=np.uint16)
+    rgb[..., 0] = 60000
+    path = tmp_path / "colour.tif"
+    tifffile.imwrite(path, rgb, photometric="rgb", iccprofile=_profile(b"RGB "))
+    assert load_photo(path).icc_profile == _profile(b"RGB ")
+    tifffile.imwrite(path, rgb, photometric="rgb", iccprofile=_profile(b"CMYK"))
+    photo = load_photo(path)
+    assert photo.icc_profile is None  # it doesn't describe these RGB pixels
+    assert photo.colour is not None and photo.colour[0, 0].tolist() == [60000, 0, 0]
+
+
+def test_grey_photo_keeps_no_colour(tmp_path: Path) -> None:
+    path = tmp_path / "rgb.png"
+    Image.fromarray(np.stack([GREY8] * 3, axis=-1)).save(path, icc_profile=_profile(b"RGB "))
+    photo = load_photo(path)
+    assert photo.colour is None and photo.icc_profile is None
