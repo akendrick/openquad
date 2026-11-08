@@ -107,7 +107,7 @@ struct SeparationTests {
         m.openStepTest()
         #expect(m.error == nil)
         #expect(m.session.source?.lastPathComponent == "step-test-21.tif")
-        #expect(m.session.photo?.width == 22 * 95)  // 7 in across 22 patches at 300 dpi
+        #expect(m.session.photo?.width == 22 * 95 + 90)  // 7 in across 22 patches at 300 dpi, in a 0.15 in frame
         #expect(m.settings.lastFolder == before)
         #expect(m.summary.contains("Photo: step-test-21.tif"))
     }

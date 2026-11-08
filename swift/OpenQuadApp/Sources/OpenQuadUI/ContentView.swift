@@ -12,6 +12,8 @@ public struct ContentView: View {
     @State private var savingSetup = false
     @State private var setupName = ""
     @State private var deletingSetup: NegativeSetup?
+    /// The Separations section is closed until wanted (or a separation is already set).
+    @State private var showSeparations = false
     /// Switch to another tab (e.g. to calibrate).
     let goTo: (AppTab) -> Void
 
@@ -45,7 +47,10 @@ public struct ContentView: View {
         } message: {
             Text("Its copy of the process curve goes too. Your own curve files are not touched.")
         }
-        .onAppear { model.loadPrinters() }
+        .onAppear {
+            model.loadPrinters()
+            if model.session.negativeCount > 1 { showSeparations = true }
+        }
     }
 
     // MARK: the controls
@@ -65,7 +70,13 @@ public struct ContentView: View {
                     if model.session.negative { negativeControls } else { printControls }
                 }
                 if model.session.negative {
-                    Section("Separations") { SeparationControls(model: model) }
+                    // Closed until wanted: most negatives are one negative.
+                    Section(isExpanded: $showSeparations) {
+                        SeparationControls(model: model)
+                    } header: {
+                        Text(model.session.negativeCount > 1 ? "Separations: \(model.session.negativeCount) negatives"
+                                                              : "Separations")
+                    }
                 }
                 Section("Darkroom marks") {
                     DarkroomMarks(guide: model.session.guide, registration: model.session.registration,

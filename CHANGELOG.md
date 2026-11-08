@@ -12,11 +12,11 @@ versions follow [Semantic Versioning](https://semver.org/).
   30) and an overlap that blends the seams; the coats add up to the photo exactly. Each negative
   can have its own process curve. With registration marks, the targets are cut clear and each
   negative is numbered in its own place, so the first coat records them on the paper. App:
-  the Negative tab's Separations section (band diagram, which negative to show and print, Save
+  the Negative tab's Separations section, closed until wanted (band diagram, which negative to show and print, Save
   All Negatives…). Command line: `openquad negative --separations N --splits ... --overlap ...
   --layer-process K=CURVE`.
-- A step test for separations: the step scale's numbered steps over a continuous gradient lined
-  up with them, to print through every negative and see where each band falls and whether the
+- A step test for separations, laid out like a contact-printed step tablet: the step scale's
+  steps, each numbered sideways inside it, over a continuous gradient lined up with them, to print through every negative and see where each band falls and whether the
   seams show. App: "Use Step Test as Photo"; command line: `openquad target --kind steps`.
 - Export process curves for other software, as with ChartThrob: Photoshop Curves (.acv, up to 16
   spline points placed where they matter), Photoshop arbitrary map (.amp, exact), a 3D LUT (.cube)

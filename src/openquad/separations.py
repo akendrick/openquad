@@ -33,9 +33,10 @@ from openquad.quadfile import MAX_VALUE
 MAX_SEPARATIONS = 6
 # The step scale split points are shown on (a 30-step scale: splits at 10 and 20 for three).
 DEFAULT_STEPS = 30
-# The step test: inches across, and the heights of its number row, steps and gradient.
+# The step test: inches across its steps, its black frame, and the heights of the steps and
+# the gradient under them.
 TEST_WIDTH = 7.0
-TEST_NUMBERS, TEST_STEPS, TEST_GRADIENT = 0.25, 0.6, 0.6
+TEST_FRAME, TEST_STEPS, TEST_GRADIENT = 0.15, 1.0, 0.5
 
 
 @dataclass(frozen=True)
@@ -156,10 +157,11 @@ def coat_image(photo: NDArray[np.uint16], plan: SeparationPlan, layer: int) -> N
 
 
 def step_test(steps: int = DEFAULT_STEPS, dpi: float = 300.0) -> NDArray[np.uint16]:
-    """A greyscale test to print through a separation: the step scale's steps 0 (paper white)
-    to `steps` (full black) as numbered patches, and under them a continuous gradient lined
-    up with them (each patch's tone sits under its centre), so the coats' bands, their seams
-    and any banding between steps all show. The numbers print black in a white row above."""
+    """A greyscale test to print through a separation, laid out like a contact-printed step
+    tablet: the step scale's steps 0 (paper white) to `steps` (full black) as tall patches,
+    each numbered sideways inside it (black on light steps, white on dark), and under them a
+    continuous gradient lined up with them (each patch's tone under its centre), all in a
+    black frame. The coats' bands, their seams and any banding between steps all show."""
     if not 2 <= steps <= 101:
         raise ValueError(f"the step scale needs 2-101 steps, got {steps}")
     if dpi <= 0:
@@ -168,24 +170,25 @@ def step_test(steps: int = DEFAULT_STEPS, dpi: float = 300.0) -> NDArray[np.uint
 
     count = steps + 1
     patch = max(1, round(TEST_WIDTH * dpi / count))
-    numbers, tall, low = (max(1, round(h * dpi)) for h in (TEST_NUMBERS, TEST_STEPS, TEST_GRADIENT))
+    frame, tall, low = (max(1, round(h * dpi)) for h in (TEST_FRAME, TEST_STEPS, TEST_GRADIENT))
     width = patch * count
-    image = np.full((numbers + tall + low, width), MAX_VALUE, dtype=np.uint16)
+    image = np.zeros((3 * frame + tall + low, width + 2 * frame), dtype=np.uint16)  # black
     levels = np.rint((1.0 - np.arange(count) / steps) * MAX_VALUE).astype(np.uint16)
-    image[numbers : numbers + tall] = np.repeat(levels, patch)[np.newaxis, :]
+    image[frame : frame + tall, frame : frame + width] = np.repeat(levels, patch)[np.newaxis, :]
     x = np.arange(width, dtype=np.float64)
     tone = np.clip((x + 0.5 - patch / 2.0) / (patch * steps), 0.0, 1.0)
-    image[numbers + tall :] = np.rint((1.0 - tone) * MAX_VALUE).astype(np.uint16)[np.newaxis, :]
+    gradient = np.rint((1.0 - tone) * MAX_VALUE).astype(np.uint16)
+    image[2 * frame + tall : 2 * frame + tall + low, frame : frame + width] = gradient
     digits = len(str(steps))
-    cell = min(numbers * 6 // 10 // 7, patch * 3 // 4 // (6 * digits))  # a gap between numbers
+    cell = min(patch * 6 // 10 // 7, tall // 2 // (6 * digits))
     if cell >= 1:
-        top = (numbers - 7 * cell) // 2
+        top = frame + 2 * cell
         for k in range(count):
-            text = str(k)
-            span = len(text) * 6 * cell - cell
-            left = k * patch + (patch - span) // 2
-            for d, char in enumerate(text):
-                glyph = np.kron(DIGIT_GLYPHS[int(char)], np.ones((cell, cell), dtype=bool))
-                start = left + d * 6 * cell
-                image[top : top + 7 * cell, start : start + 5 * cell][glyph] = 0
+            ink = 0 if levels[k] >= MAX_VALUE // 2 else MAX_VALUE  # contrasting with the step
+            left = frame + k * patch + (patch - 7 * cell) // 2
+            for d, char in enumerate(str(k)):  # read top to bottom, turned a quarter right
+                turned = np.rot90(DIGIT_GLYPHS[int(char)], -1)
+                glyph = np.kron(turned, np.ones((cell, cell), dtype=bool))
+                y = top + d * 6 * cell
+                image[y : y + 5 * cell, left : left + 7 * cell][glyph] = ink
     return image

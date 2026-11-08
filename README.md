@@ -199,8 +199,9 @@ openquad negative photo.tif -o gum.tif --process gum.oqproc --registration \
 #    -> gum-1of3.tif (steps 0-10), gum-2of3.tif (10-20), gum-3of3.tif (20-30)
 ```
 
-Test the split first with the step test: numbered steps 0 to the step scale's end over a
-continuous gradient lined up with them, so each coat's band, the seams between bands and any
+Test the split first with the step test, laid out like a contact-printed step tablet: tall
+steps 0 to the step scale's end, each numbered sideways inside it, over a continuous gradient
+lined up with them, in a black frame, so each coat's band, the seams between bands and any
 banding all show. Print every negative of it in register, then move the splits to where the
 print needs them:
 

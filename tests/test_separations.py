@@ -273,26 +273,30 @@ def test_negative_command_separation_errors(
 # --- the step test -------------------------------------------------------------------
 
 
-def test_step_test_numbers_steps_over_a_matching_gradient() -> None:
+def test_step_test_is_a_numbered_tablet_over_a_matching_gradient() -> None:
     test = step_test(30, 300.0)
-    patch = round(7.0 * 300 / 31)
-    assert test.shape == (75 + 180 + 180, patch * 31)
-    steps = test[75 + 90, patch // 2 :: patch]  # each patch's centre
+    patch, frame, tall, low = round(7.0 * 300 / 31), 45, 300, 150
+    assert test.shape == (3 * frame + tall + low, patch * 31 + 2 * frame)
+    assert (test[:frame] == 0).all() and (test[:, :frame] == 0).all()  # the black frame
+    assert (test[frame + tall : 2 * frame + tall] == 0).all()  # and between the scales
+    steps = test[frame + tall - 5, frame + patch // 2 :: patch][:31]  # below the numbers
     assert steps.tolist() == np.rint((1 - np.arange(31) / 30) * MAX_VALUE).astype(int).tolist()
-    gradient = test[-1]
+    gradient = test[2 * frame + tall + low // 2, frame : frame + patch * 31]
     centres = gradient[patch // 2 :: patch].astype(int)
     assert np.all(np.abs(centres - steps.astype(int)) <= MAX_VALUE // (patch * 30) + 1)
     assert gradient[0] == MAX_VALUE and gradient[-1] == 0
     assert np.all(np.diff(gradient.astype(int)) <= 0)
-    numbers = test[:75]
-    assert set(np.unique(numbers).tolist()) == {0, MAX_VALUE}  # black digits on white
-    for k in (0, 10, 30):  # every step is numbered over its own patch
-        assert (numbers[:, k * patch : (k + 1) * patch] == 0).any()
+    for k in (0, 10, 29):  # numbered inside each step, contrasting with it
+        column = test[frame : frame + tall, frame + k * patch : frame + (k + 1) * patch]
+        ink = 0 if steps[k] >= MAX_VALUE // 2 else MAX_VALUE
+        assert (column == ink).sum() > 0 and set(np.unique(column).tolist()) == {int(steps[k]), ink}
 
 
 def test_step_test_without_room_for_numbers_and_bad_sizes() -> None:
     small = step_test(101, 20.0)
-    assert (small[: round(0.25 * 20)] == MAX_VALUE).all()  # too small to number
+    frame = round(0.15 * 20)
+    tablet = small[frame : frame + 20, frame:-frame]
+    assert len(np.unique(tablet[:, 0])) == 1  # too small to number: plain steps
     with pytest.raises(ValueError, match="2-101"):
         step_test(1)
     with pytest.raises(ValueError, match="dpi"):
@@ -302,5 +306,5 @@ def test_step_test_without_room_for_numbers_and_bad_sizes() -> None:
 def test_target_command_steps(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     out = tmp_path / "steps.tif"
     assert main(["target", "--kind", "steps", "--steps", "21", "--dpi", "100", "-o", str(out)]) == 0
-    assert tifffile.imread(out).shape == (145, 22 * 32)
+    assert tifffile.imread(out).shape == (195, 22 * 32 + 30)
     assert "steps 0-21" in capsys.readouterr().out
