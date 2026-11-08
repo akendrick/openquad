@@ -39,6 +39,7 @@ struct SeparationControls: View {
             }
             .pickerStyle(.segmented)
             curveRow
+            coatsRows
             HStack {
                 Button("Use Step Test as Photo") { model.openStepTest() }
                     .help("Numbered steps 0-\(model.separationSteps) over a continuous gradient: print every negative "
@@ -72,6 +73,35 @@ struct SeparationControls: View {
                 if own != nil { Button("Clear") { model.setLayerProcess(layer, nil) } }
             }
         }
+    }
+
+    /// Calibrating the stacked coats as one process: print the chart through every negative,
+    /// scan it, read it.
+    @ViewBuilder private var coatsRows: some View {
+        let path = model.session.coatsCurvePath
+        LabeledContent("Coats curve") {
+            HStack {
+                Text(path?.lastPathComponent ?? "none").foregroundStyle(path == nil ? .secondary : .primary)
+                Button("Choose…") {
+                    if let url = ContentView.askOpen(types: [UTType(filenameExtension: "oqproc")].compactMap { $0 }) {
+                        model.setCoatsCurve(url)
+                    }
+                }
+                if path != nil { Button("Clear") { model.setCoatsCurve(nil) } }
+            }
+        }
+        HStack {
+            Button("Use Chart as Photo") { model.openCoatsChart() }
+            Button("Read Chart Scan…") {
+                if let url = ContentView.askOpen(types: [.jpeg, .png, .tiff]) { Task { await model.readCoatsScan(url) } }
+            }
+            .disabled(model.busy)
+        }
+        Text("Calibrate the coats together: print the chart through every negative onto one sheet, coat by coat, "
+             + "scan the finished print and read it. The coats curve evens out how the coats add up; "
+             + "read a second print to check (each reading builds on the curve in use).")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     private func saveAll() {

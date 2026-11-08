@@ -132,3 +132,22 @@ class CarbonLab(SimulatedLab):
         page = tifffile.imread(path)
         step = max(1, round(300 / self.scan_dpi))
         self.sheet = contact_print(page[::step, ::step])
+
+
+# Each gum coat: (its maximum density, how fast it hardens). Later coats differ, as real coats do.
+GUM_COATS = ((0.2, 8.0), (0.5, 1.5), (0.7, 6.0))
+
+
+def gum_print(
+    negatives: list[NDArray[np.uint16]], coats: tuple[tuple[float, float], ...] = GUM_COATS
+) -> NDArray[np.float64]:
+    """A simulated multi-coat gum print (encoded sRGB 0-1): one coat exposed under each
+    negative in register, each coat's hardened pigment adding its density."""
+    density = np.zeros(negatives[0].shape[:2])
+    for negative, (dmax, speed) in zip(negatives, coats, strict=False):
+        linear = srgb_to_linear(negative.astype(np.float64) / 65535)
+        transmission = 0.9 * (0.003 + 0.85 * linear[..., 2] + 0.15 * linear[..., 1])
+        density += dmax * (1.0 - np.exp(-speed * transmission))
+    grey = linear_to_srgb(0.88 * 10.0 ** (-density))
+    result: NDArray[np.float64] = np.repeat(grey[..., np.newaxis], 3, axis=-1)
+    return result

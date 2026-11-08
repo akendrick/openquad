@@ -7,7 +7,13 @@ import numpy as np
 import pytest
 import tifffile
 
-from openquad.chart import ProcessCurve
+from openquad.chart import (
+    ProcessCurve,
+    build_process_curve,
+    chart_photo,
+    read_chart,
+    tone_errors,
+)
 from openquad.cli import main
 from openquad.marks import target_mask
 from openquad.negative import DIGIT_GLYPHS, NegativeSettings, label_left, make_negative
@@ -21,6 +27,8 @@ from openquad.separations import (
     strength,
 )
 from openquad.session import PrintSession, SessionError
+from tests.simulation import gum_print
+from tests.test_blocking import scanned
 
 TONES = np.linspace(0.0, 1.0, 3001)
 PLANS = [
@@ -252,7 +260,8 @@ def test_negative_command_separations(tmp_path: Path, capsys: pytest.CaptureFixt
     ("extra", "message"),
     [
         (["--splits", "10", "--separations", "3"], "make 2 negatives, not 3"),
-        (["--layer-process", "1=x.oqproc"], "needs --separations"),
+        (["--layer-process", "1=x.oqproc"], "need --separations"),
+        (["--coats-curve", "x.oqproc"], "need --separations"),
         (["--separations", "2", "--layer-process", "3=x.oqproc"], "K 1-2"),
         (["--splits", "ten"], "expected steps"),
     ],
@@ -308,3 +317,65 @@ def test_target_command_steps(tmp_path: Path, capsys: pytest.CaptureFixture[str]
     assert main(["target", "--kind", "steps", "--steps", "21", "--dpi", "100", "-o", str(out)]) == 0
     assert tifffile.imread(out).shape == (195, 22 * 32 + 30)
     assert "steps 0-21" in capsys.readouterr().out
+
+
+# --- calibrating the coats together ------------------------------------------------------
+
+
+def test_coats_curve_shapes_the_photo_before_it_is_split(tmp_path: Path) -> None:
+    s = session(tmp_path)
+    s.set_separation(SeparationPlan.from_steps([10, 20], 30, 1))
+    plain = [s.render_layer(s._photo().pixels, k) for k in range(3)]
+    coats = process_file(tmp_path, "coats.oqproc", "green", 1.3)
+    s.set_coats_curve(coats)
+    assert "Coats curve: coats.oqproc" in s.summary()
+    curved = ProcessCurve.from_json(coats.read_text()).apply(s._photo().pixels)
+    plan = s.separation
+    assert plan is not None
+    for k in range(3):
+        expected = make_negative(coat_image(curved, plan, k), s._negative_settings(k), 100.0)
+        assert np.array_equal(s.render_layer(s._photo().pixels, k), expected)
+        assert not np.array_equal(expected, plain[k])
+    s.set_coats_curve(None)
+    assert "Coats curve: none" in s.summary()
+    assert np.array_equal(s.render_layer(s._photo().pixels, 0), plain[0])
+    s.set_separation(None)
+    s.set_coats_curve(coats)  # only used with a separation
+    assert np.array_equal(
+        s.render(s._photo().pixels), make_negative(s._photo().pixels, s._negative_settings(), 100.0)
+    )
+
+
+def test_chart_photo_through_the_coats(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    chart = tmp_path / "chart.tif"
+    assert main(["target", "--kind", "chart-photo", "--dpi", "50", "-o", str(chart)]) == 0
+    assert np.array_equal(tifffile.imread(chart), chart_photo(dpi=50))
+    coats = process_file(tmp_path, "coats.oqproc", "green", 1.3)
+    out = tmp_path / "neg.tif"
+    base = ["negative", str(chart), "-o", str(out), "--registration", "--separations", "2"]
+    assert main(base) == 0
+    plain = tifffile.imread(tmp_path / "neg-1of2.tif")
+    assert main([*base, "--coats-curve", str(coats)]) == 0
+    assert not np.array_equal(tifffile.imread(tmp_path / "neg-1of2.tif"), plain)
+    assert "process chart as a photo" in capsys.readouterr().out
+
+
+def test_one_round_puts_the_stacked_coats_on_target() -> None:
+    plan = SeparationPlan.from_steps([10, 20], 30, 1)
+
+    def stacked(coats: ProcessCurve | None) -> np.ndarray:
+        photo = chart_photo(dpi=100)
+        photo = coats.apply(photo) if coats else photo
+        negatives = [
+            make_negative(coat_image(photo, plan, k), NegativeSettings(
+                colour="green", registration=True, label=k + 1, clear_targets=True), 100)
+            for k in range(plan.count)
+        ]  # fmt: skip
+        return scanned(gum_print(negatives), "as scanned")
+
+    before = read_chart(stacked(None))
+    coats = build_process_curve(before)
+    after = read_chart(stacked(coats))
+    assert np.abs(tone_errors(before)).max() > 5  # uneven coats: well off target
+    assert np.abs(tone_errors(after)).max() < 1  # within a lightness unit everywhere
+    assert np.abs(tone_errors(after)).mean() < np.abs(tone_errors(before)).mean() / 10

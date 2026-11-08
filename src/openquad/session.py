@@ -68,6 +68,10 @@ class PrintSession:
     layer: int = 0
     layer_processes: dict[int, ProcessCurve] = field(default_factory=dict)
     layer_process_paths: dict[int, Path] = field(default_factory=dict)
+    # The coats curve: the whole stack of coats calibrated as one process (from a chart printed
+    # through every negative), applied to the photo before it is split.
+    coats_curve: ProcessCurve | None = None
+    coats_curve_path: Path | None = None
 
     # --- choosing things ------------------------------------------------------------
 
@@ -142,6 +146,15 @@ class PrintSession:
             return
         self.layer_processes[layer] = load_process(path)
         self.layer_process_paths[layer] = Path(path)
+
+    def set_coats_curve(self, path: str | Path | None) -> None:
+        """Calibrate the stacked coats: a curve read from a chart printed through every
+        negative (`openquad chart`), applied before splitting. None for none."""
+        if path is None:
+            self.coats_curve, self.coats_curve_path = None, None
+            return
+        self.coats_curve = load_process(path)
+        self.coats_curve_path = Path(path)
 
     def layer_process(self, layer: int) -> ProcessCurve | None:
         """The process curve negative `layer` is made with: its own, or the shared one."""
@@ -223,6 +236,8 @@ class PrintSession:
         if self.separation is None:
             process = self.process
         else:
+            if self.coats_curve is not None:
+                pixels = self.coats_curve.apply(pixels)
             pixels = coat_image(pixels, self.separation, layer)
             process = self.layer_process(layer)
         if process is not None:
@@ -284,6 +299,7 @@ class PrintSession:
             f"{upper * plan.steps:g}, then full strength)",
             f"Colour: {colour}",
             f"Process curve: {self._layer_process_name(k)}",
+            f"Coats curve: {self.coats_curve_path.name if self.coats_curve_path else 'none'}",
         ]
 
     def summary(self) -> list[str]:

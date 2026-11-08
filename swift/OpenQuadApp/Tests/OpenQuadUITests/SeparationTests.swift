@@ -111,4 +111,32 @@ struct SeparationTests {
         #expect(m.settings.lastFolder == before)
         #expect(m.summary.contains("Photo: step-test-21.tif"))
     }
+
+    @Test func readingTheCoatsChartBuildsAndUsesTheNextCoatsCurve() async throws {
+        let m = negativeModel()
+        m.setRegistration(true)
+        m.setNegativeCount(3)
+        m.openCoatsChart()
+        #expect(m.session.source?.lastPathComponent == "coats-chart.tif" && m.error == nil)
+        // The chart photo itself stands in for a perfect print of it, on paper as scanned.
+        let scan = folder.appendingPathComponent("scan.tif")
+        let chart = Chart.photo(dpi: 100), margin = 40, width = chart.width + 2 * margin
+        var pixels = [UInt16](repeating: 59000, count: width * (chart.height + 2 * margin))
+        for y in 0..<chart.height {
+            pixels.replaceSubrange(((y + margin) * width + margin)..<((y + margin) * width + margin + chart.width),
+                                   with: chart.pixels[(y * chart.width)..<((y + 1) * chart.width)])
+        }
+        try ImageFiles.saveGrey(scan, GreyImage(width: width, height: chart.height + 2 * margin, pixels: pixels, dpi: (100, 100)))
+        await m.readCoatsScan(scan)
+        #expect(m.error == nil, "\(m.error ?? "")")
+        #expect(m.session.coatsCurvePath?.lastPathComponent == "coats-1.oqproc")
+        #expect(m.status?.hasPrefix("Read the chart:") == true)
+        #expect(m.summary.contains("Coats curve: coats-1.oqproc"))
+        await m.readCoatsScan(scan)  // the next round builds on the curve in use
+        #expect(m.session.coatsCurvePath?.lastPathComponent == "coats-2.oqproc")
+        m.setCoatsCurve(nil)
+        #expect(m.session.coatsCurve == nil)
+        await m.readCoatsScan(folder.appendingPathComponent("missing.tif"))
+        #expect(m.error != nil)
+    }
 }

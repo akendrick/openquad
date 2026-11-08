@@ -51,6 +51,10 @@ public struct PrintSession: Sendable {
     public private(set) var layer = 0
     public private(set) var layerProcesses: [Int: ProcessCurve] = [:]
     public private(set) var layerProcessPaths: [Int: URL] = [:]
+    /// The coats curve: the whole stack of coats calibrated as one process (from a chart
+    /// printed through every negative), applied to the photo before it is split.
+    public private(set) var coatsCurve: ProcessCurve?
+    public private(set) var coatsCurvePath: URL?
 
     public init() {}
 
@@ -85,6 +89,17 @@ public struct PrintSession: Sendable {
         }
         layerProcesses[layer] = try ProcessCurve.decode(Data(contentsOf: url))
         layerProcessPaths[layer] = url
+    }
+
+    /// Calibrate the stacked coats: a curve read from a chart printed through every negative,
+    /// applied before splitting. nil for none.
+    public mutating func setCoatsCurve(_ url: URL?) throws {
+        guard let url else {
+            (coatsCurve, coatsCurvePath) = (nil, nil)
+            return
+        }
+        coatsCurve = try ProcessCurve.decode(Data(contentsOf: url))
+        coatsCurvePath = url
     }
 
     /// The process curve negative `layer` is made with: its own, or the shared one.
@@ -214,7 +229,7 @@ public struct PrintSession: Sendable {
         var shaped = pixels
         var curve = process
         if let separation {
-            shaped = separation.coatImage(pixels, layer: layer)
+            shaped = separation.coatImage(coatsCurve?.apply(pixels) ?? pixels, layer: layer)
             curve = layerProcess(layer)
         }
         shaped = curve?.apply(shaped) ?? shaped
@@ -281,6 +296,7 @@ public struct PrintSession: Sendable {
                 + "\(SeparationPlan.g(upper * steps)), then full strength)",
             "Colour: \(negativeSettings(layer).colour)",
             "Process curve: \(layerProcessName(layer))",
+            "Coats curve: \(coatsCurvePath?.lastPathComponent ?? "none")",
         ]
     }
 

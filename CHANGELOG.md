@@ -18,6 +18,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 - A step test for separations, laid out like a contact-printed step tablet: the step scale's
   steps, each numbered sideways inside it, over a continuous gradient lined up with them, to print through every negative and see where each band falls and whether the
   seams show. App: "Use Step Test as Photo"; command line: `openquad target --kind steps`.
+- Calibrating a separation's coats together: print the process chart through every negative onto
+  one sheet, scan it and read it; the coats curve it gives (applied before the photo is split)
+  evens out how the coats add up. In a simulated three-coat gum print with uneven coats, one round
+  brings every patch within 1 L* of target (from 8 off). App: "Use Chart as Photo", "Read Chart
+  Scan…" and the coats curve in Separations; command line: `openquad target --kind chart-photo`,
+  `openquad chart`, `openquad negative --coats-curve`.
 - Export process curves for other software, as with ChartThrob: Photoshop Curves (.acv, up to 16
   spline points placed where they matter), Photoshop arbitrary map (.amp, exact), a 3D LUT (.cube)
   and CSV. In the app: "Export Curve…" in Process Calibration. Command line: `openquad curve
