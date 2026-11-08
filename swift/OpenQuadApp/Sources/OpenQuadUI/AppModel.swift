@@ -379,6 +379,48 @@ public final class AppModel {
         refreshPreview()
     }
 
+    // MARK: curves already in OpenQuad
+
+    /// A process curve OpenQuad already has, to choose from a menu instead of a file panel.
+    public struct KnownCurve: Hashable, Sendable {
+        /// Where it came from: "Setups", "Process calibrations" or "Coats curves".
+        public let group: String
+        public let label: String
+        public let url: URL
+    }
+
+    /// Where the Process Calibration tab keeps its runs.
+    var processFolder: URL { settingsURL.deletingLastPathComponent().appendingPathComponent("processes") }
+
+    /// Every saved setup's curve, each process calibration's latest curve per colour (newest
+    /// run first) and the coats curves, e.g. "Cyanotype, blue: round 2".
+    public var knownCurves: [KnownCurve] {
+        let fm = FileManager.default
+        var curves = setups.compactMap { setup in
+            setupLibrary.processURL(setup).map { KnownCurve(group: "Setups", label: setup.name, url: $0) }
+        }
+        let folders = (try? fm.contentsOfDirectory(at: processFolder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
+        let runs = folders.compactMap { url -> (ProcessRun, Date)? in
+            guard let run = try? ProcessRun.resume(url) else { return nil }
+            let modified = (try? url.appendingPathComponent("run.json").resourceValues(
+                forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
+            return (run, modified)
+        }
+        for (run, _) in runs.sorted(by: { $0.1 > $1.1 }) {
+            for colour in run.colours where run.current.curves[colour] != nil {
+                let url = run.curvePath(colour)
+                guard fm.fileExists(atPath: url.path) else { continue }
+                curves.append(KnownCurve(group: "Process calibrations",
+                                         label: "\(run.name), \(colour): round \(run.current.version)", url: url))
+            }
+        }
+        let coats = ((try? fm.contentsOfDirectory(at: separationFolder, includingPropertiesForKeys: nil)) ?? [])
+            .filter { $0.pathExtension == "oqproc" }
+            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        curves += coats.map { KnownCurve(group: "Coats curves", label: $0.deletingPathExtension().lastPathComponent, url: $0) }
+        return curves
+    }
+
     // MARK: calibrating the coats together
 
     /// Where the step test, the coats chart and the coats curves are kept.
@@ -611,7 +653,7 @@ public final class AppModel {
     }
 
     public func processWizard() -> ProcessWizardModel {
-        let wizard = ProcessWizardModel(folder: AppSettings.dataDirectory().appendingPathComponent("processes"),
+        let wizard = ProcessWizardModel(folder: processFolder,
                                         scannerHost: settings.scannerHost ?? "")
         wizard.units = settings.units
         wizard.sheetSize = rememberedChartSize

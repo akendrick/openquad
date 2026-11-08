@@ -65,11 +65,7 @@ struct SeparationControls: View {
         return LabeledContent("Curve for negative \(layer + 1)") {
             HStack {
                 Text(own?.lastPathComponent ?? "same as above").foregroundStyle(own == nil ? .secondary : .primary)
-                Button("Choose…") {
-                    if let url = ContentView.askOpen(types: [UTType(filenameExtension: "oqproc")].compactMap { $0 }) {
-                        model.setLayerProcess(layer, url)
-                    }
-                }
+                CurveMenu(model: model) { model.setLayerProcess(layer, $0) }
                 if own != nil { Button("Clear") { model.setLayerProcess(layer, nil) } }
             }
         }
@@ -82,11 +78,7 @@ struct SeparationControls: View {
         LabeledContent("Coats curve") {
             HStack {
                 Text(path?.lastPathComponent ?? "none").foregroundStyle(path == nil ? .secondary : .primary)
-                Button("Choose…") {
-                    if let url = ContentView.askOpen(types: [UTType(filenameExtension: "oqproc")].compactMap { $0 }) {
-                        model.setCoatsCurve(url)
-                    }
-                }
+                CurveMenu(model: model) { model.setCoatsCurve($0) }
                 if path != nil { Button("Clear") { model.setCoatsCurve(nil) } }
             }
         }
@@ -113,6 +105,32 @@ struct SeparationControls: View {
         panel.message = "Choose a folder for the \(count) negatives."
         guard panel.runModal() == .OK, let folder = panel.url else { return }
         Task { await model.saveSeparations(to: folder) }
+    }
+}
+
+/// Choose a process curve: one OpenQuad already has (a setup's, a process calibration's
+/// latest, a coats curve) or another file.
+struct CurveMenu: View {
+    let model: AppModel
+    let choose: (URL) -> Void
+
+    var body: some View {
+        let curves = model.knownCurves
+        Menu("Choose") {
+            ForEach(["Setups", "Process calibrations", "Coats curves"], id: \.self) { group in
+                let inGroup = curves.filter { $0.group == group }
+                if !inGroup.isEmpty {
+                    Section(group) {
+                        ForEach(inGroup, id: \.self) { curve in Button(curve.label) { choose(curve.url) } }
+                    }
+                }
+            }
+            if !curves.isEmpty { Divider() }
+            Button("Other File…") {
+                if let url = ContentView.askOpen(types: [UTType(filenameExtension: "oqproc")].compactMap { $0 }) { choose(url) }
+            }
+        }
+        .fixedSize()
     }
 }
 
