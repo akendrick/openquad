@@ -36,6 +36,16 @@ struct SeparationParity {
         }
     }
 
+    @Test func stepTests() throws {
+        for t in try vectors("separations")["step_tests"] as! [[String: Any]] {
+            let test = try SeparationPlan.stepTest(steps: (t["steps"] as! NSNumber).intValue, dpi: (t["dpi"] as! NSNumber).doubleValue)
+            #expect([test.height, test.width] == (t["shape"] as! [NSNumber]).map(\.intValue))
+            #expect(digest(test.pixels) == t["sha256"] as? String, "\(t["steps"]!) steps at \(t["dpi"]!) dpi")
+        }
+        #expect(throws: BuildError.self) { try SeparationPlan.stepTest(steps: 1) }
+        #expect(throws: BuildError.self) { try SeparationPlan.stepTest(dpi: 0) }
+    }
+
     @Test func badPlans() {
         #expect(throws: BuildError.self) { try SeparationPlan(splits: [0.2, 0.2]) }
         #expect(throws: BuildError.self) { try SeparationPlan(splits: [0]) }

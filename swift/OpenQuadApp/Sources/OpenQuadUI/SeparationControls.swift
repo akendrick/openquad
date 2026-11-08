@@ -39,8 +39,13 @@ struct SeparationControls: View {
             }
             .pickerStyle(.segmented)
             curveRow
-            Button("Save All Negatives…", action: saveAll)
-                .disabled(model.session.photo == nil || model.busy)
+            HStack {
+                Button("Use Step Test as Photo") { model.openStepTest() }
+                    .help("Numbered steps 0-\(model.separationSteps) over a continuous gradient: print every negative "
+                          + "of it to see where each coat's band falls and whether the seams show.")
+                Button("Save All Negatives…", action: saveAll)
+                    .disabled(model.session.photo == nil || model.busy)
+            }
             Text(model.session.registration
                  ? "Each negative prints nothing in tones lighter than its band and full strength in darker ones, "
                     + "so the coats add up. Print the lightest first: its clear targets and number expose onto the "

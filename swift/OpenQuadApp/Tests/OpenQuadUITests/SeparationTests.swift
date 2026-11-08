@@ -98,4 +98,17 @@ struct SeparationTests {
         for k in 1...3 { #expect(FileManager.default.fileExists(atPath: folder.appendingPathComponent("ramp-\(k)of3.tif").path)) }
         #expect(m.status?.hasPrefix("Saved ramp-1of3.tif") == true)
     }
+
+    @Test func theStepTestBecomesThePhoto() throws {
+        let m = negativeModel()
+        let before = m.settings.lastFolder
+        m.setNegativeCount(3)
+        m.setSeparationSteps(21)
+        m.openStepTest()
+        #expect(m.error == nil)
+        #expect(m.session.source?.lastPathComponent == "step-test-21.tif")
+        #expect(m.session.photo?.width == 22 * 95)  // 7 in across 22 patches at 300 dpi
+        #expect(m.settings.lastFolder == before)
+        #expect(m.summary.contains("Photo: step-test-21.tif"))
+    }
 }

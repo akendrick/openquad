@@ -17,6 +17,9 @@ public struct SeparationPlan: Sendable, Equatable {
     public static let maxNegatives = 6
     /// The step scale split points are shown on (a 30-step scale: splits at 10 and 20 for three).
     public static let defaultSteps = 30
+    /// The step test: inches across, and the heights of its number row, steps and gradient.
+    public static let testWidth = 7.0
+    static let testNumbers = 0.25, testSteps = 0.6, testGradient = 0.6
 
     /// Where the bands meet (tone positions, ascending, within 0-1).
     public let splits: [Double]
@@ -117,5 +120,46 @@ public struct SeparationPlan: Sendable, Equatable {
     public func coatImage(_ photo: [UInt16], layer: Int) -> [UInt16] {
         let lut = coatLUT(layer)
         return photo.map { lut[Int($0)] }
+    }
+
+    /// A greyscale test to print through a separation: steps 0 (paper white) to `steps` (full
+    /// black) as numbered patches, over a continuous gradient lined up with them (each patch's
+    /// tone under its centre). The numbers print black in a white row above. Mirrors
+    /// separations.py step_test.
+    public static func stepTest(steps: Int = defaultSteps, dpi: Double = 300) throws -> GreyImage {
+        guard (2...101).contains(steps) else { throw BuildError(description: "the step scale needs 2-101 steps, got \(steps)") }
+        guard dpi > 0 else { throw BuildError(description: "dpi must be positive, got \(String(format: "%g", dpi))") }
+        let count = steps + 1
+        let patch = max(1, pyRound(testWidth * dpi / Double(count)))
+        let numbers = max(1, pyRound(testNumbers * dpi)), tall = max(1, pyRound(testSteps * dpi))
+        let low = max(1, pyRound(testGradient * dpi))
+        let width = patch * count, height = numbers + tall + low
+        var pixels = [UInt16](repeating: UInt16(maxValue), count: width * height)
+        for x in 0..<width {
+            let level = UInt16(rint((1.0 - Double(x / patch) / Double(steps)) * Double(maxValue)))
+            for y in numbers..<(numbers + tall) { pixels[y * width + x] = level }
+            let tone = min(max((Double(x) + 0.5 - Double(patch) / 2.0) / Double(patch * steps), 0.0), 1.0)
+            let grey = UInt16(rint((1.0 - tone) * Double(maxValue)))
+            for y in (numbers + tall)..<height { pixels[y * width + x] = grey }
+        }
+        let digits = String(steps).count
+        let cell = min(numbers * 6 / 10 / 7, patch * 3 / 4 / (6 * digits))  // a gap between numbers
+        if cell >= 1 {
+            let top = (numbers - 7 * cell) / 2
+            for k in 0..<count {
+                let text = String(k).compactMap(\.wholeNumberValue)
+                let span = text.count * 6 * cell - cell
+                let left = k * patch + (patch - span) / 2
+                for (d, digit) in text.enumerated() {
+                    let glyph = Negative.digitGlyphs[digit]!
+                    for gy in 0..<(7 * cell) {
+                        for gx in 0..<(5 * cell) where glyph[gy / cell][gx / cell] {
+                            pixels[(top + gy) * width + left + d * 6 * cell + gx] = 0
+                        }
+                    }
+                }
+            }
+        }
+        return GreyImage(width: width, height: height, pixels: pixels, dpi: (dpi, dpi))
     }
 }

@@ -69,7 +69,9 @@ public struct GuideView: View {
                         + "scale and an overlap so the seams don't show; each negative can have its own process curve. "
                         + "Each prints nothing lighter than its band and full strength darker, so the coats add up. "
                         + "With registration marks on, the targets are cut clear and every negative is numbered, so the "
-                        + "first coat records them on the paper to line the others up on. Print the lightest first.",
+                        + "first coat records them on the paper to line the others up on. Print the lightest first. "
+                        + "Use Step Test as Photo first: numbered steps over a matching gradient show where each band "
+                        + "falls on your paper and whether the seams show.",
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
                      "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",

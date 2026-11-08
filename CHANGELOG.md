@@ -15,6 +15,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   the Negative tab's Separations section (band diagram, which negative to show and print, Save
   All Negatives…). Command line: `openquad negative --separations N --splits ... --overlap ...
   --layer-process K=CURVE`.
+- A step test for separations: the step scale's numbered steps over a continuous gradient lined
+  up with them, to print through every negative and see where each band falls and whether the
+  seams show. App: "Use Step Test as Photo"; command line: `openquad target --kind steps`.
 - Export process curves for other software, as with ChartThrob: Photoshop Curves (.acv, up to 16
   spline points placed where they matter), Photoshop arbitrary map (.amp, exact), a 3D LUT (.cube)
   and CSV. In the app: "Export Curve…" in Process Calibration. Command line: `openquad curve

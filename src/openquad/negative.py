@@ -59,14 +59,18 @@ F_GLYPH = np.array(
 )
 
 
-# 5 x 7 cell digits 1-6, for numbering the negatives of a separation.
+# 5 x 7 cell digits, for numbering the negatives of a separation and the steps of its test.
 _DIGIT_ROWS = {
+    0: ("01110", "10001", "10011", "10101", "11001", "10001", "01110"),
     1: ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
     2: ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
     3: ("11110", "00001", "00001", "01110", "00001", "00001", "11110"),
     4: ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
     5: ("11111", "10000", "11110", "00001", "00001", "10001", "01110"),
     6: ("00110", "01000", "10000", "11110", "10001", "10001", "01110"),
+    7: ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+    8: ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
+    9: ("01110", "10001", "10001", "01111", "00001", "00010", "01100"),
 }
 DIGIT_GLYPHS = {
     n: np.array([[c == "1" for c in row] for row in rows], dtype=bool)
@@ -109,7 +113,7 @@ class NegativeSettings:
             raise ValueError(f"safe edge must be 0-2 in, got {self.safe_edge}")
         if not 0.0 <= self.outline <= 1.0:
             raise ValueError(f"black outline must be 0-1 in, got {self.outline}")
-        if self.label != 0 and self.label not in DIGIT_GLYPHS:
+        if not 0 <= self.label <= 6:
             raise ValueError(f"the negative's number must be 1-6, got {self.label}")
 
 

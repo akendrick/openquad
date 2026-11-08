@@ -199,7 +199,19 @@ openquad negative photo.tif -o gum.tif --process gum.oqproc --registration \
 #    -> gum-1of3.tif (steps 0-10), gum-2of3.tif (10-20), gum-3of3.tif (20-30)
 ```
 
-The app has the same in the Negative tab's Separations section, with a diagram of the bands.
+Test the split first with the step test: numbered steps 0 to the step scale's end over a
+continuous gradient lined up with them, so each coat's band, the seams between bands and any
+banding all show. Print every negative of it in register, then move the splits to where the
+print needs them:
+
+```bash
+openquad target --kind steps --steps 30 -o steps.tif
+openquad negative steps.tif -o steps-neg.tif --process gum.oqproc --registration \
+    --separations 3 --splits 10,20 --overlap 1
+```
+
+The app has the same in the Negative tab's Separations section, with a diagram of the bands and
+"Use Step Test as Photo".
 
 ### Contact sheets
 

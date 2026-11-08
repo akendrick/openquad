@@ -37,15 +37,19 @@ public enum Negative {
         [true, false, false, false, false],
     ]
 
-    /// Digits 1-6, 7 rows by 5 columns, for numbering the negatives of a separation.
+    /// Digits, 7 rows by 5 columns, for numbering the negatives of a separation and the steps of its test.
     static let digitGlyphs: [Int: [[Bool]]] = {
         let rows: [Int: [String]] = [
+            0: ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
             1: ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
             2: ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
             3: ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
             4: ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
             5: ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
             6: ["00110", "01000", "10000", "11110", "10001", "10001", "01110"],
+            7: ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+            8: ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+            9: ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
         ]
         return rows.mapValues { $0.map { $0.map { $0 == "1" } } }
     }()
@@ -107,7 +111,7 @@ public struct NegativeSettings: Sendable {
         self.outline = outline
         self.guide = guide
         self.registration = registration
-        precondition(label == 0 || Negative.digitGlyphs[label] != nil, "the negative's number must be 1-6")
+        precondition((0...6).contains(label), "the negative's number must be 1-6")
         self.label = label
         self.clearTargets = clearTargets
     }

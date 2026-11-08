@@ -17,6 +17,7 @@ from openquad.separations import (
     SeparationPlan,
     coat_image,
     coat_lut,
+    step_test,
     strength,
 )
 from openquad.session import PrintSession, SessionError
@@ -267,3 +268,39 @@ def test_negative_command_separation_errors(
         code = int(stop.code or 0)
     assert code != 0
     assert message in capsys.readouterr().err
+
+
+# --- the step test -------------------------------------------------------------------
+
+
+def test_step_test_numbers_steps_over_a_matching_gradient() -> None:
+    test = step_test(30, 300.0)
+    patch = round(7.0 * 300 / 31)
+    assert test.shape == (75 + 180 + 180, patch * 31)
+    steps = test[75 + 90, patch // 2 :: patch]  # each patch's centre
+    assert steps.tolist() == np.rint((1 - np.arange(31) / 30) * MAX_VALUE).astype(int).tolist()
+    gradient = test[-1]
+    centres = gradient[patch // 2 :: patch].astype(int)
+    assert np.all(np.abs(centres - steps.astype(int)) <= MAX_VALUE // (patch * 30) + 1)
+    assert gradient[0] == MAX_VALUE and gradient[-1] == 0
+    assert np.all(np.diff(gradient.astype(int)) <= 0)
+    numbers = test[:75]
+    assert set(np.unique(numbers).tolist()) == {0, MAX_VALUE}  # black digits on white
+    for k in (0, 10, 30):  # every step is numbered over its own patch
+        assert (numbers[:, k * patch : (k + 1) * patch] == 0).any()
+
+
+def test_step_test_without_room_for_numbers_and_bad_sizes() -> None:
+    small = step_test(101, 20.0)
+    assert (small[: round(0.25 * 20)] == MAX_VALUE).all()  # too small to number
+    with pytest.raises(ValueError, match="2-101"):
+        step_test(1)
+    with pytest.raises(ValueError, match="dpi"):
+        step_test(30, 0)
+
+
+def test_target_command_steps(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    out = tmp_path / "steps.tif"
+    assert main(["target", "--kind", "steps", "--steps", "21", "--dpi", "100", "-o", str(out)]) == 0
+    assert tifffile.imread(out).shape == (145, 22 * 32)
+    assert "steps 0-21" in capsys.readouterr().out

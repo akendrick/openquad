@@ -60,7 +60,13 @@ from openquad.negative import (
 from openquad.paper import DEFAULT_MARGIN, box_ppi, fit_ppi
 from openquad.photo import load_photo
 from openquad.printing import PrintError, PrintJob, Runner, list_printers, run_command, send
-from openquad.separations import DEFAULT_STEPS, MAX_SEPARATIONS, SeparationPlan, coat_image
+from openquad.separations import (
+    DEFAULT_STEPS,
+    MAX_SEPARATIONS,
+    SeparationPlan,
+    coat_image,
+    step_test,
+)
 from openquad.targets import framed_target, step_wedge, wedge_levels
 
 DEFAULT_DPI = 300.0
@@ -92,14 +98,18 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("-o", "--output", type=Path, required=True, help="TIFF to write")
     target.add_argument(
         "--kind",
-        choices=["wedge", "grey-balance", "comparison", "blocking", "chart"],
+        choices=["wedge", "grey-balance", "comparison", "blocking", "chart", "steps"],
         default="wedge",
         help="wedge: greyscale step wedge; grey-balance: framed RGB target to scan; "
         "comparison: uncorrected + corrected targets on one page (needs --calibration); "
         "blocking: digital-negative colour test sheet; "
-        "chart: ChartThrob-style process chart as a negative (--colour, --process)",
+        "chart: ChartThrob-style process chart as a negative (--colour, --process); "
+        "steps: numbered step scale over a continuous gradient, to print through a separation "
+        "(openquad negative --separations)",
     )
-    target.add_argument("--steps", type=int, default=21, help="wedge patches (default 21)")
+    target.add_argument("--steps", type=int,
+                        help="wedge patches (default 21); for --kind steps, the step "
+                             "scale (default 30)")  # fmt: skip
     target.add_argument("--patch-width", type=int, default=100, help="wedge pixels (default 100)")
     target.add_argument("--patch-height", type=int, default=100, help="wedge pixels (default 100)")
     target.add_argument("--vertical", action="store_true", help="wedge: stack top to bottom")
@@ -328,6 +338,14 @@ def _calibration(path: Path | None) -> Calibration | None:
 def _target(args: argparse.Namespace) -> None:
     dpi = (args.dpi, args.dpi)
     marks = {"guide": args.guide, "registration": args.registration}
+    if args.kind == "steps":
+        steps = args.steps or DEFAULT_STEPS
+        test = step_test(steps, args.dpi)
+        save_grey(args.output, GreyImage(test, dpi=dpi))
+        height, width = test.shape
+        size = f"{width / args.dpi:.2f} x {height / args.dpi:.2f} in"
+        print(f"wrote {args.output} (steps 0-{steps}, {size} at {args.dpi:g} dpi)")
+        return
     if args.kind == "chart":
         processes = [load_process(path) for path in args.process]
         colours = [pr.colour for pr in processes] if processes else args.colour
@@ -376,9 +394,10 @@ def _target(args: argparse.Namespace) -> None:
         note = " with calibration" if calibration else ""
         print(f"wrote {args.output} (grey-balance target{note}, {args.dpi:g} dpi)")
         return
-    pixels = step_wedge(args.steps, args.patch_width, args.patch_height, vertical=args.vertical)
+    steps = args.steps or 21
+    pixels = step_wedge(steps, args.patch_width, args.patch_height, vertical=args.vertical)
     save_grey(args.output, GreyImage(pixels, dpi=dpi))
-    print(f"wrote {args.output} ({args.steps} steps, {args.dpi:g} dpi)")
+    print(f"wrote {args.output} ({steps} steps, {args.dpi:g} dpi)")
 
 
 def _composite_file(

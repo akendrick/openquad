@@ -332,6 +332,20 @@ public final class AppModel {
         refreshPreview()
     }
 
+    /// Use the step test as the photo: the step scale's numbered steps over a continuous
+    /// gradient, to print through the separation and see where each coat's band falls. It is
+    /// kept in the app's step-tests folder; the last photo folder is left as it was.
+    public func openStepTest() {
+        attempt {
+            let folder = settingsURL.deletingLastPathComponent().appendingPathComponent("step-tests")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let url = folder.appendingPathComponent("step-test-\(separationSteps).tif")
+            try ImageFiles.saveGrey(url, try SeparationPlan.stepTest(steps: separationSteps))
+            try session.open(url)
+        }
+        refreshPreview()
+    }
+
     /// Every negative of the separation as TIFFs in `folder`.
     public func saveSeparations(to folder: URL) async {
         busy = true

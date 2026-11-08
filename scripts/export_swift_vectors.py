@@ -1112,7 +1112,7 @@ def separations_vectors(directory: Path) -> dict[str, Any]:
     and a print session rendering every negative (uses session-process.oqproc)."""
     from openquad.marks import target_mask
     from openquad.negative import NegativeSettings, label_left, make_negative
-    from openquad.separations import SeparationPlan, coat_lut, strength
+    from openquad.separations import SeparationPlan, coat_lut, step_test, strength
     from openquad.session import PrintSession
 
     positions = np.arange(211) / 210.0  # Swift: Double(i) / 210
@@ -1169,6 +1169,8 @@ def separations_vectors(directory: Path) -> dict[str, Any]:
         "plans": plans, "even": even, "labels": labels,
         "targets": targets, "photo": {"height": 12, "width": 30, "pixels": _ints(photo)},
         "negatives": negatives, "session": {"rendered": rendered, "summaries": summaries},
+        "step_tests": [{"steps": n, "dpi": d, **_digest(step_test(n, d))} for n, d in
+                       [(30, 300.0), (21, 100.0), (101, 20.0), (2, 72.0), (101, 300.0)]],
     }  # fmt: skip
 
 
