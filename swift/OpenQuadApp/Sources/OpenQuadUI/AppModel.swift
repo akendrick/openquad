@@ -254,6 +254,112 @@ public final class AppModel {
         refreshPreview()
     }
 
+    // MARK: separations
+
+    /// The separation as shown: split points and overlap counted on a step scale.
+    public private(set) var separationSteps = SeparationPlan.defaultSteps
+    public private(set) var separationSplits: [Int] = []
+    public private(set) var separationOverlap = 0.0
+
+    /// Split the negative into `count` negatives with even bands (1: no separation).
+    public func setNegativeCount(_ count: Int) {
+        let count = min(max(count, 1), SeparationPlan.maxNegatives)
+        separationSplits = (1..<count).map { Int((Double($0 * separationSteps) / Double(count)).rounded()) }
+        applySeparation()
+    }
+
+    /// Count the split points on a scale of `steps` steps, keeping them where they were.
+    public func setSeparationSteps(_ steps: Int) {
+        let steps = min(max(steps, separationSplits.count + 1, 2), 101)
+        let scale = Double(steps) / Double(separationSteps)
+        separationSplits = Self.spread(separationSplits.map { Int((Double($0) * scale).rounded()) }, steps: steps)
+        separationOverlap = (separationOverlap * scale * 2).rounded() / 2
+        separationSteps = steps
+        applySeparation()
+    }
+
+    /// Move split point `index` (0 = between the first two negatives), within its neighbours.
+    public func setSplit(_ index: Int, step: Int) {
+        guard separationSplits.indices.contains(index) else { return }
+        let low = index == 0 ? 1 : separationSplits[index - 1] + 1
+        let high = index == separationSplits.count - 1 ? separationSteps - 1 : separationSplits[index + 1] - 1
+        separationSplits[index] = min(max(step, low), high)
+        applySeparation()
+    }
+
+    /// How many steps neighbouring bands blend over (up to the narrowest band).
+    public func setSeparationOverlap(_ steps: Double) {
+        separationOverlap = min(max(steps, 0), Double(narrowestBand))
+        applySeparation()
+    }
+
+    /// The narrowest band, in steps.
+    public var narrowestBand: Int {
+        let edges = [0] + separationSplits + [separationSteps]
+        return zip(edges, edges.dropFirst()).map { $1 - $0 }.min() ?? separationSteps
+    }
+
+    /// Split points made distinct and in order within 1..<steps (after rescaling).
+    static func spread(_ splits: [Int], steps: Int) -> [Int] {
+        var result: [Int] = []
+        for (k, split) in splits.enumerated() {
+            let low = (result.last ?? 0) + 1, high = steps - (splits.count - k)
+            result.append(min(max(split, low), high))
+        }
+        return result
+    }
+
+    private func applySeparation() {
+        separationOverlap = min(separationOverlap, Double(narrowestBand))
+        attempt {
+            let plan = separationSplits.isEmpty ? nil
+                : try SeparationPlan.fromSteps(separationSplits.map(Double.init), steps: separationSteps,
+                                               overlap: separationOverlap)
+            session.setSeparation(plan)
+        }
+        refreshPreview()
+    }
+
+    /// Show (and print) negative `layer` of the separation.
+    public func setLayer(_ layer: Int) {
+        attempt { try session.setLayer(layer) }
+        refreshPreview()
+    }
+
+    /// Give negative `layer` its own process curve (nil: the shared one).
+    public func setLayerProcess(_ layer: Int, _ url: URL?) {
+        attempt { try session.setLayerProcess(layer, url) }
+        refreshPreview()
+    }
+
+    /// Use the step test as the photo: the step scale's numbered steps over a continuous
+    /// gradient, to print through the separation and see where each coat's band falls. It is
+    /// kept in the app's step-tests folder; the last photo folder is left as it was.
+    public func openStepTest() {
+        attempt {
+            let folder = settingsURL.deletingLastPathComponent().appendingPathComponent("step-tests")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let url = folder.appendingPathComponent("step-test-\(separationSteps).tif")
+            try ImageFiles.saveGrey(url, try SeparationPlan.stepTest(steps: separationSteps))
+            try session.open(url)
+        }
+        refreshPreview()
+    }
+
+    /// Every negative of the separation as TIFFs in `folder`.
+    public func saveSeparations(to folder: URL) async {
+        busy = true
+        defer { busy = false }
+        let snapshot = session
+        do {
+            let written = try await Task.detached(priority: .userInitiated) { try snapshot.writeSeparations(folder) }.value
+            status = "Saved \(written.map(\.lastPathComponent).joined(separator: ", "))."
+            error = nil
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+
     // MARK: contact sheets
 
     /// The printable room (width, height) in inches: the page inside its margins, less the
@@ -525,8 +631,7 @@ public final class AppModel {
         guard canPrint, let (width, height) = try? session.sizeInches() else { return nil }
         do {
             let image = try await renderedPrint()
-            let title = session.source.map { "OpenQuad: \($0.lastPathComponent)" } ?? "OpenQuad"
-            return (image, width, height, session.paper, title)
+            return (image, width, height, session.paper, session.jobTitle)
         } catch {
             self.error = String(describing: error)
             return nil

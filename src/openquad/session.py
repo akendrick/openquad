@@ -23,6 +23,7 @@ from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, make_negative,
 from openquad.paper import DEFAULT_MARGIN, PAPER_SIZES, box_ppi, fit_ppi, oriented, print_size
 from openquad.photo import Photo, load_photo
 from openquad.printing import PrintJob, Runner, run_command, send
+from openquad.separations import SeparationPlan, coat_image
 from openquad.units import box, check, length, size
 
 FALLBACK_PPI = 300.0
@@ -60,6 +61,13 @@ class PrintSession:
     guide: bool = False  # a guide line round the image
     registration: bool = False  # crosshair targets and corner crop marks
     units: str = "in"  # how the summary shows lengths: "in" or "mm"
+    # Separations: the photo split into several negatives by tone, printed one after another
+    # in register on one sheet. None for a single negative. `layer` is the negative shown and
+    # printed (0 = the lightest band); a negative can have its own process curve.
+    separation: SeparationPlan | None = None
+    layer: int = 0
+    layer_processes: dict[int, ProcessCurve] = field(default_factory=dict)
+    layer_process_paths: dict[int, Path] = field(default_factory=dict)
 
     # --- choosing things ------------------------------------------------------------
 
@@ -108,18 +116,57 @@ class PrintSession:
         self.process_path = Path(path)
         self.negative_colour = self.process.colour
 
+    def set_separation(self, plan: SeparationPlan | None) -> None:
+        """Split the negative into `plan.count` negatives by tone (None or 1: just one)."""
+        self.separation = plan if plan is not None and plan.count > 1 else None
+        count = self.separation.count if self.separation else 1
+        self.layer = min(self.layer, count - 1)
+        for k in [k for k in self.layer_processes if k >= count]:
+            del self.layer_processes[k]
+            del self.layer_process_paths[k]
+
+    def set_layer(self, layer: int) -> None:
+        count = self.separation.count if self.separation else 1
+        if not 0 <= layer < count:
+            raise SessionError(f"there is no negative {layer + 1} of {count}")
+        self.layer = layer
+
+    def set_layer_process(self, layer: int, path: str | Path | None) -> None:
+        """Give one negative of the separation its own process curve (None: the shared one)."""
+        count = self.separation.count if self.separation else 1
+        if not 0 <= layer < count:
+            raise SessionError(f"there is no negative {layer + 1} of {count}")
+        if path is None:
+            self.layer_processes.pop(layer, None)
+            self.layer_process_paths.pop(layer, None)
+            return
+        self.layer_processes[layer] = load_process(path)
+        self.layer_process_paths[layer] = Path(path)
+
+    def layer_process(self, layer: int) -> ProcessCurve | None:
+        """The process curve negative `layer` is made with: its own, or the shared one."""
+        return self.layer_processes.get(layer, self.process)
+
+    def _layer_process_name(self, layer: int) -> str:
+        path = self.layer_process_paths.get(layer, self.process_path)
+        return path.name if path else "none (uncalibrated)"
+
     @property
     def negative(self) -> bool:
         return self.mode == "negative"
 
-    def _negative_settings(self) -> NegativeSettings:
+    def _negative_settings(self, layer: int | None = None) -> NegativeSettings:
+        separated = self.separation is not None and layer is not None
+        process = self.layer_process(layer) if separated and layer is not None else None
         return NegativeSettings(
-            colour=self.negative_colour,
+            colour=process.colour if process else self.negative_colour,
             mirror=self.mirror,
             safe_edge=self.safe_edge,
             outline=self.outline,
             guide=self.guide,
             registration=self.registration,
+            label=layer + 1 if separated and layer is not None else 0,
+            clear_targets=separated,
         )
 
     def set_paper(self, paper: str) -> None:
@@ -164,12 +211,24 @@ class PrintSession:
         """What is sent to the printer: a toned, calibrated print, or (in negative mode)
         the negative through the process curve, with its safe edge at `dpi`."""
         if self.negative:
-            if self.process is not None:
-                pixels = self.process.apply(pixels)
-            return make_negative(pixels, self._negative_settings(), dpi or self.effective_ppi())
+            return self.render_layer(pixels, self.layer, dpi)
         rgb = composite(pixels, PRESETS[self.preset])
         rgb = self.calibration.apply(rgb) if self.calibration else rgb
         return add_print_marks(rgb, dpi or self.effective_ppi(), self.guide, self.registration)
+
+    def render_layer(
+        self, pixels: NDArray[np.uint16], layer: int, dpi: float | None = None
+    ) -> NDArray[np.uint16]:
+        """Negative `layer` of the separation (any layer is the whole negative without one)."""
+        if self.separation is None:
+            process = self.process
+        else:
+            pixels = coat_image(pixels, self.separation, layer)
+            process = self.layer_process(layer)
+        if process is not None:
+            pixels = process.apply(pixels)
+        settings = self._negative_settings(layer if self.separation else None)
+        return make_negative(pixels, settings, dpi or self.effective_ppi())
 
     def preview(self, max_side: int = 900) -> NDArray[np.uint8]:
         """An 8-bit RGB preview of the toned photo (without calibration: what you'll see).
@@ -213,6 +272,20 @@ class PrintSession:
         box_w, box_h = oriented(self.max_size, *self._photo().size)
         return [f"Fit within: {box(box_w, box_h, self.units)}"]
 
+    def _separation_lines(self, process: str) -> list[str]:
+        if self.separation is None:
+            return [f"Colour: {self.negative_colour}", f"Process curve: {process}"]
+        plan, k = self.separation, self.layer
+        lower, upper = plan.bands[k]
+        colour = self._negative_settings(k).colour
+        return [
+            f"Separation: {plan.describe()}",
+            f"This negative: {k + 1} of {plan.count} (steps {lower * plan.steps:g}-"
+            f"{upper * plan.steps:g}, then full strength)",
+            f"Colour: {colour}",
+            f"Process curve: {self._layer_process_name(k)}",
+        ]
+
     def summary(self) -> list[str]:
         """Lines for the print confirmation."""
         width, height = self.size_inches()
@@ -228,8 +301,7 @@ class PrintSession:
                 *self._within(),
                 f"Size: {size(width, height, self.units)} with a {self._length(self.safe_edge)} "
                 f"safe edge{outline}",
-                f"Colour: {self.negative_colour}",
-                f"Process curve: {process}",
+                *self._separation_lines(process),
                 f"Mirrored: {'yes' if self.mirror else 'no'}",
                 *self._marks_line(),
             ]
@@ -252,12 +324,28 @@ class PrintSession:
         save_rgb(path, self.render(self._photo().pixels), (ppi, ppi), srgb_profile())
         return Path(path)
 
+    def write_separations(self, folder: str | Path, stem: str | None = None) -> list[Path]:
+        """Every negative of the separation as `<stem>-<k>of<n>.tif` in `folder`."""
+        if self.separation is None or not self.negative:
+            raise SessionError("set up a separation of the negative first")
+        stem = stem or (self.source.stem if self.source else "negative")
+        ppi, count = self.effective_ppi(), self.separation.count
+        paths = []
+        for k in range(count):
+            path = Path(folder) / f"{stem}-{k + 1}of{count}.tif"
+            negative = self.render_layer(self._photo().pixels, k, ppi)
+            save_rgb(path, negative, (ppi, ppi), srgb_profile())
+            paths.append(path)
+        return paths
+
     def print_job(self, path: Path) -> PrintJob:
         if not self.printer:
             raise SessionError("choose a printer first")
         if not self.fits_on_paper():
             raise SessionError("the photo is larger than the paper at this size")
         title = f"OpenQuad: {self.source.name}" if self.source else "OpenQuad"
+        if self.negative and self.separation is not None:
+            title += f" (negative {self.layer + 1} of {self.separation.count})"
         return PrintJob(
             path=path, printer=self.printer, paper=self.paper, ppi=self.effective_ppi(),
             title=title,

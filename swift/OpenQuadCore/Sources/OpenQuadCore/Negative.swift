@@ -37,6 +37,36 @@ public enum Negative {
         [true, false, false, false, false],
     ]
 
+    /// Digits, 7 rows by 5 columns, for numbering the negatives of a separation and the steps of its test.
+    static let digitGlyphs: [Int: [[Bool]]] = {
+        let rows: [Int: [String]] = [
+            0: ["01110", "10001", "10011", "10101", "11001", "10001", "01110"],
+            1: ["00100", "01100", "00100", "00100", "00100", "00100", "01110"],
+            2: ["01110", "10001", "00001", "00010", "00100", "01000", "11111"],
+            3: ["11110", "00001", "00001", "01110", "00001", "00001", "11110"],
+            4: ["00010", "00110", "01010", "10010", "11111", "00010", "00010"],
+            5: ["11111", "10000", "11110", "00001", "00001", "10001", "01110"],
+            6: ["00110", "01000", "10000", "11110", "10001", "10001", "01110"],
+            7: ["11111", "00001", "00010", "00100", "01000", "01000", "01000"],
+            8: ["01110", "10001", "10001", "01110", "10001", "10001", "01110"],
+            9: ["01110", "10001", "10001", "01111", "00001", "00010", "01100"],
+        ]
+        return rows.mapValues { $0.map { $0.map { $0 == "1" } } }
+    }()
+
+    /// Where a negative's number starts across the top of the safe edge: just inside the
+    /// image's left edge, one place further right per negative, so the numbers each coat
+    /// prints don't land on one another. Back to the first place if there isn't room before
+    /// the top registration target; nil if even that has no room.
+    public static func labelLeft(width: Int, edge: Int, cell: Int, label: Int) -> Int? {
+        let glyph = 5 * cell
+        let first = edge + cell
+        let limit = width / 2 - edge  // clear of the top target
+        let left = first + (label - 1) * (glyph + 2 * cell)
+        if left + glyph <= limit { return left }
+        return first + glyph <= limit ? first : nil
+    }
+
     /// Ink coverage (0-1, perceptual) in `colour`, as 16-bit sRGB on clear film.
     public static func inkToRGB(_ coverage: Double, _ colour: (Double, Double, Double)) -> (UInt16, UInt16, UInt16) {
         let strength = 1.0 - Colour.srgbToLinear(1.0 - clip(coverage, 0.0, 1.0))
@@ -61,9 +91,16 @@ public struct NegativeSettings: Sendable {
     /// block UV like the safe edge): a guide line round the image, registration marks.
     public let guide: Bool
     public let registration: Bool
+    /// Separations: the negative's number (1-6; 0 for none), cut clear into the top of the
+    /// safe edge, each number in its own place so every coat leaves its number on the paper;
+    /// and the registration targets cut clear, so they expose onto the paper to line up
+    /// later negatives on (with registration only).
+    public let label: Int
+    public let clearTargets: Bool
 
     public init(colour: String = Negative.defaultColour, mirror: Bool = false, safeEdge: Double = 0.25, mark: Bool = true,
-                outline: Double = 0, guide: Bool = false, registration: Bool = false) {
+                outline: Double = 0, guide: Bool = false, registration: Bool = false, label: Int = 0,
+                clearTargets: Bool = false) {
         precondition(Negative.colours[colour] != nil, "unknown negative colour \(colour)")
         precondition((0.0...2.0).contains(safeEdge), "safe edge must be 0-2 in")
         precondition((0.0...1.0).contains(outline), "black outline must be 0-1 in")
@@ -74,6 +111,9 @@ public struct NegativeSettings: Sendable {
         self.outline = outline
         self.guide = guide
         self.registration = registration
+        precondition((0...6).contains(label), "the negative's number must be 1-6")
+        self.label = label
+        self.clearTargets = clearTargets
     }
 
     /// Inches added round the photo on each side: the outline plus the safe edge.
@@ -109,7 +149,8 @@ extension Negative {
             return make(padded, width: wider, height: taller,
                         settings: NegativeSettings(colour: settings.colour, mirror: settings.mirror,
                                                    safeEdge: settings.safeEdge, mark: settings.mark,
-                                                   guide: settings.guide, registration: settings.registration), dpi: dpi)
+                                                   guide: settings.guide, registration: settings.registration,
+                                                   label: settings.label, clearTargets: settings.clearTargets), dpi: dpi)
         }
         let colour = colours[settings.colour]!
         var pixels = [UInt16](repeating: 0, count: photo.count * 3)
@@ -146,21 +187,31 @@ extension Negative {
                 let marks = Marks.mask(width: width, height: height, band: edge, dpi: dpi, guide: settings.guide,
                                        registration: settings.registration)
                 for (i, on) in marks.enumerated() where on { (pixels[i * 3], pixels[i * 3 + 1], pixels[i * 3 + 2]) = (0, 0, 0) }
-            }
-            if settings.mark {
-                let cell = max(1, edge * 6 / 10 / fGlyph.count)
-                let glyphHeight = fGlyph.count * cell, glyphWidth = fGlyph[0].count * cell
-                let corner = (edge - glyphHeight) / 2  // only used when the glyph fits, so never negative
-                if glyphHeight < edge && glyphWidth < edge {
-                    for gy in 0..<glyphHeight {
-                        for gx in 0..<glyphWidth where fGlyph[gy / cell][gx / cell] {
-                            let i = ((corner + gy) * width + corner + gx) * 3
-                            pixels[i] = UInt16(maxValue)
-                            pixels[i + 1] = UInt16(maxValue)
-                            pixels[i + 2] = UInt16(maxValue)
-                        }
+                if settings.registration && settings.clearTargets {
+                    let clear = UInt16(maxValue)
+                    for (i, on) in Marks.targetMask(width: width, height: height, band: edge, dpi: dpi).enumerated() where on {
+                        (pixels[i * 3], pixels[i * 3 + 1], pixels[i * 3 + 2]) = (clear, clear, clear)
                     }
                 }
+            }
+            let cell = max(1, edge * 6 / 10 / fGlyph.count)
+            /// Cut `glyph` (scaled up by `cell`) clear at (left, top).
+            func cut(_ glyph: [[Bool]], left: Int, top: Int) {
+                for gy in 0..<(glyph.count * cell) {
+                    for gx in 0..<(glyph[0].count * cell) where glyph[gy / cell][gx / cell] {
+                        let i = ((top + gy) * width + left + gx) * 3
+                        (pixels[i], pixels[i + 1], pixels[i + 2]) = (UInt16(maxValue), UInt16(maxValue), UInt16(maxValue))
+                    }
+                }
+            }
+            if settings.label != 0, let left = labelLeft(width: width, edge: edge, cell: cell, label: settings.label),
+               7 * cell < edge {
+                cut(digitGlyphs[settings.label]!, left: left, top: (edge - 7 * cell) / 2)
+            }
+            if settings.mark {
+                let glyphHeight = fGlyph.count * cell, glyphWidth = fGlyph[0].count * cell
+                let corner = (edge - glyphHeight) / 2  // only used when the glyph fits, so never negative
+                if glyphHeight < edge && glyphWidth < edge { cut(fGlyph, left: corner, top: corner) }
             }
             result = RGBImage(width: width, height: height, pixels: pixels)
         }

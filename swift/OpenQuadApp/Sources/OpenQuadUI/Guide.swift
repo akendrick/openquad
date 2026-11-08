@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 14
+    public static let version = 15
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -64,6 +64,14 @@ public struct GuideView: View {
                         + "side, crop marks at the corners), in the safe edge. Red and orange negatives all but vanish "
                         + "under a red safelight; black shows. The marks block UV like the safe edge, so they don't print. "
                         + "The Print tab offers them too, in a thin white border round the print.",
+                     "Separations: for processes that build their tones up in several coats (gum, multi-coat "
+                        + "cyanotype), split the photo into 2-6 negatives by tone. Set where the bands meet on a step "
+                        + "scale and an overlap so the seams don't show; each negative can have its own process curve. "
+                        + "Each prints nothing lighter than its band and full strength darker, so the coats add up. "
+                        + "With registration marks on, the targets are cut clear and every negative is numbered, so the "
+                        + "first coat records them on the paper to line the others up on. Print the lightest first. "
+                        + "Use Step Test as Photo first: numbered steps over a matching gradient show where each band "
+                        + "falls on your paper and whether the seams show.",
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
                      "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",

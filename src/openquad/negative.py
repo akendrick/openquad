@@ -18,7 +18,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from openquad.colour import linear_to_srgb, srgb_to_linear
-from openquad.marks import mark_mask
+from openquad.marks import mark_mask, target_mask
 from openquad.quadfile import MAX_VALUE
 
 # Candidate negative colours (sRGB 0-1). UV blocking matters, not how dark they look:
@@ -59,6 +59,25 @@ F_GLYPH = np.array(
 )
 
 
+# 5 x 7 cell digits, for numbering the negatives of a separation and the steps of its test.
+_DIGIT_ROWS = {
+    0: ("01110", "10001", "10011", "10101", "11001", "10001", "01110"),
+    1: ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
+    2: ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
+    3: ("11110", "00001", "00001", "01110", "00001", "00001", "11110"),
+    4: ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
+    5: ("11111", "10000", "11110", "00001", "00001", "10001", "01110"),
+    6: ("00110", "01000", "10000", "11110", "10001", "10001", "01110"),
+    7: ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+    8: ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
+    9: ("01110", "10001", "10001", "01111", "00001", "00010", "01100"),
+}
+DIGIT_GLYPHS = {
+    n: np.array([[c == "1" for c in row] for row in rows], dtype=bool)
+    for n, rows in _DIGIT_ROWS.items()
+}
+
+
 @dataclass(frozen=True)
 class NegativeSettings:
     colour: str = DEFAULT_COLOUR
@@ -72,6 +91,12 @@ class NegativeSettings:
     # block UV like the safe edge): a guide line round the image, registration marks.
     guide: bool = False
     registration: bool = False
+    # Separations: the negative's number (1-6; 0 for none), cut clear into the top of the safe
+    # edge, each number in its own place so every coat leaves its number on the paper; and
+    # the registration targets cut clear, so they expose onto the paper to line up later
+    # negatives on (with registration only).
+    label: int = 0
+    clear_targets: bool = False
 
     @property
     def border(self) -> float:
@@ -88,6 +113,8 @@ class NegativeSettings:
             raise ValueError(f"safe edge must be 0-2 in, got {self.safe_edge}")
         if not 0.0 <= self.outline <= 1.0:
             raise ValueError(f"black outline must be 0-1 in, got {self.outline}")
+        if not 0 <= self.label <= 6:
+            raise ValueError(f"the negative's number must be 1-6, got {self.label}")
 
 
 def ink_to_rgb(
@@ -138,17 +165,40 @@ def add_safe_edge(
             marks = mark_mask(w + 2 * edge, h + 2 * edge, edge, dpi, settings.guide,
                               settings.registration)  # fmt: skip
             framed[marks] = 0  # black ink
+            if settings.registration and settings.clear_targets:
+                framed[target_mask(w + 2 * edge, h + 2 * edge, edge, dpi)] = MAX_VALUE
+        cell = max(1, edge * 6 // 10 // F_GLYPH.shape[0])
         if settings.mark:
-            cell = max(1, edge * 6 // 10 // F_GLYPH.shape[0])
             glyph = np.kron(F_GLYPH, np.ones((cell, cell), dtype=bool))
             top = left = (edge - glyph.shape[0]) // 2
             if glyph.shape[0] < edge and glyph.shape[1] < edge:
                 region = framed[top : top + glyph.shape[0], left : left + glyph.shape[1]]
                 region[glyph] = MAX_VALUE  # clear film: light gets through
+        if settings.label:
+            glyph = np.kron(DIGIT_GLYPHS[settings.label], np.ones((cell, cell), dtype=bool))
+            left = label_left(w + 2 * edge, edge, cell, settings.label)
+            top = (edge - glyph.shape[0]) // 2
+            if left is not None and glyph.shape[0] < edge:
+                region = framed[top : top + glyph.shape[0], left : left + glyph.shape[1]]
+                region[glyph] = MAX_VALUE
         image = framed
     if settings.mirror:
         image = image[:, ::-1]
     return np.ascontiguousarray(image)
+
+
+def label_left(width: int, edge: int, cell: int, label: int) -> int | None:
+    """Where a negative's number starts across the top of the safe edge: just inside the
+    image's left edge, one place further right per negative, so the numbers each coat
+    prints don't land on one another. Back to the first place if there isn't room before
+    the top registration target; None if even that has no room."""
+    glyph = 5 * cell
+    first = edge + cell
+    limit = width // 2 - edge  # clear of the top target
+    left = first + (label - 1) * (glyph + 2 * cell)
+    if left + glyph <= limit:
+        return left
+    return first if first + glyph <= limit else None
 
 
 def negative_ppi(

@@ -1107,6 +1107,73 @@ def contactsheet_vectors() -> dict[str, Any]:
     return {"sample": _ints(sample), "resizes": resizes, "grids": grids, "cases": cases}
 
 
+def separations_vectors(directory: Path) -> dict[str, Any]:
+    """Tonal separations: band strengths, coat LUTs, numbered negatives with clear targets,
+    and a print session rendering every negative (uses session-process.oqproc)."""
+    from openquad.marks import target_mask
+    from openquad.negative import NegativeSettings, label_left, make_negative
+    from openquad.separations import SeparationPlan, coat_lut, step_test, strength
+    from openquad.session import PrintSession
+
+    positions = np.arange(211) / 210.0  # Swift: Double(i) / 210
+
+    def float_digest(values: Any) -> str:  # JSON floats don't round-trip exactly in Swift
+        import hashlib
+
+        return hashlib.sha256(np.ascontiguousarray(values, dtype="<f8").tobytes()).hexdigest()
+
+    plans = []
+    for splits, steps, overlap in [
+        ([10, 20], 30, 0.0), ([10, 20], 30, 2.0), ([5, 12, 25], 30, 5.0), ([7], 21, 3.5),
+        ([1, 2, 3, 4, 5], 6, 1.0), ([], 30, 0.0),
+    ]:  # fmt: skip
+        plan = SeparationPlan.from_steps(splits, steps, overlap)
+        plans.append({
+            "splits": splits, "steps": steps, "overlap": overlap, "describe": plan.describe(),
+            "bands": [list(b) for b in plan.bands],
+            "strength": [float_digest(strength(plan, k, positions)) for k in range(plan.count)],
+            "luts": [_digest(coat_lut(plan, k)) for k in range(plan.count)],
+        })  # fmt: skip
+    even = [list(SeparationPlan.even(n).splits) for n in range(1, 7)]
+    labels = [[width, edge, cell, n, label_left(width, edge, cell, n)]
+              for width, edge, cell in [(1200, 100, 8), (600, 100, 8), (260, 100, 8), (90, 13, 1)]
+              for n in range(1, 7)]  # fmt: skip
+    sheets = [(200, 160, 40, 300.0), (61, 47, 13, 300.0), (20, 20, 1, 300.0)]
+    targets = [{"width": w, "height": h, "band": b, "dpi": d,
+                "on": _ints(np.flatnonzero(target_mask(w, h, b, d)))}
+               for w, h, b, d in sheets]  # fmt: skip
+    photo = np.tile(np.rint(np.linspace(0, 65535, 30)).astype(np.uint16), (12, 1))
+    negatives = []
+    for colour, mirror, edge, registration, label, clear in [
+        ("orange", False, 0.5, True, 1, True), ("green", True, 0.5, True, 3, True),
+        ("black", False, 0.5, False, 2, True), ("red", False, 0.05, True, 6, False),
+    ]:  # fmt: skip
+        settings = NegativeSettings(colour=colour, mirror=mirror, safe_edge=edge,
+                                    registration=registration, guide=True, label=label,
+                                    clear_targets=clear)  # fmt: skip
+        negatives.append({"colour": colour, "mirror": mirror, "safe_edge": edge,
+                          "registration": registration, "label": label, "clear": clear,
+                          **_digest(make_negative(photo, settings, 100.0))})  # fmt: skip
+    session = PrintSession()
+    session.open(directory / "photo-grey16.tif")
+    session.set_mode("negative")
+    session.fit, session.ppi, session.registration = False, 40.0, True
+    session.set_process(directory / "session-process.oqproc")
+    session.set_separation(SeparationPlan.from_steps([10, 20], 30, 1.0))
+    rendered = [_digest(session.render_layer(session._photo().pixels, k)) for k in range(3)]
+    summaries = []
+    for k in range(3):
+        session.set_layer(k)
+        summaries.append(session.summary())
+    return {
+        "plans": plans, "even": even, "labels": labels,
+        "targets": targets, "photo": {"height": 12, "width": 30, "pixels": _ints(photo)},
+        "negatives": negatives, "session": {"rendered": rendered, "summaries": summaries},
+        "step_tests": [{"steps": n, "dpi": d, **_digest(step_test(n, d))} for n, d in
+                       [(30, 300.0), (21, 100.0), (101, 20.0), (2, 72.0), (101, 300.0)]],
+    }  # fmt: skip
+
+
 def export(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
@@ -1137,11 +1204,16 @@ def export(directory: Path) -> list[Path]:
     sessions, photos = session_vectors(directory)
     session_path = directory / "session.json"
     session_path.write_text(json.dumps(sessions, separators=(",", ":")) + "\n", encoding="utf-8")
+    separations_path = directory / "separations.json"
+    separations_path.write_text(
+        json.dumps(separations_vectors(directory), separators=(",", ":")) + "\n", encoding="utf-8"
+    )
     wizards_path = directory / "wizards.json"
     wizards_path.write_text(
         json.dumps(wizards_vectors(directory), separators=(",", ":")) + "\n", encoding="utf-8"
     )
-    return [*written, path, reading_path, devices_path, session_path, wizards_path, *images,
+    return [*written, path, reading_path, devices_path, session_path, separations_path,
+            wizards_path, *images,
             *prints, *files, *photos]  # fmt: skip
 
 

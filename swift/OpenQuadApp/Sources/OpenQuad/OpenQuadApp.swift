@@ -4,6 +4,7 @@
 //     OpenQuad --snapshot out.png [--tab print|negative|contact-sheet|printer-calibration|process-calibration]
 //                                       [--photo PHOTO] [--negative] [--printer CUPS_QUEUE] [--max-size WxH] [--notice TEXT]
 //                                       [--outline INCHES] [--units in|mm] [--setups FOLDER] [--setup NAME]
+//                                       [--separations N] [--layer K] [--overlap STEPS] [--step-test]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide|contact-sheet [--scan SCAN] [--run RUN]
 //                                       [--photos P1,P2,...] [--landscape] [--white] [--wedge] [--labels] [--crop]
 //                                       (contact-sheet)
@@ -122,6 +123,10 @@ enum Snapshot {
         }
         if arguments.contains("--guide") { model.setGuide(true) }
         if arguments.contains("--registration") { model.setRegistration(true) }
+        if let count = value("--separations").flatMap(Int.init) { model.setNegativeCount(count) }
+        if let overlap = value("--overlap").flatMap(Double.init) { model.setSeparationOverlap(overlap) }
+        if arguments.contains("--step-test") { model.openStepTest() }
+        if let layer = value("--layer").flatMap(Int.init) { model.setLayer(layer - 1) }
         if arguments.contains("--sheet-size") {  // the test sheets' set size, and their marks
             root.show(.processCalibration)
             root.blocking?.sheetSize = (8, 10)
