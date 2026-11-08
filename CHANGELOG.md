@@ -7,6 +7,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Colour prints: a colour photo can be printed in colour on a colour-managed printer instead of
+  being converted to greyscale. App: "Print in colour (colour-managed printer)" in the Print tab,
+  off for every new photo. The print keeps the photo's colours and embedded RGB ICC profile
+  (sRGB if it has none), skips toning and calibration, and goes to macOS colour management (the
+  print panel's paper type or profile, or `lp`); the summary says so. "Soft-proof with" shows the
+  preview through a printer and paper ICC profile found on the Mac, or one you choose; it is
+  remembered and changes only the preview. Core: `Photo.colour` and `Photo.icc_profile`,
+  `PrintSession.set_colour_print` / `render_print`, in Python and Swift alike (shared vectors).
 - Separations for multi-coat processes: split a photo by tone into 2-6 negatives, printed one
   after another in register on one sheet. Choose where the bands meet on a step scale (default
   30) and an overlap that blends the seams; the coats add up to the photo exactly. Each negative

@@ -72,6 +72,9 @@ class PrintSession:
     # through every negative), applied to the photo before it is split.
     coats_curve: ProcessCurve | None = None
     coats_curve_path: Path | None = None
+    # Print a colour photo in colour, on a colour-managed printer: its own colour and ICC
+    # profile go to macOS, with no toning or calibration. Off (greyscale) for each new photo.
+    colour_print: bool = False
 
     # --- choosing things ------------------------------------------------------------
 
@@ -79,10 +82,27 @@ class PrintSession:
         self.photo = load_photo(path)
         self.source = Path(path)
         self.notes = []
+        self.colour_print = False
         if self.photo.cropped:
             self.notes.append("Transparent edges were cropped off.")
         if self.photo.converted:
-            self.notes.append("This is a colour image; it was converted to greyscale.")
+            self.notes.append(
+                "This is a colour image; it is converted to greyscale unless printed in colour."
+            )
+
+    def set_colour_print(self, on: bool) -> None:
+        """Print the photo in its own colour (colour-managed), or in greyscale."""
+        if on and (self.photo is None or self.photo.colour is None):
+            raise SessionError("only a colour photo can be printed in colour")
+        self.colour_print = on
+
+    @property
+    def prints_colour(self) -> bool:
+        """The print is the photo's own colour: colour print on, in print mode."""
+        return self.colour_print and not self.negative and self._colour() is not None
+
+    def _colour(self) -> NDArray[np.uint16] | None:
+        return self.photo.colour if self.photo is not None else None
 
     def set_units(self, units: str) -> None:
         self.units = check(units)
@@ -229,6 +249,25 @@ class PrintSession:
         rgb = self.calibration.apply(rgb) if self.calibration else rgb
         return add_print_marks(rgb, dpi or self.effective_ppi(), self.guide, self.registration)
 
+    def render_colour(
+        self, rgb: NDArray[np.uint16], dpi: float | None = None
+    ) -> NDArray[np.uint16]:
+        """A colour print: the photo's own colour, untouched, with any darkroom marks."""
+        return add_print_marks(rgb, dpi or self.effective_ppi(), self.guide, self.registration)
+
+    def render_print(self) -> NDArray[np.uint16]:
+        """The full-resolution print: in colour, or rendered from the greyscale photo."""
+        colour = self._colour()
+        if self.prints_colour and colour is not None:
+            return self.render_colour(colour)
+        return self.render(self._photo().pixels)
+
+    def print_profile(self) -> bytes | None:
+        """The ICC profile the print file carries: a colour print's own (sRGB if untagged)."""
+        if self.prints_colour and self._photo().icc_profile:
+            return self._photo().icc_profile
+        return srgb_profile()
+
     def render_layer(
         self, pixels: NDArray[np.uint16], layer: int, dpi: float | None = None
     ) -> NDArray[np.uint16]:
@@ -253,10 +292,19 @@ class PrintSession:
         pixels = self._photo().pixels
         height, width = pixels.shape
         scale = min(1.0, max_side / max(height, width))
-        if scale < 1.0:
-            size = (max(1, round(width * scale)), max(1, round(height * scale)))
-            image = Image.fromarray(pixels).resize(size, Image.Resampling.BILINEAR)
-            pixels = np.asarray(image, dtype=np.uint16)
+        size = (max(1, round(width * scale)), max(1, round(height * scale)))
+
+        def shrink(channel: NDArray[np.uint16]) -> NDArray[np.uint16]:
+            if scale >= 1.0:
+                return channel
+            image = Image.fromarray(channel).resize(size, Image.Resampling.BILINEAR)
+            return np.asarray(image, dtype=np.uint16)
+
+        colour = self._colour()
+        if self.prints_colour and colour is not None:  # in its own colour, not proofed
+            rgb = np.stack([shrink(np.ascontiguousarray(colour[..., c])) for c in range(3)], -1)
+            return (self.render_colour(rgb, self.effective_ppi() * scale) >> 8).astype(np.uint8)
+        pixels = shrink(pixels)
         if self.negative:  # the negative as it will look on the film
             shown = self.render(pixels, dpi=self.effective_ppi() * scale)
         else:
@@ -321,23 +369,29 @@ class PrintSession:
                 f"Mirrored: {'yes' if self.mirror else 'no'}",
                 *self._marks_line(),
             ]
+        if self.prints_colour:
+            embedded = self._photo().icc_profile is not None
+            profile = "embedded in the photo" if embedded else "none (read as sRGB)"
+            tones = ["Output: colour print (colour-managed by macOS)", f"Colour profile: {profile}"]
+        else:
+            tones = [f"Toning: {self.preset}", f"Calibration: {calibration}"]
         return [
             f"Photo: {self.source.name if self.source else 'untitled'}",
             f"Printer: {self.printer or 'not chosen'}",
             f"Paper: {self.paper}",
             *self._within(),
             f"Size: {size(width, height, self.units)} at {self.effective_ppi():.0f} ppi",
-            f"Toning: {self.preset}",
-            f"Calibration: {calibration}",
+            *tones,
             *self._marks_line(),
         ]
 
     # --- output ---------------------------------------------------------------------
 
     def write_print_file(self, path: str | Path) -> Path:
-        """The full-resolution file to print: toned, calibrated, tagged with the print ppi."""
+        """The full-resolution file to print, tagged with the print ppi: toned and calibrated
+        (sRGB), or a colour print in the photo's own colour and profile."""
         ppi = self.effective_ppi()
-        save_rgb(path, self.render(self._photo().pixels), (ppi, ppi), srgb_profile())
+        save_rgb(path, self.render_print(), (ppi, ppi), self.print_profile())
         return Path(path)
 
     def write_separations(self, folder: str | Path, stem: str | None = None) -> list[Path]:

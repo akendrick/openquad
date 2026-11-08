@@ -868,13 +868,27 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
     path = directory / "photo-rgba16.tif"
     tifffile.imwrite(path, rgba16, photometric="rgb", extrasamples=["unassalpha"])
     written.append(path)
+    # Colour photos with their own ICC profile, kept for printing in colour.
+    profile = _rgb_profile()
+    save("photo-colour-icc.png", Image.fromarray(colour, "RGB"), dpi=(200, 200),
+         icc_profile=profile)  # fmt: skip
+    colour16 = rng.integers(0, 65536, (18, 24, 4)).astype(np.uint16)
+    colour16[..., 3] = 65535
+    colour16[:3, :, 3] = 0  # a transparent band, cropped off
+    colour16[6:9, 4:8, 3] = 30000  # partly transparent: onto paper white
+    path = directory / "photo-colour16.tif"
+    tifffile.imwrite(path, colour16, photometric="rgb", extrasamples=["unassalpha"],
+                     iccprofile=profile)  # fmt: skip
+    written.append(path)
 
     photos = []
     for path in written:
         photo = load_photo(path)
         photos.append({"file": path.name, "shape": list(photo.pixels.shape),
                        "pixels": _ints(photo.pixels), "dpi": list(photo.dpi) if photo.dpi else None,
-                       "converted": photo.converted, "cropped": photo.cropped})  # fmt: skip
+                       "converted": photo.converted, "cropped": photo.cropped,
+                       "colour": None if photo.colour is None else _ints(photo.colour),
+                       "has_profile": photo.icc_profile is not None})  # fmt: skip
 
     calibration = ROOT / "calibration-data" / "canon-mg3600-plain" / "canon-plain.oqcal"
     process = directory / "session-process.oqproc"
@@ -913,6 +927,13 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 20.0,
          "negative_colour": "orange", "safe_edge": 0.3, "outline": 0.05, "guide": True,
          "registration": True},
+        {"photo": "photo-colour.png", "colour_print": True, "fit": False},
+        {"photo": "photo-colour-icc.png", "colour_print": True, "preset": "black-red",
+         "calibration": True, "paper": "4x6"},
+        {"photo": "photo-colour16.tif", "colour_print": True, "fit": False, "ppi": 20.0,
+         "guide": True, "registration": True},
+        {"photo": "photo-colour-icc.png", "colour_print": True, "mode": "negative",
+         "fit": False, "ppi": 40.0},
     ]  # fmt: skip
     sessions = []
     for config in configurations:
@@ -937,13 +958,25 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         session.registration = config.get("registration", False)
         session.set_units(config.get("units", "in"))
         session.printer = "Canon_MG3600_series"
-        rendered = session.render(session._photo().pixels)
+        session.set_colour_print(config.get("colour_print", False))
+        rendered = session.render_print()
         sessions.append({**config, "ppi_used": session.effective_ppi(),
+                         "prints_colour": session.prints_colour,
                          "size": list(session.size_inches()), "fits": session.fits_on_paper(),
                          "summary": session.summary(), "notes": session.notes,
                          "rendered_shape": list(rendered.shape),
                          "rendered": _ints(rendered)})  # fmt: skip
     return {"photos": photos, "calibration": calibration.read_text(), "sessions": sessions}, written
+
+
+def _rgb_profile() -> bytes:
+    """A small sRGB ICC profile made by Little CMS, the same on every run and system."""
+    from PIL import ImageCms
+
+    data = bytearray(ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes())
+    data[24:36] = bytes(12)  # no creation date
+    data[84:100] = bytes(16)  # no profile ID (an MD5 that would cover the date)
+    return bytes(data)
 
 
 def _digest(pixels: Any) -> dict[str, Any]:

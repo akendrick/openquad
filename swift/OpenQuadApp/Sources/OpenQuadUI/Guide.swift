@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 16
+    public static let version = 17
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -28,7 +28,12 @@ public struct GuideView: View {
                         + "github.com/akendrick/openquad/issues."]),
         Page(symbol: "printer", title: "Print a photo",
              text: "The Print tab: everything is on the left; the preview on the right shows how the print should look.",
-             steps: ["Open Photo… (⌘O): greyscale or colour, any size. Colour photos are converted to grey.",
+             steps: ["Open Photo… (⌘O): greyscale or colour, any size. Colour photos are converted to grey, "
+                        + "unless you turn on Print in colour.",
+                     "Print in colour (colour-managed printer), for a colour photo: it keeps its colours and colour "
+                        + "profile, skips toning and calibration, and macOS matches it to the printer: choose the "
+                        + "paper type or profile in the print panel. Soft-proof with a paper's profile to see it in "
+                        + "the preview.",
                      "Toning stays Neutral unless you choose a duotone; it's never remembered.",
                      "Calibration: pick one of your saved calibrations (Import… adds a file). Choosing a printer "
                         + "under Page picks its newest calibration for that paper.",

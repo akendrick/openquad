@@ -49,6 +49,7 @@ public struct ContentView: View {
         }
         .onAppear {
             model.loadPrinters()
+            model.loadProofProfiles()
             if model.session.negativeCount > 1 { showSeparations = true }
         }
     }
@@ -175,6 +176,33 @@ public struct ContentView: View {
     }
 
     @ViewBuilder private var printControls: some View {
+        if model.canPrintColour {
+            Toggle("Print in colour (colour-managed printer)",
+                   isOn: Binding(get: { model.session.colourPrint }, set: { model.setColourPrint($0) }))
+        }
+        if model.session.printsColour { colourControls } else { greyControls }
+    }
+
+    /// A colour print: no toning or calibration; macOS matches the colours to the printer.
+    @ViewBuilder private var colourControls: some View {
+        Text("The photo keeps its colours and its own colour profile (sRGB if it has none). Choose the printer's "
+             + "paper type or profile in the print panel: macOS colour-manages the print.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        Picker("Soft-proof with", selection: Binding(get: { model.proofProfile }, set: { model.setProofProfile($0) })) {
+            Text("None (the photo's colours)").tag(URL?.none)
+            ForEach(model.proofProfiles) { Text($0.name).tag(URL?.some($0.url)) }
+            if let url = model.proofProfile, !model.proofProfiles.contains(where: { $0.url == url }) {
+                Text(url.deletingPathExtension().lastPathComponent).tag(URL?.some(url))
+            }
+        }
+        Button("Choose Profile…") {
+            let types = ["icc", "icm"].compactMap { UTType(filenameExtension: $0) }
+            if let url = Self.askOpen(types: types, folder: "/Library/ColorSync/Profiles") { model.setProofProfile(url) }
+        }
+    }
+
+    @ViewBuilder private var greyControls: some View {
         Picker("Toning", selection: Binding(get: { model.session.preset }, set: { model.setPreset($0) })) {
             ForEach(presetLabels, id: \.0) { Text($0.1).tag($0.0) }
         }
@@ -277,9 +305,20 @@ public struct ContentView: View {
                     .aspectRatio(contentMode: .fit)
                     .shadow(radius: 4)
                     .padding(24)
+                if let caption = model.previewCaption {
+                    VStack {
+                        Spacer()
+                        Text(caption)
+                            .font(.callout)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(.regularMaterial, in: Capsule())
+                            .padding(8)
+                    }
+                }
             } else {
                 ContentUnavailableView("Open a photo to begin", systemImage: "photo",
-                                       description: Text("Greyscale or colour, any size; it's printed in the tones you choose."))
+                                       description: Text("Greyscale or colour, any size; printed in the tones you choose, or in colour."))
             }
         }
     }
@@ -309,7 +348,8 @@ public struct ContentView: View {
         Task {
             guard let (image, width, height, paper, title) = await model.printRequest(),
                   let operation = NativePrint.operation(for: image, widthInches: width, heightInches: height,
-                                                        paper: paper, title: title) else { return }
+                                                        paper: paper, title: title,
+                                                        iccProfile: model.session.printProfile()) else { return }
             if let window = NSApp.keyWindow {
                 operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
             } else {

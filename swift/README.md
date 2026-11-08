@@ -18,6 +18,12 @@ implementation in `src/openquad`, which stays the reference.
   and prints through the standard macOS print panel at the exact print size. Settings
   are shared with the Python app (`~/Library/Application Support/OpenQuad/settings.json`);
   toning is never remembered.
+  **Print in colour (colour-managed printer)** appears for a colour photo: the print keeps
+  the photo's colours and embedded RGB ICC profile (sRGB if it has none), skips toning and
+  calibration, and macOS colour-manages it through the print panel or `lp` (choose the paper
+  type or profile there). **Soft-proof with** shows the preview through a printer and paper
+  profile (relative colorimetric); it changes only the preview. Greyscale stays the default
+  for every photo.
   Two calibration wizards open from the print window:
   - **Calibrate This Printer…** prints a comparison page, scans it (eSCL), measures it,
     then improves grey balance or evens out tone until both goals are met.

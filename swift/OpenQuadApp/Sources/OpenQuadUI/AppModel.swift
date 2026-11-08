@@ -37,6 +37,8 @@ public final class AppModel {
     public var setupOffer: String?
     /// CUPS printers on this Mac, for printing without the print panel.
     public private(set) var printers: [String] = []
+    /// Printer and paper ICC profiles on this Mac, to soft-proof a colour print with.
+    public private(set) var proofProfiles: [ProofProfile] = []
     /// Saved calibrations to choose from: the newest of each printer and paper.
     public private(set) var calibrations: [LibraryEntry] = []
     public let library: CalibrationLibrary
@@ -122,6 +124,13 @@ public final class AppModel {
         }
     }
 
+    /// Look up the printer and paper ICC profiles (off the main thread).
+    public func loadProofProfiles(_ list: @escaping @Sendable () -> [ProofProfile] = { SoftProof.profiles() }) {
+        Task {
+            proofProfiles = await Task.detached { list() }.value
+        }
+    }
+
     private func restore() {
         try? session.setPaper(role == .negative ? settings.negativePaper ?? settings.paper : settings.paper)
         if let path = settings.calibration, FileManager.default.fileExists(atPath: path) {
@@ -193,6 +202,31 @@ public final class AppModel {
             remember()
         }
         refreshLibrary()
+    }
+
+    /// The photo is colour and this is the Print tab: it can be printed in colour.
+    public var canPrintColour: Bool { role == .print && session.photo?.colour != nil }
+
+    /// Print the colour photo in colour on a colour-managed printer, or in greyscale.
+    public func setColourPrint(_ on: Bool) {
+        attempt { try session.setColourPrint(on) }
+        refreshPreview()
+    }
+
+    /// The profile colour prints are soft-proofed with in the preview (nil: none). Remembered.
+    public var proofProfile: URL? { settings.proofProfile.map { URL(fileURLWithPath: $0) } }
+
+    public func setProofProfile(_ url: URL?) {
+        saveSettings { $0.proofProfile = url?.path }
+        refreshPreview()
+    }
+
+    /// What the preview shows, when it isn't simply the print: a colour print, soft-proofed or not.
+    public var previewCaption: String? {
+        guard session.printsColour else { return nil }
+        guard let url = proofProfile else { return "Colour print: the photo's own colours, colour-managed by macOS" }
+        let name = proofProfiles.first { $0.url == url }?.name ?? url.deletingPathExtension().lastPathComponent
+        return "Soft-proof: \(name)"
     }
 
     public func setMode(_ mode: OutputMode) {
@@ -631,8 +665,11 @@ public final class AppModel {
         }
         previewToken += 1
         let token = previewToken, snapshot = session
+        let proof = snapshot.printsColour ? proofProfile : nil
         Task.detached(priority: .userInitiated) {
-            let image = (try? snapshot.preview())?.cgImage(eightBit: true)
+            // A colour print is shown in its own profile; soft-proofed if a profile is chosen.
+            var image = (try? snapshot.preview())?.cgImage(eightBit: true, iccProfile: snapshot.printProfile())
+            if let proof, let shown = image { image = SoftProof.proof(shown, with: proof) ?? shown }
             await MainActor.run {
                 if token == self.previewToken { self.preview = image }  // a newer preview wins
             }

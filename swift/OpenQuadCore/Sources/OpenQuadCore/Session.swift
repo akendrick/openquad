@@ -55,8 +55,20 @@ public struct PrintSession: Sendable {
     /// printed through every negative), applied to the photo before it is split.
     public private(set) var coatsCurve: ProcessCurve?
     public private(set) var coatsCurvePath: URL?
+    /// Print a colour photo in colour, on a colour-managed printer: its own colour and ICC
+    /// profile go to macOS, with no toning or calibration. Off (greyscale) for each new photo.
+    public private(set) var colourPrint = false
 
     public init() {}
+
+    /// Print the photo in its own colour (colour-managed), or in greyscale.
+    public mutating func setColourPrint(_ on: Bool) throws {
+        if on && photo?.colour == nil { throw SessionError(description: "only a colour photo can be printed in colour") }
+        colourPrint = on
+    }
+
+    /// The print is the photo's own colour: colour print on, in print mode.
+    public var printsColour: Bool { colourPrint && !negative && photo?.colour != nil }
 
     /// How many negatives the photo is printed with.
     public var negativeCount: Int { separation?.count ?? 1 }
@@ -115,8 +127,9 @@ public struct PrintSession: Sendable {
         photo = try Photos.load(url)
         source = url
         notes = []
+        colourPrint = false
         if photo!.cropped { notes.append("Transparent edges were cropped off.") }
-        if photo!.converted { notes.append("This is a colour image; it was converted to greyscale.") }
+        if photo!.converted { notes.append("This is a colour image; it is converted to greyscale unless printed in colour.") }
     }
 
     public mutating func setPreset(_ name: String) throws {
@@ -237,10 +250,25 @@ public struct PrintSession: Sendable {
                              dpi: try dpi ?? effectivePPI())
     }
 
-    /// The full-resolution print.
+    /// A colour print: the photo's own colour, untouched, with any darkroom marks.
+    public func renderColour(_ rgb: [UInt16], width: Int, height: Int, dpi: Double? = nil) throws -> RGBImage {
+        Marks.addPrintMarks(RGBImage(width: width, height: height, pixels: rgb), dpi: try dpi ?? effectivePPI(),
+                            guide: guide, registration: registration)
+    }
+
+    /// The full-resolution print: in colour, or rendered from the greyscale photo.
     public func renderPrint() throws -> RGBImage {
         let photo = try currentPhoto()
+        if printsColour, let colour = photo.colour {
+            return try renderColour(colour, width: photo.width, height: photo.height)
+        }
         return try render(photo.pixels, width: photo.width, height: photo.height)
+    }
+
+    /// The ICC profile the print file carries: a colour print's own (sRGB if untagged).
+    public func printProfile() -> Data? {
+        if printsColour, let profile = photo?.iccProfile { return profile }
+        return ImageFiles.srgbProfile()
     }
 
     /// A preview of the toned photo (without calibration: the print should look like this),
@@ -253,6 +281,17 @@ public struct PrintSession: Sendable {
             width = max(1, pyRound(Double(photo.width) * scale))
             height = max(1, pyRound(Double(photo.height) * scale))
             pixels = Self.resize(photo.pixels, from: (photo.width, photo.height), to: (width, height))
+        }
+        if printsColour, let colour = photo.colour {  // in its own colour, not proofed
+            var rgb = colour
+            if scale < 1.0 {
+                let planes = (0..<3).map { c in
+                    Self.resize(stride(from: c, to: colour.count, by: 3).map { colour[$0] }, from: (photo.width, photo.height),
+                                to: (width, height))
+                }
+                rgb = (0..<width * height).flatMap { i in planes.map { $0[i] } }
+            }
+            return try renderColour(rgb, width: width, height: height, dpi: try effectivePPI() * scale)
         }
         if negative { return try render(pixels, width: width, height: height, dpi: try effectivePPI() * scale) }
         let toned = RGBImage(width: width, height: height, pixels: Composite.composite(pixels, layers: Composite.presets[preset]!))
@@ -323,23 +362,26 @@ public struct PrintSession: Sendable {
                 "Mirrored: \(mirror ? "yes" : "no")",
             ] + marksLine
         }
+        let tones = printsColour
+            ? ["Output: colour print (colour-managed by macOS)",
+               "Colour profile: \(photo?.iccProfile != nil ? "embedded in the photo" : "none (read as sRGB)")"]
+            : ["Toning: \(preset)", "Calibration: \(calibrationPath?.lastPathComponent ?? "none")"]
         return [
             "Photo: \(photoName)",
             "Printer: \(printer ?? "not chosen")",
             "Paper: \(paper)",
         ] + within + [
             "Size: \(size) at \(String(format: "%.0f", try effectivePPI())) ppi",
-            "Toning: \(preset)",
-            "Calibration: \(calibrationPath?.lastPathComponent ?? "none")",
-        ] + marksLine
+        ] + tones + marksLine
     }
 
     // MARK: output
 
-    /// The full-resolution file to print: toned, calibrated, tagged with the print ppi.
+    /// The full-resolution file to print, tagged with the print ppi: toned and calibrated
+    /// (sRGB), or a colour print in the photo's own colour and profile.
     public func writePrintFile(_ url: URL) throws {
         let ppi = try effectivePPI()
-        try ImageFiles.saveRGB(url, try renderPrint(), dpi: (ppi, ppi), iccProfile: ImageFiles.srgbProfile())
+        try ImageFiles.saveRGB(url, try renderPrint(), dpi: (ppi, ppi), iccProfile: printProfile())
     }
 
     /// Every negative of the separation as `<stem>-<k>of<n>.tif` in `folder`.
@@ -398,6 +440,8 @@ public struct AppSettings: Sendable, Equatable {
     /// The test sheets' preferred size (the blocking test and process charts): fit within
     /// (width, height) inches; nil for their own size.
     public var chartSize: [Double]?
+    /// The ICC profile colour prints are soft-proofed with (nil: no soft-proof).
+    public var proofProfile: String?
 
     public init() {}
 
@@ -428,6 +472,7 @@ public struct AppSettings: Sendable, Equatable {
         settings.negativePrinter = object["negative_printer"] as? String
         settings.negativePaper = (object["negative_paper"] as? String).flatMap { Paper.sizes[$0] != nil ? $0 : nil }
         if let size = object["chart_size"] as? [NSNumber], size.count == 2 { settings.chartSize = size.map(\.doubleValue) }
+        settings.proofProfile = object["proof_profile"] as? String
         return settings
     }
 
@@ -439,7 +484,7 @@ public struct AppSettings: Sendable, Equatable {
             "process": process ?? NSNull(), "negative_colour": negativeColour, "max_size": maxSize ?? NSNull(),
             "units": units.rawValue,
             "negative_printer": negativePrinter ?? NSNull(), "negative_paper": negativePaper ?? NSNull(),
-            "chart_size": chartSize ?? NSNull(),
+            "chart_size": chartSize ?? NSNull(), "proof_profile": proofProfile ?? NSNull(),
         ]
         var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         data.append(0x0a)

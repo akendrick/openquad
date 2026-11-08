@@ -44,6 +44,8 @@ class Settings:
     # The test sheets' preferred size (blocking test, process charts): fit within (width,
     # height) inches; None for their own size.
     chart_size: list[float] | None = None
+    # The ICC profile the Mac app soft-proofs colour prints with (None: no soft-proof).
+    proof_profile: str | None = None
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:
