@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 16
+    public static let version = 17
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -56,28 +56,33 @@ public struct GuideView: View {
              steps: ["Setup: switch between saved setups (curve, colour, mirror, edges, printer and paper) in one step. "
                         + "Once a process is calibrated, Save Setup… keeps it under a name, e.g. Cyanotype on Pictorico.",
                      "Ink colour and Process curve: both come from the Process Calibration tab.",
-                     "Mirror if the film's printed side must face the tissue. The F cut into the safe edge reads "
-                        + "correctly in the print when the mirror setting was right.",
-                     "Outline in black adds a black border of the width you set between the safe edge and the "
-                        + "photo: a natural frame for photos with white or light edges.",
+                     "Options (collapsed until you need it) holds Mirror, Safe edge, Outline in black and "
+                        + "Separations. Mirror if the film's printed side must face the tissue: the F cut into the safe "
+                        + "edge reads correctly in the print when the mirror setting was right. Outline in black adds a "
+                        + "border of the width you set between the safe edge and the photo.",
                      "Darkroom marks: a black guide line round the image and registration marks (targets on each "
                         + "side, crop marks at the corners), in the safe edge. Red and orange negatives all but vanish "
                         + "under a red safelight; black shows. The marks block UV like the safe edge, so they don't print. "
                         + "The Print tab offers them too, in a thin white border round the print.",
-                     "Separations: for processes that build their tones up in several coats (gum, multi-coat "
-                        + "cyanotype), split the photo into 2-6 negatives by tone. Set where the bands meet on a step "
-                        + "scale and an overlap so the seams don't show; each negative can have its own process curve. "
-                        + "Each prints nothing lighter than its band and full strength darker, so the coats add up. "
-                        + "With registration marks on, the targets are cut clear and every negative is numbered, so the "
-                        + "first coat records them on the paper to line the others up on. Print the lightest first. "
-                        + "Use Step Test as Photo first: numbered steps over a matching gradient show where each band "
-                        + "falls on your paper and whether the seams show. Then calibrate the coats together: Use Chart as "
-                        + "Photo, print every negative of it onto one sheet, scan the print and Read Chart Scan…; the coats "
-                        + "curve it makes evens out how the coats add up. Read a second print to check.",
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
                      "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",
                      "Print on transparency film at 100% with your usual film settings."]),
+        Page(symbol: "square.stack.3d.up", title: "Multi-coat separations",
+             text: "For processes that build their tones up in several coats (gum, multi-coat cyanotype): the photo "
+                + "split by tone into 2-6 negatives, printed one over another. In the Negative tab, under Options.",
+             steps: ["Negatives: how many. Set where the bands meet on the step scale, and an overlap so the seams "
+                        + "don't show. Each negative prints nothing lighter than its band and full strength darker, "
+                        + "so the coats add up.",
+                     "Turn on registration marks: every negative's targets are cut clear and it is numbered, so the "
+                        + "first coat records them on the paper. Print the lightest first and line the others up on them.",
+                     "Use Step Test as Photo and print every negative of it: numbered steps over a matching gradient "
+                        + "show where each band falls on your paper and whether the seams show.",
+                     "Each negative can use its own curve: pick one from your setups or process calibrations "
+                        + "(e.g. Cyanotype) or another file.",
+                     "Calibrate the coats together: Use Chart as Photo, print every negative of it onto one sheet, "
+                        + "scan the print and Read Chart Scan…. The coats curve evens out how the coats add up; read "
+                        + "a second print to check."]),
         Page(symbol: "square.grid.3x3", title: "Contact sheets",
              text: "The Contact Sheet tab (⇧⌘N) puts up to 16 photos on one sheet, to proof them or to make one "
                 + "negative of them all.",
@@ -121,7 +126,11 @@ public struct GuideView: View {
     @State private var page = 0
     @Environment(\.dismiss) private var dismiss
 
-    public init(done: @escaping () -> Void = {}) { self.done = done }
+    /// `page`: where to open (0, the welcome, except in snapshots).
+    public init(page: Int = 0, done: @escaping () -> Void = {}) {
+        self.done = done
+        _page = State(initialValue: min(max(page, 0), Self.pages.count - 1))
+    }
 
     public var body: some View {
         let current = Self.pages[page]
@@ -133,16 +142,22 @@ public struct GuideView: View {
                     .frame(width: 48)
                 Text(current.title).font(.title.bold())
             }
-            Text(current.text).font(.title3).fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 10) {
-                ForEach(Array(current.steps.enumerated()), id: \.offset) { n, step in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text("\(n + 1)").font(.callout.bold().monospacedDigit()).foregroundStyle(.secondary).frame(width: 18)
-                        Text(step).fixedSize(horizontal: false, vertical: true)
+            ScrollView {  // a long page scrolls instead of being clipped
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(current.text).font(.title3).fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(Array(current.steps.enumerated()), id: \.offset) { n, step in
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                                Text("\(n + 1)").font(.callout.bold().monospacedDigit()).foregroundStyle(.secondary)
+                                    .frame(width: 18)
+                                Text(step).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            Spacer(minLength: 0)
+            .id(page)  // each page starts at its top
             HStack {
                 HStack(spacing: 6) {
                     ForEach(Self.pages.indices, id: \.self) { i in

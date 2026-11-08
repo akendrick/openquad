@@ -227,8 +227,10 @@ openquad negative photo.tif -o gum.tif --process gum.oqproc --registration \
     --separations 3 --splits 10,20 --overlap 1 --coats-curve coats.oqproc
 ```
 
-The app has the same in the Negative tab's Separations section: a diagram of the bands, "Use Step
-Test as Photo", and for the coats "Use Chart as Photo", "Read Chart Scan…" and the coats curve.
+The app has the same under the Negative tab's Options ▸ Separations: a diagram of the bands, "Use
+Step Test as Photo", and for the coats "Use Chart as Photo", "Read Chart Scan…" and the coats curve.
+Every curve chooser lists the curves OpenQuad already has (saved setups, the latest round of each
+process calibration, coats curves) as well as Other File….
 
 ### Contact sheets
 
