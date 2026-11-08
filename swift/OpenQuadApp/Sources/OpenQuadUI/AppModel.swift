@@ -334,14 +334,67 @@ public final class AppModel {
 
     /// Use the step test as the photo: the step scale's numbered steps over a continuous
     /// gradient, to print through the separation and see where each coat's band falls. It is
-    /// kept in the app's step-tests folder; the last photo folder is left as it was.
+    /// kept in the app's separations folder; the last photo folder is left as it was.
     public func openStepTest() {
         attempt {
-            let folder = settingsURL.deletingLastPathComponent().appendingPathComponent("step-tests")
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let url = folder.appendingPathComponent("step-test-\(separationSteps).tif")
+            try FileManager.default.createDirectory(at: separationFolder, withIntermediateDirectories: true)
+            let url = separationFolder.appendingPathComponent("step-test-\(separationSteps).tif")
             try ImageFiles.saveGrey(url, try SeparationPlan.stepTest(steps: separationSteps))
             try session.open(url)
+        }
+        refreshPreview()
+    }
+
+    // MARK: calibrating the coats together
+
+    /// Where the step test, the coats chart and the coats curves are kept.
+    var separationFolder: URL { settingsURL.deletingLastPathComponent().appendingPathComponent("separations") }
+
+    /// Use the process chart as the photo, to print through every negative of the separation
+    /// onto one sheet; a scan of that print calibrates the coats together (`readCoatsScan`).
+    public func openCoatsChart() {
+        attempt {
+            try FileManager.default.createDirectory(at: separationFolder, withIntermediateDirectories: true)
+            let url = separationFolder.appendingPathComponent("coats-chart.tif")
+            let chart = Chart.photo()
+            try ImageFiles.saveGrey(url, GreyImage(width: chart.width, height: chart.height, pixels: chart.pixels,
+                                                   dpi: (300, 300)))
+            try session.open(url)
+        }
+        refreshPreview()
+    }
+
+    /// Calibrate the stacked coats with this curve (nil: none).
+    public func setCoatsCurve(_ url: URL?) {
+        attempt { try session.setCoatsCurve(url) }
+        refreshPreview()
+    }
+
+    /// Read a scan of the coats chart printed through every negative: build the next coats
+    /// curve from it (through the current one), save it beside the chart and use it.
+    public func readCoatsScan(_ scan: URL) async {
+        busy = true
+        defer { busy = false }
+        let previous = session.coatsCurve, folder = separationFolder
+        do {
+            let (curve, reading) = try await Task.detached(priority: .userInitiated) {
+                let reading = try Chart.read(try Scan.load(scan))
+                return (try ProcessCurve.build(reading, previous: previous), reading)
+            }.value
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let round = (1...).first { !FileManager.default.fileExists(atPath: folder.appendingPathComponent("coats-\($0).oqproc").path) }!
+            let url = folder.appendingPathComponent("coats-\(round).oqproc")
+            try curve.encode().write(to: url)
+            try session.setCoatsCurve(url)
+            let errors = reading.toneErrors().map(abs)
+            let (highlights, shadows) = Clipping.lost(reading)
+            status = String(format: "Read the chart: %.1f L* off on average, %.1f at worst. ", errors.reduce(0, +) / Double(errors.count),
+                            errors.max() ?? 0)
+                + "Saved \(url.lastPathComponent) and using it; print the chart again to check."
+                + (Clipping.advice(highlights: highlights, shadows: shadows).map { " " + $0 } ?? "")
+            error = nil
+        } catch {
+            self.error = String(describing: error)
         }
         refreshPreview()
     }

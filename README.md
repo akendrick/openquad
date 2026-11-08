@@ -211,8 +211,24 @@ openquad negative steps.tif -o steps-neg.tif --process gum.oqproc --registration
     --separations 3 --splits 10,20 --overlap 1
 ```
 
-The app has the same in the Negative tab's Separations section, with a diagram of the bands and
-"Use Step Test as Photo".
+Each coat's own process curve linearises that coat alone; how the coats add up on the paper is
+calibrated next, with the whole stack treated as one process. Print the process chart (as a
+photo) through every negative onto one sheet, scan the finished print, and read it with
+`openquad chart`: the result is a **coats curve**, applied to the photo before it is split. Read a
+second print through it to check or refine:
+
+```bash
+openquad target --kind chart-photo -o chart.tif
+openquad negative chart.tif -o chart-neg.tif --process gum.oqproc --registration \
+    --separations 3 --splits 10,20 --overlap 1
+#    print chart-neg-1of3.tif, -2of3, -3of3 in register on one sheet, scan the print:
+openquad chart stacked.jpg -o coats.oqproc
+openquad negative photo.tif -o gum.tif --process gum.oqproc --registration \
+    --separations 3 --splits 10,20 --overlap 1 --coats-curve coats.oqproc
+```
+
+The app has the same in the Negative tab's Separations section: a diagram of the bands, "Use Step
+Test as Photo", and for the coats "Use Chart as Photo", "Read Chart Scan…" and the coats curve.
 
 ### Contact sheets
 

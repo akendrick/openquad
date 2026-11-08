@@ -1165,10 +1165,14 @@ def separations_vectors(directory: Path) -> dict[str, Any]:
     for k in range(3):
         session.set_layer(k)
         summaries.append(session.summary())
+    session.set_coats_curve(directory / "session-process.oqproc")
+    coated = [_digest(session.render_layer(session._photo().pixels, k)) for k in range(3)]
+    coated_summary = session.summary()
     return {
         "plans": plans, "even": even, "labels": labels,
         "targets": targets, "photo": {"height": 12, "width": 30, "pixels": _ints(photo)},
-        "negatives": negatives, "session": {"rendered": rendered, "summaries": summaries},
+        "negatives": negatives, "session": {"rendered": rendered, "summaries": summaries,
+                                           "coated": coated, "coated_summary": coated_summary},
         "step_tests": [{"steps": n, "dpi": d, **_digest(step_test(n, d))} for n, d in
                        [(30, 300.0), (21, 100.0), (101, 20.0), (2, 72.0), (101, 300.0)]],
     }  # fmt: skip

@@ -99,6 +99,15 @@ struct SeparationParity {
             try session.setLayer(k)
             #expect(try session.summary() == lines)
         }
+        // The coats curve shapes the photo before it is split.
+        try session.setCoatsCurve(try vectorURL("session-process.oqproc"))
+        for (k, expected) in (v["coated"] as! [[String: Any]]).enumerated() {
+            let negative = try session.renderLayer(photo.pixels, width: photo.width, height: photo.height, layer: k)
+            #expect(digest(negative.pixels) == expected["sha256"] as? String, "coated negative \(k + 1)")
+        }
+        #expect(try session.summary() == v["coated_summary"] as? [String])
+        try session.setCoatsCurve(nil)
+        #expect(session.coatsCurvePath == nil)
         // The shown negative is the one printed, and each can have its own curve.
         try session.setLayer(1)
         let shown = try session.renderPrint()

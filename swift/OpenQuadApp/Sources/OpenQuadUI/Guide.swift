@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 15
+    public static let version = 16
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -71,7 +71,9 @@ public struct GuideView: View {
                         + "With registration marks on, the targets are cut clear and every negative is numbered, so the "
                         + "first coat records them on the paper to line the others up on. Print the lightest first. "
                         + "Use Step Test as Photo first: numbered steps over a matching gradient show where each band "
-                        + "falls on your paper and whether the seams show.",
+                        + "falls on your paper and whether the seams show. Then calibrate the coats together: Use Chart as "
+                        + "Photo, print every negative of it onto one sheet, scan the print and Read Chart Scan…; the coats "
+                        + "curve it makes evens out how the coats add up. Read a second print to check.",
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
                      "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",

@@ -25,6 +25,7 @@ from openquad.chart import (
     build_process_curve,
     chart_negative,
     chart_page,
+    chart_photo,
     chart_scale,
     clipped_tones,
     clipping_advice,
@@ -98,14 +99,24 @@ def build_parser() -> argparse.ArgumentParser:
     target.add_argument("-o", "--output", type=Path, required=True, help="TIFF to write")
     target.add_argument(
         "--kind",
-        choices=["wedge", "grey-balance", "comparison", "blocking", "chart", "steps"],
+        choices=[
+            "wedge",
+            "grey-balance",
+            "comparison",
+            "blocking",
+            "chart",
+            "steps",
+            "chart-photo",
+        ],
         default="wedge",
         help="wedge: greyscale step wedge; grey-balance: framed RGB target to scan; "
         "comparison: uncorrected + corrected targets on one page (needs --calibration); "
         "blocking: digital-negative colour test sheet; "
         "chart: ChartThrob-style process chart as a negative (--colour, --process); "
         "steps: numbered step scale over a continuous gradient, to print through a separation "
-        "(openquad negative --separations)",
+        "(openquad negative --separations); "
+        "chart-photo: the process chart as a greyscale photo, to print through a separation "
+        "and read with openquad chart (calibrates the coats together)",
     )
     target.add_argument("--steps", type=int,
                         help="wedge patches (default 21); for --kind steps, the step "
@@ -229,6 +240,9 @@ def build_parser() -> argparse.ArgumentParser:
     seps.add_argument("--layer-process", action="append", default=[], metavar="K=CURVE",
                       help="process curve for negative K alone "
                            "(repeat; the others use --process)")  # fmt: skip
+    seps.add_argument("--coats-curve", type=Path, metavar="CURVE",
+                      help="the coats calibrated together: a curve read from the chart photo "
+                           "printed through every negative, applied before splitting")  # fmt: skip
 
     sheet = commands.add_parser("contact-sheet", help="up to 16 photos as thumbnails on one sheet")
     sheet.add_argument("inputs", type=Path, nargs="+", metavar="PHOTO", help="photos (1-16)")
@@ -338,6 +352,10 @@ def _calibration(path: Path | None) -> Calibration | None:
 def _target(args: argparse.Namespace) -> None:
     dpi = (args.dpi, args.dpi)
     marks = {"guide": args.guide, "registration": args.registration}
+    if args.kind == "chart-photo":
+        save_grey(args.output, GreyImage(chart_photo(dpi=args.dpi), dpi=dpi))
+        print(f"wrote {args.output} (the process chart as a photo, {args.dpi:g} dpi)")
+        return
     if args.kind == "steps":
         steps = args.steps or DEFAULT_STEPS
         test = step_test(steps, args.dpi)
@@ -511,8 +529,8 @@ def _step_list(text: str) -> list[float]:
 def _separation(args: argparse.Namespace) -> SeparationPlan | None:
     """The separation the negative command asks for, or None for one negative."""
     if args.separations == 1 and args.splits is None:
-        if args.layer_process:
-            raise ValueError("--layer-process needs --separations")
+        if args.layer_process or args.coats_curve:
+            raise ValueError("--layer-process and --coats-curve need --separations")
         return None
     if args.splits is None:
         plan = SeparationPlan.even(args.separations, args.overlap / args.steps, args.steps)
@@ -601,10 +619,11 @@ def _negative(args: argparse.Namespace) -> None:
         print(f"wrote {args.output} ({settings.colour}{flip}, {size})")
         return
     own = _layer_processes(args, plan.count)
+    coats = load_process(args.coats_curve) if args.coats_curve else None
     print(plan.describe())
     for k, (lower, upper) in enumerate(plan.bands):
         curve = own.get(k, process)
-        pixels = coat_image(photo.pixels, plan, k)
+        pixels = coat_image(coats.apply(photo.pixels) if coats else photo.pixels, plan, k)
         pixels = curve.apply(pixels) if curve else pixels
         layer = replace(settings, colour=curve.colour if curve else colour, label=k + 1,
                         clear_targets=True)  # fmt: skip
