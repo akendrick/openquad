@@ -139,4 +139,28 @@ struct SeparationTests {
         await m.readCoatsScan(folder.appendingPathComponent("missing.tif"))
         #expect(m.error != nil)
     }
+
+    @Test func curvesAlreadyInOpenQuadAreOffered() throws {
+        let m = AppModel(settingsURL: folder.appendingPathComponent("settings.json"),
+                         setupsFolder: folder.appendingPathComponent("setups"))
+        #expect(m.knownCurves.isEmpty)
+        let curve = folder.appendingPathComponent("carbon.oqproc")
+        try ProcessCurve.identity(colour: "black").encode().write(to: curve)
+        m.setMode(.negative)
+        m.setProcess(curve)
+        m.saveSetup(named: "Carbon on Pictorico")
+        let run = try ProcessRun.start(folder: folder.appendingPathComponent("processes/cyanotype"), name: "Cyanotype",
+                                       colours: ["green", "red"])
+        let seps = folder.appendingPathComponent("separations")
+        try FileManager.default.createDirectory(at: seps, withIntermediateDirectories: true)
+        for n in [10, 2] { try ProcessCurve.identity(colour: "black").encode().write(to: seps.appendingPathComponent("coats-\(n).oqproc")) }
+        let curves = m.knownCurves
+        #expect(curves.map(\.group) == ["Setups", "Process calibrations", "Process calibrations", "Coats curves", "Coats curves"])
+        #expect(curves.map(\.label) == ["Carbon on Pictorico", "Cyanotype, green: round 0", "Cyanotype, red: round 0",
+                                         "coats-2", "coats-10"])
+        #expect(curves[1].url.resolvingSymlinksInPath() == run.curvePath("green").resolvingSymlinksInPath())
+        m.setNegativeCount(2)
+        m.setLayerProcess(1, curves[2].url)  // a calibration's curve is usable straight from the menu
+        #expect(m.session.layerProcessPaths[1] == curves[2].url && m.error == nil)
+    }
 }

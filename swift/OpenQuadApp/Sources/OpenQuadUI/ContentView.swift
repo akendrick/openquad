@@ -12,7 +12,9 @@ public struct ContentView: View {
     @State private var savingSetup = false
     @State private var setupName = ""
     @State private var deletingSetup: NegativeSetup?
-    /// The Separations section is closed until wanted (or a separation is already set).
+    /// The negative's Options section, and Separations inside it, are closed until wanted (or a
+    /// separation is already set).
+    @State private var showOptions = false
     @State private var showSeparations = false
     /// Switch to another tab (e.g. to calibrate).
     let goTo: (AppTab) -> Void
@@ -49,7 +51,7 @@ public struct ContentView: View {
         }
         .onAppear {
             model.loadPrinters()
-            if model.session.negativeCount > 1 { showSeparations = true }
+            if model.session.negativeCount > 1 { showOptions = true; showSeparations = true }
         }
     }
 
@@ -70,12 +72,11 @@ public struct ContentView: View {
                     if model.session.negative { negativeControls } else { printControls }
                 }
                 if model.session.negative {
-                    // Closed until wanted: most negatives are one negative.
-                    Section(isExpanded: $showSeparations) {
-                        SeparationControls(model: model)
+                    // Closed until wanted: most negatives use the defaults.
+                    Section(isExpanded: $showOptions) {
+                        negativeOptions
                     } header: {
-                        Text(model.session.negativeCount > 1 ? "Separations: \(model.session.negativeCount) negatives"
-                                                              : "Separations")
+                        Text(optionsHeader)
                     }
                 }
                 Section("Darkroom marks") {
@@ -236,9 +237,19 @@ public struct ContentView: View {
             ForEach(Negative.colourOrder, id: \.self) { Text($0.capitalized).tag($0) }
         }
         .disabled(model.session.process != nil)  // the process curve decides the colour
-        fileRow("Process curve", model.session.processPath, types: ["oqproc"],
-                choose: { model.setProcess($0) }, clear: { model.setProcess(nil) })
+        LabeledContent("Process curve") {
+            HStack {
+                Text(model.session.processPath?.lastPathComponent ?? "none")
+                    .foregroundStyle(model.session.processPath == nil ? .secondary : .primary)
+                CurveMenu(model: model) { model.setProcess($0) }
+                if model.session.processPath != nil { Button("Clear") { model.setProcess(nil) } }
+            }
+        }
         Button("Calibrate a Process…") { goTo(.processCalibration) }
+    }
+
+    /// Mirror, the safe edge, the outline and separations: set once per process, then left alone.
+    @ViewBuilder private var negativeOptions: some View {
         Toggle("Mirror (flip left to right)", isOn: Binding(get: { model.session.mirror }, set: { model.setMirror($0) }))
         LengthStepper(title: "Safe edge", inches: model.session.safeEdge, range: 0...2, inchStep: 0.05, mmStep: 1,
                       units: model.units) { model.setSafeEdge($0) }
@@ -250,20 +261,23 @@ public struct ContentView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-    }
-
-    private func fileRow(_ title: String, _ url: URL?, types: [String], choose: @escaping (URL) -> Void,
-                         clear: @escaping () -> Void) -> some View {
-        LabeledContent(title) {
-            HStack {
-                Text(url?.lastPathComponent ?? "none").foregroundStyle(url == nil ? .secondary : .primary)
-                Button("Choose…") {
-                    if let url = Self.askOpen(types: types.compactMap { UTType(filenameExtension: $0) }) { choose(url) }
-                }
-                if url != nil { Button("Clear", action: clear) }
-            }
+        DisclosureGroup(isExpanded: $showSeparations) {
+            SeparationControls(model: model)
+        } label: {
+            Text(model.session.negativeCount > 1 ? "Separations: \(model.session.negativeCount) negatives"
+                                                  : "Separations")
         }
     }
+
+    /// "Options", with what's set when it's closed: e.g. "Options: mirrored, 3 negatives".
+    private var optionsHeader: String {
+        var set = [String]()
+        if model.session.mirror { set.append("mirrored") }
+        if model.session.outline > 0 { set.append("outlined") }
+        if model.session.negativeCount > 1 { set.append("\(model.session.negativeCount) negatives") }
+        return set.isEmpty ? "Options" : "Options: " + set.joined(separator: ", ")
+    }
+
 
     // MARK: the preview
 

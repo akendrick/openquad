@@ -9,6 +9,7 @@
 //                                       [--photos P1,P2,...] [--landscape] [--white] [--wedge] [--labels] [--crop]
 //                                       (contact-sheet)
 //                                       [--mixtures] (blocking: the ink-mixture chart)
+//                                       [--page N] (guide: the page to show, 0 first)
 //                                       draw the window to a PNG and quit (for checks)
 //     OpenQuad --scan-test HOST RESULT  scan once from the app (with its own network
 //                                       permissions), write OK or the error to RESULT, quit
@@ -188,7 +189,7 @@ enum Snapshot {
             if let scan { test.read(file: scan) }
             return AnyView(BlockingTestView(model: test) { _ in })
         case "guide":
-            return AnyView(GuideView())
+            return AnyView(GuideView(page: value("--page").flatMap(Int.init) ?? 0))
         case "contact-sheet":
             let sheet = ContactSheetModel(room: (7.5, 10), folder: folder)
             fillSheet(sheet)

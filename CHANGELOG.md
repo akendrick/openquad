@@ -91,6 +91,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Negative tab: Mirror, Safe edge, Outline in black and Separations are now in one collapsible
+  Options section; its header says what's set (e.g. "Options: mirrored, 3 negatives").
+- Curve choosers (Process curve, a negative's own curve, the coats curve) are menus of the curves
+  OpenQuad already has: saved setups, the latest round of each process calibration (e.g.
+  "Cyanotype, blue: round 2") and coats curves, plus Other File….
+- The guide's pages scroll instead of clipping long text, and separations have a page of their own.
+
 - Process curves are fitted with the least-squares never-falling fit (pooling adjacent
   patches) instead of a running maximum, which leaned towards the lightest noisy patch.
 
