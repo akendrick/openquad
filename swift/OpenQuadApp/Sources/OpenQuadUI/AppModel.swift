@@ -102,7 +102,7 @@ public final class AppModel {
     /// When printing straight to a printer, use the newest calibration made for it and
     /// this paper; drop a calibration made for another printer.
     func matchCalibration() {
-        guard let printer = session.printer else { return }
+        guard role == .print, let printer = session.printer else { return }  // negatives use process curves
         if let match = library.match(printer: printer, paper: session.paper) {
             if match.url != session.calibrationPath?.resolvingSymlinksInPath() {
                 attempt { try session.setCalibration(match.url) }
@@ -116,13 +116,17 @@ public final class AppModel {
         refreshLibrary()
     }
 
+    /// Told the CUPS printers when they have been looked up (for the printer calibration).
+    @ObservationIgnored var printersLoaded: (([String]) -> Void)?
+
     /// Look up the CUPS printers (off the main thread; none if CUPS isn't there).
-    public func loadPrinters(_ list: @escaping @Sendable () throws -> [String] = { try Printing.listPrinters() }) {
-        Task {
-            let found = await Task.detached { (try? list()) ?? [] }.value
-            printers = found
-        }
+    public func loadPrinters(_ list: @escaping @Sendable () throws -> [String] = { try Printing.listPrinters() }) async {
+        let found = await Task.detached { (try? list()) ?? [] }.value
+        printers = found
+        printersLoaded?(found)
     }
+
+    public func loadPrinters() { Task { await loadPrinters { try Printing.listPrinters() } } }
 
     /// Look up the printer and paper ICC profiles (off the main thread).
     public func loadProofProfiles(_ list: @escaping @Sendable () -> [ProofProfile] = { SoftProof.profiles() }) {
@@ -748,6 +752,7 @@ public final class AppModel {
         do {
             let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("openquad-print-\(UUID().uuidString)")
             try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: scratch) }  // lp has spooled its own copy
             let job = try await Task.detached(priority: .userInitiated) { try snapshot.print(scratch: scratch, runner: runner) }.value
             status = "Sent to \(snapshot.printer ?? "the printer"): job \(job)."
             error = nil

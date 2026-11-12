@@ -113,6 +113,20 @@ versions follow [Semantic Versioning](https://semver.org/).
   quality and resolution are chosen in the print panel.
 - Stacked process charts sit closer together: 0.1 in of film between them instead of 0.3 in.
 
+### Fixed
+
+- The app no longer crashes when a blocking colour is chosen while a process run in other
+  colours is under way and that run's curve is then used or exported; the run keeps its colours.
+- The Negative tab no longer switches printer calibrations (or says a negative "will print
+  uncorrected") when its printer or paper changes: negatives are shaped by their process curve.
+- Printing straight to a printer no longer leaves a full-size print file in the temporary folder.
+- The Printer Calibration tab gets the printer list when the app opens on it (it showed a text
+  field to type the CUPS queue into).
+- The contact sheet's "No room" message goes once there is room again.
+- A test sheet's set size ignores a width or height of 0.
+- App tests wait up to 30 s for background work instead of 2-3 s, so they don't fail on a busy
+  machine.
+
 ## [0.1.0-beta.3] - 2026-10-27
 
 ### Fixed

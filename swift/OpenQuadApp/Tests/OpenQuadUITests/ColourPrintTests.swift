@@ -33,7 +33,7 @@ struct ColourPrintTests {
     }
 
     func waitForPreview(_ m: AppModel, change from: CGImage? = nil) async throws {
-        for _ in 0..<300 where m.preview == nil || m.preview === from { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<3000 where m.preview == nil || m.preview === from { try await Task.sleep(for: .milliseconds(10)) }
     }
 
     @Test func offerColourOnlyForAColourPhotoOnThePrintTab() throws {

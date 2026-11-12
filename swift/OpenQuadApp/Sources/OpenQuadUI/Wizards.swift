@@ -83,7 +83,7 @@ public final class CalibrationWizardModel: WizardModel {
     public private(set) var corrected: Measurement?
     public private(set) var assessment: Assessment?
     public private(set) var result = ""
-    public let printers: [String]
+    public private(set) var printers: [String]
     let folder: URL
     let starting: Calibration?
     let startingName: String?
@@ -299,6 +299,17 @@ public final class CalibrationWizardModel: WizardModel {
     }
 
     public var calibrationPath: URL? { run?.calibrationPath }
+
+    /// The CUPS printers, once looked up (the wizard can be made before they are): before
+    /// a run starts, offer them and pick the first if none is chosen.
+    public func offerPrinters(_ found: [String]) {
+        guard run == nil, !found.isEmpty else { return }
+        printers = found
+        if printer.isEmpty || !found.contains(printer) {
+            printer = found[0]
+            method = .direct
+        }
+    }
 }
 
 // MARK: - negative process calibration
@@ -549,11 +560,19 @@ public final class ProcessWizardModel: WizardModel {
         }
     }
 
-    public var curvePath: URL? { run?.curvePath(useColour) }
+    /// The chosen colour's curve (nil if this run has no such colour).
+    public var curvePath: URL? {
+        guard let run, run.colours.contains(useColour) else { return nil }
+        return run.curvePath(useColour)
+    }
 
     /// Save the chosen colour's current curve for other software (.amp, .acv, .cube, .csv).
     public func exportCurve(to url: URL) {
         guard let run else { return }
+        guard run.colours.contains(useColour) else {
+            error = "This run has no \(useColour) curve; choose one of \(run.colours.joined(separator: ", "))."
+            return
+        }
         do {
             try CurveExport.write(try run.curve(useColour), to: url)
             say("Exported the \(useColour) curve (round \(run.current.version)) to \(url.lastPathComponent).")

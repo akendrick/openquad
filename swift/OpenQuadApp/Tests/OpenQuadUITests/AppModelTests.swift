@@ -45,7 +45,7 @@ struct AppModelTests {
         m.setFit(false)
         #expect(m.sizeDescription.hasPrefix("0.20 x 0.13 in at 300 ppi"))
         #expect(m.canPrint)
-        for _ in 0..<200 where m.preview == nil { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<3000 where m.preview == nil { try await Task.sleep(for: .milliseconds(10)) }
         #expect(m.preview?.width == 60)
     }
 
@@ -161,7 +161,7 @@ struct AppModelTests {
             try ImageFiles.saveGrey(url, GreyImage(width: 30 + 10 * i, height: 20, pixels: Array(repeating: UInt16(20000 * i), count: (30 + 10 * i) * 20)))
         }
         sheet.add(urls + [folder.appendingPathComponent("missing.tif")])
-        for _ in 0..<300 where sheet.busy || sheet.preview == nil { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<3000 where sheet.busy || sheet.preview == nil { try await Task.sleep(for: .milliseconds(10)) }
         #expect(sheet.entries.map(\.url.lastPathComponent) == ["p0.tif", "p1.tif", "p2.tif"] && sheet.error != nil)
         #expect(sheet.preview != nil)
         sheet.move(from: [2], to: 0)
@@ -169,12 +169,12 @@ struct AppModelTests {
         sheet.remove(sheet.entries[1])
         #expect(sheet.entries.count == 2)
         sheet.add(Array(repeating: urls[0], count: 20))  // only 14 more fit
-        for _ in 0..<300 where sheet.busy { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<3000 where sheet.busy { try await Task.sleep(for: .milliseconds(10)) }
         #expect(sheet.entries.count == 16 && !sheet.canAdd)
 
         var made: URL?
         sheet.make(dpi: 20) { made = $0 }
-        for _ in 0..<300 where made == nil { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<3000 where made == nil { try await Task.sleep(for: .milliseconds(10)) }
         let url = try #require(made)
         #expect(url.deletingLastPathComponent() == m.contactSheetFolder && url.lastPathComponent.hasPrefix("contact-sheet-"))
         m.useContactSheet(url)

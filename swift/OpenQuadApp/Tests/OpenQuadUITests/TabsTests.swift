@@ -103,10 +103,10 @@ struct TabsTests {
         r.show(.contactSheet)
         #expect(r.contactSheet.size(for: .print) == (7.5, 10) && r.contactSheet.size(for: .negative) == (6.5, 9))
         r.contactSheet.add([photo, photo])
-        for _ in 0..<300 where r.contactSheet.busy { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<3000 where r.contactSheet.busy { try await Task.sleep(for: .milliseconds(10)) }
         var made: URL?
         r.contactSheet.make(dpi: 20, for: .negative) { made = $0 }
-        for _ in 0..<300 where made == nil { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<3000 where made == nil { try await Task.sleep(for: .milliseconds(10)) }
         r.useContactSheet(try #require(made), for: .negative)
         #expect(r.tab == .negative && r.negativeModel.session.photo?.width == 130 && r.printModel.session.photo == nil)
     }
@@ -119,12 +119,12 @@ struct TabsTests {
         r.contactSheet.setLandscape(true)
         r.contactSheet.update { $0.background = .white; $0.wedge = true }
         r.contactSheet.add([photo])
-        for _ in 0..<300 where r.contactSheet.busy { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<3000 where r.contactSheet.busy { try await Task.sleep(for: .milliseconds(10)) }
         try r.keepWorkspace()
 
         let next = root()
         #expect(next.printModel.session.source == photo && next.negativeModel.session.source == photo)
-        for _ in 0..<300 where next.contactSheet.busy { try await Task.sleep(for: .milliseconds(10)) }
+        for _ in 0..<3000 where next.contactSheet.busy { try await Task.sleep(for: .milliseconds(10)) }
         #expect(next.contactSheet.entries.count == 1 && next.contactSheet.landscape)
         #expect(next.contactSheet.layout.background == .white && next.contactSheet.layout.wedge)
         #expect(root().printModel.session.photo == nil)  // reopened once; asked again at the next quit
