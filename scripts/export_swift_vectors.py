@@ -1211,6 +1211,58 @@ def separations_vectors(directory: Path) -> dict[str, Any]:
     }  # fmt: skip
 
 
+def colour_separations_vectors(directory: Path) -> dict[str, Any]:
+    """Colour separations: the pigments, each separation's coat densities, its split on a
+    small grid, the coat images and proof of a colour photo, and a session's summary."""
+    from openquad.colour_separations import (
+        DEFAULT_COATS,
+        GRID,
+        PIGMENTS,
+        ColourSeparation,
+        coat_density,
+        coat_image,
+        proof,
+        strength_lut,
+    )  # fmt: skip
+    from openquad.photo import load_photo
+    from openquad.session import PrintSession
+
+    photo = load_photo(directory / "photo-colour16.tif")
+    assert photo.colour is not None
+    colour = photo.colour
+    separations = []
+    for names, saturation in [
+        (DEFAULT_COATS, 1.0), (("Cyanotype blue", "Burnt sienna"), 1.6),
+        (("Phthalo blue", "Quinacridone magenta", "Hansa yellow", "Lamp black"), 0.5),
+        (("Van Dyke brown", "Phthalo green", "Hansa yellow"), 0.0),
+        (DEFAULT_COATS, 2.0),
+    ]:  # fmt: skip
+        sep = ColourSeparation(tuple(PIGMENTS[n] for n in names), saturation)
+        separations.append({
+            "coats": [list(c) for c in sep.coats], "saturation": saturation,
+            "describe": sep.describe(),
+            "density": [coat_density(c) for c in sep.coats],
+            "grid5": _floats(strength_lut(sep, 5)),
+            "coat_images": [_ints(coat_image(colour, sep, k)) for k in range(sep.count)],
+            "proof": _ints(proof(colour, sep)),
+        })  # fmt: skip
+    session = PrintSession()
+    session.open(directory / "photo-colour16.tif")
+    session.set_mode("negative")
+    session.fit, session.ppi, session.registration = False, 40.0, True
+    session.set_colour_separation(ColourSeparation.default())
+    summaries = []
+    for k in range(3):
+        session.set_layer(k)
+        summaries.append(session.summary())
+    return {
+        "grid": GRID, "pigments": {n: list(c) for n, c in PIGMENTS.items()},
+        "default": list(DEFAULT_COATS), "photo": {"height": colour.shape[0],
+                                                  "width": colour.shape[1]},
+        "separations": separations, "session": {"summaries": summaries},
+    }  # fmt: skip
+
+
 def export(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
@@ -1245,12 +1297,17 @@ def export(directory: Path) -> list[Path]:
     separations_path.write_text(
         json.dumps(separations_vectors(directory), separators=(",", ":")) + "\n", encoding="utf-8"
     )
+    colour_path = directory / "colour-separations.json"
+    colour_path.write_text(
+        json.dumps(colour_separations_vectors(directory), separators=(",", ":")) + "\n",
+        encoding="utf-8",
+    )
     wizards_path = directory / "wizards.json"
     wizards_path.write_text(
         json.dumps(wizards_vectors(directory), separators=(",", ":")) + "\n", encoding="utf-8"
     )
     return [*written, path, reading_path, devices_path, session_path, separations_path,
-            wizards_path, *images,
+            colour_path, wizards_path, *images,
             *prints, *files, *photos]  # fmt: skip
 
 

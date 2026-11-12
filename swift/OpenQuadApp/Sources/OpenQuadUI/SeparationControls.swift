@@ -1,7 +1,9 @@
-// The Negative tab's separations: how many negatives the photo is split into by tone, where
-// the bands meet (on a step scale), how much they blend, which negative is shown and printed,
-// any negative's own process curve, and saving them all. Each negative prints in register on
-// one sheet: its registration targets are cut clear so the first coat records them on the paper.
+// The Negative tab's separations. By tone: how many negatives the photo is split into, where
+// the bands meet (on a step scale) and how much they blend. By colour: each coat's pigment
+// colour, in print order, and how much the photo's colour is strengthened first. Then which
+// negative is shown and printed, any negative's own process curve, and saving them all. Each
+// negative prints in register on one sheet: its registration targets are cut clear so the
+// first coat records them on the paper.
 
 import AppKit
 import OpenQuadCore
@@ -14,6 +16,14 @@ struct SeparationControls: View {
     private var count: Int { model.session.negativeCount }
 
     var body: some View {
+        Picker("Split by", selection: Binding(get: { model.separationKind }, set: { model.setSeparationKind($0) })) {
+            ForEach(AppModel.SeparationKind.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        }
+        .pickerStyle(.segmented)
+        if model.separationKind == .colours { colourRows } else { toneRows }
+    }
+
+    @ViewBuilder private var toneRows: some View {
         Stepper("Negatives: \(count)", value: Binding(get: { count }, set: { model.setNegativeCount($0) }),
                 in: 1...SeparationPlan.maxNegatives)
         if count == 1 {
@@ -34,10 +44,7 @@ struct SeparationControls: View {
             Stepper("Overlap: \(String(format: "%g", model.separationOverlap)) step\(model.separationOverlap == 1 ? "" : "s")", value: Binding(
                 get: { model.separationOverlap }, set: { model.setSeparationOverlap($0) }),
                 in: 0...Double(model.narrowestBand), step: 0.5)
-            Picker("Show and print", selection: Binding(get: { model.session.layer }, set: { model.setLayer($0) })) {
-                ForEach(0..<count, id: \.self) { Text("\($0 + 1)").tag($0) }
-            }
-            .pickerStyle(.segmented)
+            layerPicker
             Toggle("Preview all coats together", isOn: Binding(get: { model.showCoats }, set: { model.setShowCoats($0) }))
                 .help("The photo with each coat in its own colour, as strong as it prints: check where the bands fall "
                       + "and that the seams blend")
@@ -47,18 +54,69 @@ struct SeparationControls: View {
                 Button("Use Step Test as Photo") { model.openStepTest() }
                     .help("Numbered steps 0-\(model.separationSteps) over a continuous gradient: print every negative "
                           + "of it to see where each coat's band falls and whether the seams show.")
-                Button("Save All Negatives…", action: saveAll)
-                    .disabled(model.session.photo == nil || model.busy)
+                saveAllButton
             }
-            Text(model.session.registration
-                 ? "Each negative prints nothing in tones lighter than its band and full strength in darker ones, "
-                    + "so the coats add up. Print the lightest first: its clear targets and number expose onto the "
-                    + "paper, and each later negative is lined up on them."
-                 : "Turn on registration marks to line the negatives up on one sheet: their targets are cut clear, "
-                    + "so the first coat records them on the paper.")
-                .font(.caption)
-                .foregroundStyle(model.session.registration ? Color.secondary : Color.orange)
+            registrationNote("Each negative prints nothing in tones lighter than its band and full strength in darker ones, "
+                             + "so the coats add up. Print the lightest first: its clear targets and number expose onto the "
+                             + "paper, and each later negative is lined up on them.")
         }
+    }
+
+    @ViewBuilder private var colourRows: some View {
+        if let photo = model.session.photo, photo.colour == nil {
+            Label("This photo has no colour, so every coat prints its greys: open a colour photo.",
+                  systemImage: "exclamationmark.triangle.fill")
+                .font(.caption)
+                .foregroundStyle(.orange)
+        }
+        ForEach(Array(model.colourCoats.enumerated()), id: \.offset) { index, coat in
+            CoatRow(model: model, index: index, coat: coat)
+        }
+        HStack {
+            Button("Add Coat", action: model.addCoat)
+                .disabled(model.colourCoats.count >= ColourSeparation.maxCoats)
+            if model.separatingColours { ProgressView().controlSize(.small) }
+        }
+        LabeledContent("Saturation") {
+            HStack {
+                Slider(value: Binding(get: { model.colourSaturation }, set: { model.setColourSaturation($0) }),
+                       in: 0...ColourSeparation.maxSaturation)
+                Text(String(format: "%.2f", model.colourSaturation)).monospacedDigit().frame(width: 36, alignment: .trailing)
+            }
+        }
+        Text("Above 1 strengthens the photo's colours before they are split, so each coat carries more of its own "
+             + "colour: for processes that print duller than the photo, like cyanotype and gum. 0 splits the tones alone.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        layerPicker
+        Toggle("Preview the print (all coats in their colours)", isOn: Binding(get: { model.showCoats }, set: { model.setShowCoats($0) }))
+            .help("The coats stacked as they print, each in its pigment's colour: check the colours before printing film")
+        curveRow
+        saveAllButton
+        registrationNote("Each negative prints its coat's share of every colour. Print them in this order, each coat "
+                         + "in its own pigment: the first coat's clear targets expose onto the paper, and each later "
+                         + "negative is lined up on them.")
+    }
+
+    private var layerPicker: some View {
+        Picker("Show and print", selection: Binding(get: { model.session.layer }, set: { model.setLayer($0) })) {
+            ForEach(0..<count, id: \.self) { Text("\($0 + 1)").tag($0) }
+        }
+        .pickerStyle(.segmented)
+    }
+
+    private var saveAllButton: some View {
+        Button("Save All Negatives…", action: saveAll)
+            .disabled(model.session.photo == nil || model.busy || !model.session.separated)
+    }
+
+    private func registrationNote(_ registered: String) -> some View {
+        Text(model.session.registration
+             ? registered
+             : "Turn on registration marks to line the negatives up on one sheet: their targets are cut clear, "
+                + "so the first coat records them on the paper.")
+            .font(.caption)
+            .foregroundStyle(model.session.registration ? Color.secondary : Color.orange)
     }
 
     /// The shown negative's own process curve, or the shared one.
@@ -177,5 +235,44 @@ struct BandDiagram: View {
         }
         .accessibilityLabel("Tone bands: \(splits.count + 1) negatives split at steps "
                             + splits.map(String.init).joined(separator: ", ") + " of \(steps)")
+    }
+}
+
+/// One coat of a colour separation: its number, its pigment colour (a colour well and the
+/// pigment presets), and removing it.
+struct CoatRow: View {
+    let model: AppModel
+    let index: Int
+    let coat: ColourSeparation.RGB8
+
+    var body: some View {
+        HStack {
+            Text("\(index + 1)").font(.caption.bold()).frame(width: 14)
+            ColorPicker("Coat \(index + 1)", selection: Binding(get: { Self.color(coat) }, set: { colour in
+                if let rgb = Self.rgb(colour) { model.setCoat(index, rgb) }
+            }), supportsOpacity: false)
+            .labelsHidden()
+            Menu(model.pigmentName(coat) ?? coat.hex) {
+                ForEach(ColourSeparation.pigments, id: \.name) { pigment in
+                    Button(pigment.name) { model.setCoat(index, pigment.colour) }
+                }
+            }
+            .fixedSize()
+            Spacer()
+            Button { model.removeCoat(index) } label: { Image(systemName: "minus.circle") }
+                .buttonStyle(.borderless)
+                .disabled(model.colourCoats.count <= ColourSeparation.minCoats)
+                .help("Remove coat \(index + 1)")
+        }
+    }
+
+    static func color(_ coat: ColourSeparation.RGB8) -> Color {
+        Color(.sRGB, red: Double(coat.r) / 255, green: Double(coat.g) / 255, blue: Double(coat.b) / 255)
+    }
+
+    static func rgb(_ colour: Color) -> ColourSeparation.RGB8? {
+        guard let srgb = NSColor(colour).usingColorSpace(.sRGB) else { return nil }
+        let value = { (v: CGFloat) in min(max(Int((v * 255).rounded()), 0), 255) }
+        return .init(value(srgb.redComponent), value(srgb.greenComponent), value(srgb.blueComponent))
     }
 }

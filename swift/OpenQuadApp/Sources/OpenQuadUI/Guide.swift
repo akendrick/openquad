@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 19
+    public static let version = 20
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -92,6 +92,20 @@ public struct GuideView: View {
                      "Calibrate the coats together: Use Chart as Photo, print every negative of it onto one sheet, "
                         + "scan the print and Read Chart Scan…. The coats curve evens out how the coats add up; read "
                         + "a second print to check."]),
+        Page(symbol: "paintpalette", title: "Colour separations",
+             text: "For colour from coloured coats (tricolour gum, cyanotype under gum): a colour photo split by "
+                + "colour into 2-4 negatives, one per pigment. In the Negative tab, under Options ▸ Separations, "
+                + "choose Split by: Colours.",
+             steps: ["Set each coat's colour, in the order you print them: pick a pigment (Cyanotype blue, "
+                        + "Quinacridone magenta, Hansa yellow, ...) or match your own coat's colour with the colour "
+                        + "well. Add Coat for up to four, e.g. a lamp black key.",
+                     "Saturation strengthens the photo's colours before they are split (above 1) or mutes them: "
+                        + "cyanotype and gum print duller than a screen, so 1.3-1.6 often looks closer to the photo.",
+                     "Preview the print (all coats in their colours) shows the coats stacked as they print. Colours "
+                        + "your pigments can't make come out as near as they can.",
+                     "Each negative prints its coat's share of every colour; give each its own curve (calibrated for "
+                        + "that pigment) and print them in order, lined up on the registration marks.",
+                     "Save Setup… keeps the coats, the saturation and their curves."]),
         Page(symbol: "square.grid.3x3", title: "Contact sheets",
              text: "The Contact Sheet tab (⇧⌘N) puts up to 16 photos on one sheet, to proof them or to make one "
                 + "negative of them all.",

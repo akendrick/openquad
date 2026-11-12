@@ -2,7 +2,8 @@
 // colour of the coat that builds it up (the one ramping there), blending into the next coat's
 // colour across the overlap, and darker the darker the tone. So the bands, and how their seams
 // blend, can be checked on the photo before any film is printed. Only a preview: each negative
-// still prints on its own.
+// still prints on its own. A colour separation is shown as it prints instead: its coats stacked
+// in their pigments' colours.
 
 import CoreGraphics
 import Foundation
@@ -52,5 +53,26 @@ enum CoatsPreview {
         return CGImage(width: w, height: h, bitsPerComponent: 8, bitsPerPixel: 24, bytesPerRow: w * 3,
                        space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue),
                        provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+    }
+
+    /// A colour separation's coats together, as they print in their pigments' colours (each
+    /// pixel's coat densities added up), at most `maxSide` pixels on its longer side.
+    static func proof(_ photo: Photo, separation: ColourSeparation, maxSide: Int = 900) -> CGImage? {
+        let scale = min(1.0, Double(maxSide) / Double(max(photo.width, photo.height)))
+        let (w, h) = (max(1, Int(Double(photo.width) * scale)), max(1, Int(Double(photo.height) * scale)))
+        let region = (0, 0, photo.width, photo.height)
+        guard let colour = photo.colour else {
+            let grey = scale < 1 ? ContactSheet.resize(photo.pixels, photoWidth: photo.width, region: region, size: (w, h)) : photo.pixels
+            return RGBImage(width: w, height: h, pixels: separation.proof(grey, colour: false)).cgImage(eightBit: true)
+        }
+        var rgb = colour
+        if scale < 1 {
+            let planes = (0..<3).map { c in
+                ContactSheet.resize(stride(from: c, to: colour.count, by: 3).map { colour[$0] }, photoWidth: photo.width,
+                                    region: region, size: (w, h))
+            }
+            rgb = (0..<w * h).flatMap { i in planes.map { $0[i] } }
+        }
+        return RGBImage(width: w, height: h, pixels: separation.proof(rgb, colour: true)).cgImage(eightBit: true)
     }
 }

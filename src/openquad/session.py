@@ -15,6 +15,8 @@ from numpy.typing import NDArray
 from PIL import Image
 
 from openquad.chart import ProcessCurve, load_process
+from openquad.colour_separations import ColourSeparation, hex_colour
+from openquad.colour_separations import coat_image as colour_coat_image
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.greybalance import Calibration, load_calibration
 from openquad.imageio import save_rgb, srgb_profile
@@ -72,6 +74,9 @@ class PrintSession:
     # through every negative), applied to the photo before it is split.
     coats_curve: ProcessCurve | None = None
     coats_curve_path: Path | None = None
+    # Or the photo split by colour: one negative per coat of a coloured pigment, from the
+    # photo's own colour. Only one of the two separations is set at a time.
+    colour_separation: ColourSeparation | None = None
     # Print a colour photo in colour, on a colour-managed printer: its own colour and ICC
     # profile go to macOS, with no toning or calibration. Off (greyscale) for each new photo.
     colour_print: bool = False
@@ -143,21 +148,45 @@ class PrintSession:
     def set_separation(self, plan: SeparationPlan | None) -> None:
         """Split the negative into `plan.count` negatives by tone (None or 1: just one)."""
         self.separation = plan if plan is not None and plan.count > 1 else None
-        count = self.separation.count if self.separation else 1
+        if self.separation is not None:
+            self.colour_separation = None
+        self._fit_layers()
+
+    def set_colour_separation(self, separation: ColourSeparation | None) -> None:
+        """Split the negative by colour, one negative per coat (None: no colour separation)."""
+        self.colour_separation = separation
+        if separation is not None:
+            self.separation = None
+        self._fit_layers()
+
+    @property
+    def negative_count(self) -> int:
+        """How many negatives the photo is split into (1 without a separation)."""
+        if self.colour_separation is not None:
+            return self.colour_separation.count
+        return self.separation.count if self.separation else 1
+
+    @property
+    def separated(self) -> bool:
+        return self.negative_count > 1
+
+    def _fit_layers(self) -> None:
+        """Keep the shown negative and the negatives' own curves within the count."""
+        count = self.negative_count
         self.layer = min(self.layer, count - 1)
         for k in [k for k in self.layer_processes if k >= count]:
             del self.layer_processes[k]
             del self.layer_process_paths[k]
 
     def set_layer(self, layer: int) -> None:
-        count = self.separation.count if self.separation else 1
+        count = self.negative_count
         if not 0 <= layer < count:
             raise SessionError(f"there is no negative {layer + 1} of {count}")
         self.layer = layer
 
     def set_layer_process(self, layer: int, path: str | Path | None) -> None:
         """Give one negative of the separation its own process curve (None: the shared one)."""
-        count = self.separation.count if self.separation else 1
+        count = self.negative_count
         if not 0 <= layer < count:
             raise SessionError(f"there is no negative {layer + 1} of {count}")
         if path is None:
@@ -189,7 +218,7 @@ class PrintSession:
         return self.mode == "negative"
 
     def _negative_settings(self, layer: int | None = None) -> NegativeSettings:
-        separated = self.separation is not None and layer is not None
+        separated = self.separated and layer is not None
         process = self.layer_process(layer) if separated and layer is not None else None
         return NegativeSettings(
             colour=process.colour if process else self.negative_colour,
@@ -260,7 +289,15 @@ class PrintSession:
         colour = self._colour()
         if self.prints_colour and colour is not None:
             return self.render_colour(colour)
-        return self.render(self._photo().pixels)
+        return self.render(self._source())
+
+    def _source(self) -> NDArray[np.uint16]:
+        """The pixels negatives are made from: the photo's colour for a colour separation
+        (its greyscale if it has none), otherwise its greyscale."""
+        colour = self._colour()
+        if self.negative and self.colour_separation is not None and colour is not None:
+            return colour
+        return self._photo().pixels
 
     def print_profile(self) -> bytes | None:
         """The ICC profile the print file carries: a colour print's own (sRGB if untagged)."""
@@ -271,8 +308,14 @@ class PrintSession:
     def render_layer(
         self, pixels: NDArray[np.uint16], layer: int, dpi: float | None = None
     ) -> NDArray[np.uint16]:
-        """Negative `layer` of the separation (any layer is the whole negative without one)."""
-        if self.separation is None:
+        """Negative `layer` of the separation (any layer is the whole negative without one).
+        `pixels` are greyscale, or 16-bit colour (height, width, 3) for a colour separation."""
+        if self.colour_separation is not None:
+            pixels = colour_coat_image(pixels, self.colour_separation, layer)
+            process = self.layer_process(layer)
+        elif self.separation is None:
+            if pixels.ndim == 3:
+                raise SessionError("a colour photo makes negatives only for a colour separation")
             process = self.process
         else:
             if self.coats_curve is not None:
@@ -281,7 +324,7 @@ class PrintSession:
             process = self.layer_process(layer)
         if process is not None:
             pixels = process.apply(pixels)
-        settings = self._negative_settings(layer if self.separation else None)
+        settings = self._negative_settings(layer if self.separated else None)
         return make_negative(pixels, settings, dpi or self.effective_ppi())
 
     def preview(self, max_side: int = 900) -> NDArray[np.uint8]:
@@ -304,13 +347,17 @@ class PrintSession:
         if self.prints_colour and colour is not None:  # in its own colour, not proofed
             rgb = np.stack([shrink(np.ascontiguousarray(colour[..., c])) for c in range(3)], -1)
             return (self.render_colour(rgb, self.effective_ppi() * scale) >> 8).astype(np.uint8)
-        pixels = shrink(pixels)
         if self.negative:  # the negative as it will look on the film
-            shown = self.render(pixels, dpi=self.effective_ppi() * scale)
-        else:
-            toned = composite(pixels, PRESETS[self.preset])
-            ppi = self.effective_ppi() * scale
-            shown = add_print_marks(toned, ppi, self.guide, self.registration)
+            source = self._source()
+            if source.ndim == 3:
+                planes = [shrink(np.ascontiguousarray(source[..., c])) for c in range(3)]
+                source = np.stack(planes, -1)
+            else:
+                source = shrink(source)
+            shown = self.render(source, dpi=self.effective_ppi() * scale)
+            return (shown >> 8).astype(np.uint8)
+        toned = composite(shrink(pixels), PRESETS[self.preset])
+        shown = add_print_marks(toned, self.effective_ppi() * scale, self.guide, self.registration)
         return (shown >> 8).astype(np.uint8)
 
     @property
@@ -336,6 +383,14 @@ class PrintSession:
         return [f"Fit within: {box(box_w, box_h, self.units)}"]
 
     def _separation_lines(self, process: str) -> list[str]:
+        if self.colour_separation is not None:
+            sep, k = self.colour_separation, self.layer
+            return [
+                f"Colour separation: {sep.describe()}",
+                f"This negative: coat {k + 1} of {sep.count} ({hex_colour(sep.coats[k])})",
+                f"Colour: {self._negative_settings(k).colour}",
+                f"Process curve: {self._layer_process_name(k)}",
+            ]
         if self.separation is None:
             return [f"Colour: {self.negative_colour}", f"Process curve: {process}"]
         plan, k = self.separation, self.layer
@@ -396,14 +451,14 @@ class PrintSession:
 
     def write_separations(self, folder: str | Path, stem: str | None = None) -> list[Path]:
         """Every negative of the separation as `<stem>-<k>of<n>.tif` in `folder`."""
-        if self.separation is None or not self.negative:
+        if not self.separated or not self.negative:
             raise SessionError("set up a separation of the negative first")
         stem = stem or (self.source.stem if self.source else "negative")
-        ppi, count = self.effective_ppi(), self.separation.count
+        ppi, count, source = self.effective_ppi(), self.negative_count, self._source()
         paths = []
         for k in range(count):
             path = Path(folder) / f"{stem}-{k + 1}of{count}.tif"
-            negative = self.render_layer(self._photo().pixels, k, ppi)
+            negative = self.render_layer(source, k, ppi)
             save_rgb(path, negative, (ppi, ppi), srgb_profile())
             paths.append(path)
         return paths
@@ -414,8 +469,8 @@ class PrintSession:
         if not self.fits_on_paper():
             raise SessionError("the photo is larger than the paper at this size")
         title = f"OpenQuad: {self.source.name}" if self.source else "OpenQuad"
-        if self.negative and self.separation is not None:
-            title += f" (negative {self.layer + 1} of {self.separation.count})"
+        if self.negative and self.separated:
+            title += f" (negative {self.layer + 1} of {self.negative_count})"
         return PrintJob(
             path=path, printer=self.printer, paper=self.paper, ppi=self.effective_ppi(),
             title=title,
