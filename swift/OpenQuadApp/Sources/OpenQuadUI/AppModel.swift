@@ -227,6 +227,9 @@ public final class AppModel {
 
     /// What the preview shows, when it isn't simply the print: a colour print, soft-proofed or not.
     public var previewCaption: String? {
+        if showingCoats {
+            return "All \(session.negativeCount) coats together, each in its own colour (prints one negative at a time)"
+        }
         guard session.printsColour else { return nil }
         guard let url = proofProfile else { return "Colour print: the photo's own colours, colour-managed by macOS" }
         let name = proofProfiles.first { $0.url == url }?.name ?? url.deletingPathExtension().lastPathComponent
@@ -358,6 +361,18 @@ public final class AppModel {
         refreshPreview()
     }
 
+    /// Show every coat of the separation together on the photo, each in its own colour,
+    /// instead of the negative that prints.
+    public private(set) var showCoats = false
+
+    public func setShowCoats(_ on: Bool) {
+        showCoats = on
+        refreshPreview()
+    }
+
+    /// The preview is the coats map rather than a negative.
+    public var showingCoats: Bool { showCoats && session.negative && session.separation != nil }
+
     /// Show (and print) negative `layer` of the separation.
     public func setLayer(_ layer: Int) {
         attempt { try session.setLayer(layer) }
@@ -396,9 +411,17 @@ public final class AppModel {
     /// Where the Process Calibration tab keeps its runs.
     var processFolder: URL { settingsURL.deletingLastPathComponent().appendingPathComponent("processes") }
 
+    @ObservationIgnored private var knownCurvesCache = Cached<[KnownCurve]>()
+
     /// Every saved setup's curve, each process calibration's latest curve per colour (newest
-    /// run first) and the coats curves, e.g. "Cyanotype, blue: round 2".
-    public var knownCurves: [KnownCurve] {
+    /// run first) and the coats curves, e.g. "Cyanotype, blue: round 2". Read again every few
+    /// seconds, not on every redraw.
+    public var knownCurves: [KnownCurve] { knownCurvesCache.get(readKnownCurves) }
+
+    /// Read the curves again next time (after saving one).
+    func forgetKnownCurves() { knownCurvesCache.clear() }
+
+    private func readKnownCurves() -> [KnownCurve] {
         let fm = FileManager.default
         var curves = setups.compactMap { setup in
             setupLibrary.processURL(setup).map { KnownCurve(group: "Setups", label: setup.name, url: $0) }
@@ -465,6 +488,7 @@ public final class AppModel {
             let round = (1...).first { !FileManager.default.fileExists(atPath: folder.appendingPathComponent("coats-\($0).oqproc").path) }!
             let url = folder.appendingPathComponent("coats-\(round).oqproc")
             try curve.encode().write(to: url)
+            forgetKnownCurves()
             try session.setCoatsCurve(url)
             let errors = reading.toneErrors().map(abs)
             let (highlights, shadows) = Clipping.lost(reading)
@@ -532,7 +556,24 @@ public final class AppModel {
                 && setup.guide == session.guide && setup.registration == session.registration
                 && curve == session.processPath?.resolvingSymlinksInPath()
                 && setup.printer == session.printer && setup.paper == session.paper
+                && matchesSeparation(setup)
         }
+    }
+
+    /// The separation as set now, for saving in a setup (nil for one negative).
+    var currentSeparation: SetupSeparation? {
+        separationSplits.isEmpty ? nil
+            : SetupSeparation(steps: separationSteps, splits: separationSplits, overlap: separationOverlap)
+    }
+
+    /// Whether the separation (bands, overlap, its negatives' own curves, the coats curve) is the setup's.
+    func matchesSeparation(_ setup: NegativeSetup) -> Bool {
+        let resolved = { (url: URL?) in url?.resolvingSymlinksInPath() }
+        guard let s = setup.separation else { return separationSplits.isEmpty }
+        let (curves, coats) = setupLibrary.separationURLs(setup)
+        return s.steps == separationSteps && s.splits == separationSplits && abs(s.overlap - separationOverlap) < 1e-9
+            && curves.mapValues { $0.resolvingSymlinksInPath() } == session.layerProcessPaths.mapValues { $0.resolvingSymlinksInPath() }
+            && resolved(coats) == resolved(session.coatsCurvePath)
     }
 
     /// Switch to a saved setup: its curve, colour, mirror, edges, printer and paper.
@@ -552,6 +593,23 @@ public final class AppModel {
         setSafeEdge(setup.safeEdge)
         if setup.outline > 0 { outlineSize = setup.outline }
         setOutline(setup.outline > 0)
+        applySeparation(of: setup)
+    }
+
+    /// The setup's separation (or one negative), with its negatives' own curves and the coats curve.
+    private func applySeparation(of setup: NegativeSetup) {
+        if let s = setup.separation {
+            (separationSteps, separationSplits, separationOverlap) = (s.steps, s.splits, s.overlap)
+        } else {
+            separationSplits = []
+        }
+        applySeparation()
+        let (curves, coats) = setupLibrary.separationURLs(setup)
+        attempt {
+            for k in 0..<session.negativeCount { try session.setLayerProcess(k, curves[k]) }
+            try session.setCoatsCurve(coats)
+        }
+        refreshPreview()
     }
 
     /// A name to offer when saving: "Carbon, green, Letter".
@@ -565,14 +623,23 @@ public final class AppModel {
         attempt {
             let setup = NegativeSetup(name: name, colour: session.negativeColour, mirror: session.mirror,
                                       safeEdge: session.safeEdge, outline: session.outline, guide: session.guide,
-                                      registration: session.registration, printer: session.printer, paper: session.paper)
-            try setupLibrary.save(setup, process: session.processPath)
+                                      registration: session.registration, printer: session.printer, paper: session.paper,
+                                      separation: currentSeparation)
+            let separated = session.separation != nil
+            try setupLibrary.save(setup, process: session.processPath,
+                                  layerProcesses: separated ? session.layerProcessPaths : [:],
+                                  coats: separated ? session.coatsCurvePath : nil)
             setups = setupLibrary.all()
-            // Point at the setup's own copy of the curve, so the setup shows as chosen.
-            if let saved = setups.first(where: { $0.name == name.trimmingCharacters(in: .whitespacesAndNewlines) }),
-               let curve = setupLibrary.processURL(saved) {
-                try session.setProcess(curve)
-                remember()
+            forgetKnownCurves()
+            // Point at the setup's own copies of the curves, so the setup shows as chosen.
+            if let saved = setups.first(where: { $0.name == name.trimmingCharacters(in: .whitespacesAndNewlines) }) {
+                if let curve = setupLibrary.processURL(saved) {
+                    try session.setProcess(curve)
+                    remember()
+                }
+                let (curves, coats) = setupLibrary.separationURLs(saved)
+                for (k, url) in curves { try session.setLayerProcess(k, url) }
+                if let coats { try session.setCoatsCurve(coats) }
             }
         }
     }
@@ -581,6 +648,7 @@ public final class AppModel {
         attempt {
             try setupLibrary.delete(setup)
             setups = setupLibrary.all()
+            forgetKnownCurves()
         }
     }
 
@@ -629,6 +697,7 @@ public final class AppModel {
 
     public func blockingTest() -> BlockingTestModel {
         let test = BlockingTestModel(scannerHost: settings.scannerHost ?? "")
+        test.paper = session.paper
         test.units = settings.units
         test.sheetSize = rememberedChartSize
         test.rememberSize = { [weak self] size in self?.saveSettings { $0.chartSize = size.map { [$0.0, $0.1] } } }
@@ -659,6 +728,7 @@ public final class AppModel {
     public func processWizard() -> ProcessWizardModel {
         let wizard = ProcessWizardModel(folder: processFolder,
                                         scannerHost: settings.scannerHost ?? "")
+        wizard.paper = session.paper
         wizard.units = settings.units
         wizard.sheetSize = rememberedChartSize
         wizard.rememberSize = { [weak self] size in self?.saveSettings { $0.chartSize = size.map { [$0.0, $0.1] } } }
@@ -678,6 +748,7 @@ public final class AppModel {
 
     public func finishProcess(_ path: URL, scannerHost: String) {
         if !scannerHost.isEmpty { saveSettings { $0.scannerHost = scannerHost } }
+        forgetKnownCurves()
         setProcess(path)
     }
 
@@ -711,6 +782,13 @@ public final class AppModel {
         }
         previewToken += 1
         let token = previewToken, snapshot = session
+        if showingCoats, let plan = snapshot.separation, let photo = snapshot.photo {
+            Task.detached(priority: .userInitiated) {
+                let image = CoatsPreview.image(photo.pixels, width: photo.width, height: photo.height, plan: plan)
+                await MainActor.run { if token == self.previewToken { self.preview = image } }
+            }
+            return
+        }
         let proof = snapshot.printsColour ? proofProfile : nil
         Task.detached(priority: .userInitiated) {
             // A colour print is shown in its own profile; soft-proofed if a profile is chosen.

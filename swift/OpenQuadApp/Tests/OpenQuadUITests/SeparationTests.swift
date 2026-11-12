@@ -154,6 +154,7 @@ struct SeparationTests {
         let seps = folder.appendingPathComponent("separations")
         try FileManager.default.createDirectory(at: seps, withIntermediateDirectories: true)
         for n in [10, 2] { try ProcessCurve.identity(colour: "black").encode().write(to: seps.appendingPathComponent("coats-\(n).oqproc")) }
+        m.forgetKnownCurves()  // they are read again every few seconds
         let curves = m.knownCurves
         #expect(curves.map(\.group) == ["Setups", "Process calibrations", "Process calibrations", "Coats curves", "Coats curves"])
         #expect(curves.map(\.label) == ["Carbon on Pictorico", "Cyanotype, green: round 0", "Cyanotype, red: round 0",
@@ -162,5 +163,39 @@ struct SeparationTests {
         m.setNegativeCount(2)
         m.setLayerProcess(1, curves[2].url)  // a calibration's curve is usable straight from the menu
         #expect(m.session.layerProcessPaths[1] == curves[2].url && m.error == nil)
+    }
+
+    @Test func aSetupKeepsTheSeparationAndItsCurves() throws {
+        let m = AppModel(settingsURL: folder.appendingPathComponent("settings.json"),
+                         setupsFolder: folder.appendingPathComponent("setups"))
+        m.openPhoto(photo)
+        m.setMode(.negative)
+        let curve = { (name: String) -> URL in
+            let url = folder.appendingPathComponent(name)
+            try? ProcessCurve.identity(colour: "green").encode().write(to: url)
+            return url
+        }
+        m.setProcess(curve("gum.oqproc"))
+        m.setRegistration(true)
+        m.setNegativeCount(3)
+        m.setSplit(0, step: 8)
+        m.setSeparationOverlap(1.5)
+        m.setLayerProcess(2, curve("deep.oqproc"))
+        m.setCoatsCurve(curve("coats-1.oqproc"))
+        m.saveSetup(named: "Gum, 3 coats")
+        #expect(m.error == nil && m.currentSetup?.name == "Gum, 3 coats")
+        #expect(m.session.layerProcessPaths[2]?.lastPathComponent == "gum-3-coats.neg3.oqproc")
+        #expect(m.session.coatsCurvePath?.lastPathComponent == "gum-3-coats.coats.oqproc")
+        // Back to one negative: no longer the setup; choosing it brings the whole separation back.
+        m.setNegativeCount(1)
+        m.setCoatsCurve(nil)
+        #expect(m.currentSetup == nil)
+        m.applySetup(m.setups[0])
+        #expect(m.separationSplits == [8, 20] && m.separationOverlap == 1.5 && m.session.negativeCount == 3)
+        #expect(m.session.layerProcessPaths.keys.sorted() == [2] && m.session.coatsCurvePath != nil)
+        #expect(m.currentSetup?.name == "Gum, 3 coats" && m.error == nil)
+        // Changing the overlap makes it a custom setup again.
+        m.setSeparationOverlap(1)
+        #expect(m.currentSetup == nil)
     }
 }

@@ -163,6 +163,10 @@ openquad negative photo.tif -o neg.tif --colour orange --fit Letter --guide --re
 openquad target --kind blocking --size 5x7 --guide -o blocking.tif
 ```
 
+In the app, the Process Calibration tab does the same. **Calibration Wizard** takes you from the
+blocking test to a finished curve one step at a time, with a button for each next step. **Advanced**
+shows every setting at once. Test sheets print on the Negative tab's paper.
+
 Then calibrate the process from a ChartThrob-style chart (after Kevin Bjorke's ChartThrob):
 
 ```bash
@@ -230,7 +234,8 @@ openquad negative photo.tif -o gum.tif --process gum.oqproc --registration \
 The app has the same under the Negative tab's Options ▸ Separations: a diagram of the bands, "Use
 Step Test as Photo", and for the coats "Use Chart as Photo", "Read Chart Scan…" and the coats curve.
 Every curve chooser lists the curves OpenQuad already has (saved setups, the latest round of each
-process calibration, coats curves) as well as Other File….
+process calibration, coats curves) as well as Other File…. "Preview all coats together" shows each coat
+in its own colour on the photo, and a saved setup keeps the whole separation with its curves.
 
 ### Contact sheets
 
