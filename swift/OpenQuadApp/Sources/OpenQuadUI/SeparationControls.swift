@@ -38,6 +38,9 @@ struct SeparationControls: View {
                 ForEach(0..<count, id: \.self) { Text("\($0 + 1)").tag($0) }
             }
             .pickerStyle(.segmented)
+            Toggle("Preview all coats together", isOn: Binding(get: { model.showCoats }, set: { model.setShowCoats($0) }))
+                .help("The photo with each coat in its own colour, as strong as it prints: check where the bands fall "
+                      + "and that the seams blend")
             curveRow
             coatsRows
             HStack {
@@ -153,8 +156,10 @@ struct BandDiagram: View {
             let edges = [0] + splits + [steps]
             for k in 0..<(edges.count - 1) {
                 let band = CGRect(x: x(Double(edges[k])), y: barHeight + 2, width: x(Double(edges[k + 1] - edges[k])), height: 12)
+                let ink = CoatsPreview.inks[k % CoatsPreview.inks.count]
                 context.fill(Path(band.insetBy(dx: 1, dy: 0)),
-                             with: .color(k == shown ? Color.accentColor : Color.secondary.opacity(0.35)))
+                             with: .color(Color(.sRGB, red: ink.0, green: ink.1, blue: ink.2).opacity(k == shown ? 1 : 0.4)))
+                if k == shown { context.stroke(Path(band.insetBy(dx: 1, dy: 0)), with: .color(.primary), lineWidth: 1.5) }
                 context.draw(Text("\(k + 1)").font(.caption2.bold()).foregroundStyle(k == shown ? .white : .primary),
                              at: CGPoint(x: band.midX, y: band.midY))
             }

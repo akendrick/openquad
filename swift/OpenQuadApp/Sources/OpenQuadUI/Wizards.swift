@@ -78,7 +78,7 @@ public final class CalibrationWizardModel: WizardModel {
     public var method: PrintMethod
     public var startFromCurrent: Bool
     public var shadowStrength = 0.5
-    public private(set) var run: CalibrationRun?
+    public private(set) var run: CalibrationRun? { didSet { savedRunsCache.clear() } }
     public private(set) var uncorrected: Measurement?
     public private(set) var corrected: Measurement?
     public private(set) var assessment: Assessment?
@@ -169,8 +169,12 @@ public final class CalibrationWizardModel: WizardModel {
         public var id: URL { folder }
     }
 
-    /// The most recent runs in the folder, newest first.
-    public var savedRuns: [SavedRun] {
+    @ObservationIgnored private var savedRunsCache = Cached<[SavedRun]>()
+
+    /// The most recent runs in the folder, newest first (read again every few seconds).
+    public var savedRuns: [SavedRun] { savedRunsCache.get(readSavedRuns) }
+
+    private func readSavedRuns() -> [SavedRun] {
         let fm = FileManager.default
         guard let folders = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey]) else { return [] }
         let runs = folders.compactMap { url -> SavedRun? in
@@ -345,10 +349,16 @@ public final class ProcessWizardModel: WizardModel {
     /// .oqproc files), so a finished calibration can be adjusted further; empty for none.
     public private(set) var startingCurves: [String: ProcessCurve] = [:]
     public private(set) var startingName: String?
-    public private(set) var run: ProcessRun?
+    /// The paper the chart page is printed on (the Negative tab's).
+    public var paper = "Letter"
+    public private(set) var run: ProcessRun? { didSet { savedRunsCache.clear() } }
     public private(set) var readings: [(String, ChartReading)] = []
     public private(set) var result = ""
+    /// Every colour's chart read this round is within the goal: its curve is ready to use.
+    public private(set) var onTarget = false
     let folder: URL
+    @ObservationIgnored private var savedRunsCache = Cached<[CalibrationWizardModel.SavedRun]>()
+    @ObservationIgnored private var previewMemo = Memo<PreviewKey, RGBImage?>()
 
     public init(folder: URL, scannerHost: String, find: @escaping @Sendable () -> [(String, String)] = { ESCL.discover() }) {
         self.folder = folder
@@ -360,8 +370,10 @@ public final class ProcessWizardModel: WizardModel {
     public var printed: Bool { run?.current.job != nil }
     public var measured: Bool { run.map { $0.current.readings.count == $0.colours.count } ?? false }
 
-    /// Process runs kept in the folder, newest first.
-    public var savedRuns: [CalibrationWizardModel.SavedRun] {
+    /// Process runs kept in the folder, newest first (read again every few seconds).
+    public var savedRuns: [CalibrationWizardModel.SavedRun] { savedRunsCache.get(readSavedRuns) }
+
+    private func readSavedRuns() -> [CalibrationWizardModel.SavedRun] {
         let fm = FileManager.default
         guard let folders = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else { return [] }
         let format = DateFormatter()
@@ -387,6 +399,7 @@ public final class ProcessWizardModel: WizardModel {
             mirror = run.mirror
             film = run.film
             printing = run.printing
+            paper = run.paper
             guide = run.guide
             registration = run.registration
             smoothing = run.smoothing
@@ -398,6 +411,8 @@ public final class ProcessWizardModel: WizardModel {
             let read = (try? run.readings()) ?? [:]
             readings = run.colours.compactMap { c in read[c].map { (c, $0) } }
             useColour = run.bestColour() ?? run.colours[0]
+            let results = run.results()
+            onTarget = run.colours.allSatisfy { results[$0]?.done == true }
             result = ""
             error = nil
             say("Continuing \(run.name), round \(run.current.version).")
@@ -445,6 +460,7 @@ public final class ProcessWizardModel: WizardModel {
         self.run = nil
         readings = []
         result = ""
+        onTarget = false
         say("Put \(run.name) aside; continue it any time.")
     }
 
@@ -452,7 +468,7 @@ public final class ProcessWizardModel: WizardModel {
         let name = self.name.trimmingCharacters(in: .whitespaces)
         do {
             let run = try ProcessRun.start(folder: folder.appendingPathComponent("\(name)-\(Self.timestamp())"), name: name,
-                                           colours: orderedColours, scannerHost: scannerHost, mirror: mirror,
+                                           colours: orderedColours, paper: paper, scannerHost: scannerHost, mirror: mirror,
                                            film: film.trimmingCharacters(in: .whitespaces),
                                            printing: printing.trimmingCharacters(in: .whitespaces),
                                            starting: startingCurves.filter { orderedColours.contains($0.key) }, size: sheetSize,
@@ -461,6 +477,7 @@ public final class ProcessWizardModel: WizardModel {
             let page = try run.makePage()
             self.run = run
             useColour = run.colours[0]
+            onTarget = false
             result = "Chart page: \(page.lastPathComponent) (\(run.colours.joined(separator: " over "))). Print it on film at 100% "
                 + "(300 ppi) with: \(run.printing.isEmpty ? "your usual settings" : run.printing)."
             say("Started \(name): \(run.colours.joined(separator: ", "))")
@@ -480,9 +497,23 @@ public final class ProcessWizardModel: WizardModel {
     /// Pixels per inch of `preview()`.
     public static let previewPPI = 30.0
 
+    /// What the page preview depends on.
+    struct PreviewKey: Equatable {
+        let run: URL?, version: Int?, colours: [String], mirror: Bool, guide: Bool, registration: Bool
+        let size: [Double]?, paper: String, starting: String?
+    }
+
     /// The chart page as it will print, small: this round's (through its curves) once
     /// started, otherwise what Start would make from the settings. Nil with no colours.
+    /// Drawn again only when something it shows changes.
     public func preview() -> RGBImage? {
+        let key = PreviewKey(run: run?.folder, version: run?.current.version, colours: orderedColours, mirror: mirror,
+                             guide: guide, registration: registration, size: sheetSize.map { [$0.0, $0.1] }, paper: paper,
+                             starting: startingName)
+        return previewMemo.get(key, drawPreview)
+    }
+
+    private func drawPreview() -> RGBImage? {
         if let run {
             guard let curves = try? run.colours.map({ try run.curve($0) }) else { return nil }
             return Chart.page(colours: run.colours, processes: curves, mirror: run.mirror, dpi: Self.previewPPI,
@@ -490,7 +521,7 @@ public final class ProcessWizardModel: WizardModel {
         }
         let colours = orderedColours
         guard (1...5).contains(colours.count) else { return nil }
-        let scale = (try? ProcessRun.scale(count: colours.count, size: sheetSize)) ?? 1
+        let scale = (try? ProcessRun.scale(count: colours.count, size: sheetSize, paper: paper)) ?? 1
         return Chart.page(colours: colours, processes: colours.map { startingCurves[$0] }, mirror: mirror, dpi: Self.previewPPI, scale: scale, guide: guide,
                           registration: registration)
     }
@@ -510,6 +541,7 @@ public final class ProcessWizardModel: WizardModel {
         guard let run else { return }
         do {
             try run.markPrinted(note)
+            savedRunsCache.clear()
             say("Printed the chart page (\(note)). Contact print it, then scan the print.")
         } catch {
             self.error = "\(error)"
@@ -533,6 +565,8 @@ public final class ProcessWizardModel: WizardModel {
             return (results, try run.readings())
         }) { (results, readings) in
             self.readings = run.colours.compactMap { c in readings[c].map { (c, $0) } }
+            self.onTarget = run.colours.allSatisfy { results[$0]?.done == true }
+            self.savedRunsCache.clear()
             let lines = run.colours.compactMap { c in
                 results[c].map { r in String(format: "%@: worst %.1f L*, mean %.2f (%@)", c, r.worst, r.mean, r.done ? "on target" : "refine") }
             }
@@ -553,6 +587,8 @@ public final class ProcessWizardModel: WizardModel {
             try run.refine()
             let page = try run.makePage()
             readings = []
+            onTarget = false
+            savedRunsCache.clear()
             result = "Round \(run.current.version): print the new chart page (\(page.lastPathComponent))."
             say("Refined the curves (round \(run.current.version)).")
         } catch {

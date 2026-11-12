@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 18
+    public static let version = 19
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -58,7 +58,8 @@ public struct GuideView: View {
         Page(symbol: "film", title: "Digital negatives",
              text: "The Negative tab turns a photo into a negative for contact printing, in black or a colour that "
                 + "blocks UV. It has its own photo, printer and paper.",
-             steps: ["Setup: switch between saved setups (curve, colour, mirror, edges, printer and paper) in one step. "
+             steps: ["Setup: switch between saved setups (curve, colour, mirror, edges, printer, paper and any separation) "
+                        + "in one step. "
                         + "Once a process is calibrated, Save Setup… keeps it under a name, e.g. Cyanotype on Pictorico.",
                      "Ink colour and Process curve: both come from the Process Calibration tab.",
                      "Options (collapsed until you need it) holds Mirror, Safe edge, Outline in black and "
@@ -84,7 +85,10 @@ public struct GuideView: View {
                      "Use Step Test as Photo and print every negative of it: numbered steps over a matching gradient "
                         + "show where each band falls on your paper and whether the seams show.",
                      "Each negative can use its own curve: pick one from your setups or process calibrations "
-                        + "(e.g. Cyanotype) or another file.",
+                        + "(e.g. Cyanotype) or another file. Preview all coats together shows each coat in its own "
+                        + "colour on the photo, to check where the bands fall before printing.",
+                     "Save Setup… keeps the whole separation with its curves, so a multi-coat process comes back in "
+                        + "one step.",
                      "Calibrate the coats together: Use Chart as Photo, print every negative of it onto one sheet, "
                         + "scan the print and Read Chart Scan…. The coats curve evens out how the coats add up; read "
                         + "a second print to check."]),
@@ -99,7 +103,8 @@ public struct GuideView: View {
                         + "for the Negative tab's page (inside its safe edge and outline)."]),
         Page(symbol: "square.grid.3x3.square", title: "Find the best blocking colour",
              text: "Process Calibration, step 1: a sheet of every negative colour, to find the one that blocks UV best.",
-             steps: ["Choose the chart: Standard (six colours) or Ink mixtures (ten colours your printer makes "
+             steps: ["Calibration Wizard (at the top) takes you through steps 1 and 2 one at a time, with the button for "
+                        + "the next thing to do; Advanced shows every setting at once. Both keep the same work.","Choose the chart: Standard (six colours) or Ink mixtures (ten colours your printer makes "
                         + "from single inks and simple mixes). Print it on film and expose it at your usual time.",
                      "Size: Standard, or Fit within a set size (e.g. your tissue) to enlarge or shrink the sheet; it "
                         + "never goes past the page's margins. Darkroom marks help you place it under a red safelight.",

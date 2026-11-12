@@ -29,6 +29,10 @@ public final class BlockingTestModel: WizardModel {
     public var units = LengthUnit.inches
     public private(set) var report: BlockingReport?
     public private(set) var scanName: String?
+    /// The paper the sheet is printed on (the Negative tab's).
+    public var paper = "Letter"
+    /// The sheet has been printed (or saved to print elsewhere): next, scan the contact print.
+    public private(set) var printed = false
 
     public override init(scannerHost: String, find: @escaping @Sendable () -> [(String, String)] = { ESCL.discover() }) {
         super.init(scannerHost: scannerHost, find: find)
@@ -44,10 +48,10 @@ public final class BlockingTestModel: WizardModel {
                        registration: registration)
     }
 
-    /// How much the sheet is enlarged or shrunk: to fit the set size and Letter's margins.
+    /// How much the sheet is enlarged or shrunk: to fit the set size and the paper's margins.
     public var scale: Double {
         guard let sheetSize else { return 1 }
-        let (paperW, paperH) = Paper.sizes["Letter"]!
+        let (paperW, paperH) = Paper.sizes[paper] ?? Paper.sizes["Letter"]!
         let room = (paperW - 2 * Paper.defaultMargin, paperH - 2 * Paper.defaultMargin)
         func fit(_ box: (Double, Double), turn: Bool) -> Double {
             (try? Blocking.scale(box: box, layout: layout, safeEdge: safeEdge, turn: turn)) ?? 1
@@ -58,12 +62,19 @@ public final class BlockingTestModel: WizardModel {
     public func printRequest() -> (RGBImage, Double, Double, String, String) {
         let sheet = sheet()
         let title = chart == .mixtures ? "OpenQuad ink-mixture chart" : "OpenQuad blocking test"
-        return (sheet, Double(sheet.width) / 300, Double(sheet.height) / 300, "Letter", title)
+        return (sheet, Double(sheet.width) / 300, Double(sheet.height) / 300, paper, title)
+    }
+
+    /// The sheet went to the printer (or another app): next, contact print and scan it.
+    public func sheetPrinted(_ how: String) {
+        printed = true
+        say("Printed the test sheet (\(how)). Contact print it, then scan the print.")
     }
 
     public func save(_ url: URL) {
         do {
             try ImageFiles.saveRGB(url, sheet(), dpi: (300, 300), iccProfile: ImageFiles.srgbProfile())
+            printed = true
             say("Saved \(url.lastPathComponent). Print it on film at 100% (300 ppi).")
         } catch {
             self.error = "\(error)"
@@ -162,7 +173,7 @@ public struct BlockingTestView: View {
             .frame(height: 300)  // the form scrolls
             HStack {
                 Button("1. Print Test Sheet…") {
-                    if printWithPanel(model.printRequest()) { model.say("Printed the test sheet. Contact print it, then scan the print.") }
+                    if printWithPanel(model.printRequest()) { model.sheetPrinted("print panel") }
                 }
                 Button("…or Save It", action: save)
                 Button("2. Scan the Print") {

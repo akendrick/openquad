@@ -34,6 +34,50 @@ struct SetupTests {
         #expect(library.all().map(\.name) == ["Carbon"] && !FileManager.default.fileExists(atPath: copy.path))
     }
 
+    @Test func keepsASeparationWithItsCurves() throws {
+        let folder = try temporaryFolder()
+        let library = SetupLibrary(folder: folder.appendingPathComponent("setups"))
+        let curve = { (name: String) -> URL in
+            let url = folder.appendingPathComponent(name)
+            try? ProcessCurve.identity(colour: "green").encode().write(to: url)
+            return url
+        }
+        let gum = NegativeSetup(name: "Gum, 3 coats", colour: "green", registration: true,
+                                separation: SetupSeparation(steps: 30, splits: [8, 19], overlap: 1.5))
+        let saved = try library.save(gum, process: curve("base.oqproc"), layerProcesses: [2: curve("deep.oqproc")],
+                                     coats: curve("coats-2.oqproc"))
+        let separation = try #require(saved.separation)
+        #expect(separation.curves == [2: "gum-3-coats.neg3.oqproc"] && separation.coats == "gum-3-coats.coats.oqproc")
+        let listed = try #require(library.all().first)
+        #expect(listed == saved && listed.separation?.splits == [8, 19] && listed.separation?.overlap == 1.5)
+        #expect(try listed.separation?.plan().describe() == "3 negatives, split at steps 8 and 19 of 30, overlap 1.5 steps")
+        let (curves, coats) = library.separationURLs(listed)
+        #expect(curves[2].map { FileManager.default.fileExists(atPath: $0.path) } == true)
+        #expect(coats.map { FileManager.default.fileExists(atPath: $0.path) } == true)
+        // Saved again without the third negative's own curve or a coats curve: their copies go.
+        try library.save(listed, process: library.processURL(listed))
+        #expect(library.all().first?.separation?.curves.isEmpty == true && library.all().first?.separation?.coats == nil)
+        #expect(!FileManager.default.fileExists(atPath: curves[2]!.path) && !FileManager.default.fileExists(atPath: coats!.path))
+        // A setup with a similar name keeps its own curve when this one is deleted.
+        try library.save(NegativeSetup(name: "Gum 3 coats neg", colour: "green"), process: curve("other.oqproc"))
+        try library.delete(library.all().first { $0.name == "Gum, 3 coats" }!)
+        #expect(library.all().map(\.name) == ["Gum 3 coats neg"])
+        #expect(library.processURL(library.all()[0]).map { FileManager.default.fileExists(atPath: $0.path) } == true)
+        // A one-negative setup stays as it was saved before separations.
+        let plain = try NegativeSetup(name: "x", colour: "green").encode()
+        #expect(!String(decoding: plain, as: UTF8.self).contains("separation"))
+    }
+
+    @Test func badSeparationsAreRefused() throws {
+        var json = try JSONSerialization.jsonObject(with: NegativeSetup(name: "x", colour: "green").encode()) as! [String: Any]
+        for bad: [String: Any] in [["steps": 30, "splits": [20, 10], "overlap": 0],
+                                   ["steps": 30, "splits": [10], "overlap": 0, "curves": ["3": "a.oqproc"]],
+                                   ["steps": 30, "splits": [10, 20], "overlap": 11]] {
+            json["separation"] = bad
+            #expect(throws: FileFormatError.self) { try NegativeSetup.decode(JSONSerialization.data(withJSONObject: json)) }
+        }
+    }
+
     @Test func badSetupsAreRefused() throws {
         let library = SetupLibrary(folder: try temporaryFolder())
         #expect(throws: FileFormatError.self) { try library.save(NegativeSetup(name: " ", colour: "green"), process: nil) }

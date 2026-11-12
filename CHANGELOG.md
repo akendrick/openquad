@@ -97,7 +97,19 @@ versions follow [Semantic Versioning](https://semver.org/).
   it. App: "Outline in black" with its width under the safe edge; command line:
   `openquad negative --outline 0.1`.
 
+- Process Calibration has two modes: **Calibration Wizard**, one step at a time from the blocking
+  test to a finished curve with the button for the next thing to do (or skip the blocking test),
+  and **Advanced**, every setting at once as before. The choice is remembered.
+- Negative setups keep a separation: its bands, overlap, each negative's own curve and the coats
+  curve (copied beside the setup like its process curve).
+- "Preview all coats together" in Separations: the photo with every coat in its own colour, as
+  strong as it prints, to check the bands and seams before printing film.
+
 ### Changed
+
+- The blocking test and process charts print on the Negative tab's paper instead of always Letter.
+- The wizards and curve menus no longer re-read every kept run (or redraw the chart preview) on each
+  redraw; they read again every few seconds, or as soon as they change something.
 
 - Negative tab: Mirror, Safe edge, Outline in black and Separations are now in one collapsible
   Options section; its header says what's set (e.g. "Options: mirrored, 3 negatives").

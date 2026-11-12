@@ -76,12 +76,21 @@ public final class AppRoot {
         case curve = "2. Process curve"
     }
     public var processStep = ProcessStep.blocking
+    /// Process Calibration guided one step at a time, or every control at once. Remembered.
+    public enum ProcessMode: String, CaseIterable, Sendable {
+        case wizard = "Calibration Wizard"
+        case advanced = "Advanced"
+    }
+    public var processMode: ProcessMode {
+        didSet { UserDefaults.standard.set(processMode.rawValue, forKey: Self.processModeKey) }
+    }
     /// What a hand-off between tabs just changed, shown under the tab bar.
     public var notice: String?
     /// Ask on quit whether to keep the photos for next time (off for snapshots and tests).
     public var askOnQuit = true
 
     static let tabKey = "selectedTab"
+    static let processModeKey = "processMode"
     let workspaceURL: URL
 
     public init(settingsURL: URL = AppSettings.defaultURL(), libraryFolder: URL? = nil, setupsFolder: URL? = nil,
@@ -93,6 +102,7 @@ public final class AppRoot {
                                          folder: printModel.contactSheetFolder)
         workspaceURL = settingsURL.deletingLastPathComponent().appendingPathComponent("workspace.json")
         self.tab = tab ?? UserDefaults.standard.string(forKey: Self.tabKey).flatMap(AppTab.init(rawValue:)) ?? .print
+        processMode = UserDefaults.standard.string(forKey: Self.processModeKey).flatMap(ProcessMode.init(rawValue:)) ?? .wizard
         if restoreWorkspace { restore() }
         arrived(at: self.tab)
         // The printer calibration can open before the printers are looked up.
@@ -123,6 +133,9 @@ public final class AppRoot {
         case .processCalibration:
             if blocking == nil { blocking = negativeModel.blockingTest() }
             if process == nil { process = negativeModel.processWizard() }
+            // Test sheets print on the Negative tab's paper (a run already started keeps its own).
+            blocking?.paper = negativeModel.session.paper
+            if process?.started == false { process?.paper = negativeModel.session.paper }
         }
     }
 
@@ -168,6 +181,16 @@ public final class AppRoot {
         }
         processStep = .curve
         notice = "Negatives now print in \(colour). Next: calibrate the process curve in \(colour)."
+    }
+
+    /// Skip the blocking test: calibrate the curve in the colour the Negative tab already uses.
+    public func skipBlocking() {
+        let colour = negativeModel.session.negativeColour
+        if let process, !process.started {
+            process.colours = [colour]
+            process.useColour = colour
+        }
+        processStep = .curve
     }
 
     /// A finished process curve: used in the Negative tab, with an offer to save a setup.
@@ -322,14 +345,28 @@ public struct RootView: View {
             }
         case .processCalibration:
             VStack(spacing: 0) {
-                Picker("Step", selection: $root.processStep) {
-                    ForEach(AppRoot.ProcessStep.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                HStack(spacing: 16) {
+                    Picker("Mode", selection: $root.processMode) {
+                        ForEach(AppRoot.ProcessMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .fixedSize()
+                    .help("The Calibration Wizard takes you through one step at a time; Advanced shows every setting")
+                    if root.processMode == .advanced {
+                        Picker("Step", selection: $root.processStep) {
+                            ForEach(AppRoot.ProcessStep.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(maxWidth: 420)
+                    }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .frame(maxWidth: 420)
                 .padding(10)
                 Divider()
+                if root.processMode == .wizard {
+                    ProcessGuideView(root: root)
+                } else {
                 switch root.processStep {
                 case .blocking:
                     if let test = root.blocking {
@@ -341,6 +378,7 @@ public struct RootView: View {
                         ProcessWizardView(model: wizard) { root.useProcess($0, scannerHost: wizard.scannerHost) }
                             .id(ObjectIdentifier(wizard))
                     }
+                }
                 }
             }
             .toolbar {

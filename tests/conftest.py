@@ -1,12 +1,17 @@
-"""Shared test setup: Qt runs headless (offscreen) so UI tests work in CI."""
+"""Shared test setup: Qt runs headless (offscreen) so UI tests work in CI, and property
+tests have no per-example time limit (a busy machine made them fail at random)."""
 
 import gc
 import os
 from collections.abc import Iterator
 
 import pytest
+from hypothesis import settings
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+settings.register_profile("openquad", deadline=None)
+settings.load_profile("openquad")
 
 
 @pytest.fixture(autouse=True)
