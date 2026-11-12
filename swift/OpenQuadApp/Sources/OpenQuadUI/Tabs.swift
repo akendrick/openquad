@@ -95,6 +95,8 @@ public final class AppRoot {
         self.tab = tab ?? UserDefaults.standard.string(forKey: Self.tabKey).flatMap(AppTab.init(rawValue:)) ?? .print
         if restoreWorkspace { restore() }
         arrived(at: self.tab)
+        // The printer calibration can open before the printers are looked up.
+        printModel.printersLoaded = { [weak self] in self?.calibration?.offerPrinters($0) }
     }
 
     public func show(_ tab: AppTab) { self.tab = tab }
@@ -156,8 +158,14 @@ public final class AppRoot {
     /// curve is calibrated in.
     public func useBlockingColour(_ colour: String, scannerHost: String) {
         negativeModel.useBlockingColour(colour, scannerHost: scannerHost)
-        process?.colours = [colour]
-        process?.useColour = colour
+        if let process {
+            if !process.started {
+                process.colours = [colour]
+                process.useColour = colour
+            } else if process.run?.colours.contains(colour) == true {
+                process.useColour = colour
+            }  // a run already started in other colours keeps them (New Run… starts one in this colour)
+        }
         processStep = .curve
         notice = "Negatives now print in \(colour). Next: calibrate the process curve in \(colour)."
     }
@@ -292,6 +300,7 @@ public struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: GuideView.showNotification)) { _ in showGuide = true }
         .onAppear {
             if guideOnLaunch && guideSeen < GuideView.version { showGuide = true }  // first launch: walk through the app
+            root.printModel.loadPrinters()  // whichever tab opens first, the wizards get the printers too
         }
     }
 

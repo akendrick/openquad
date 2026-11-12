@@ -43,8 +43,7 @@ struct GapsTests {
 
     @Test func printsStraightToTheChosenPrinter() async throws {
         let app = AppModel(settingsURL: folder.appendingPathComponent("settings.json"))
-        app.loadPrinters { ["Canon_MG3600_series", "PDF"] }
-        for _ in 0..<200 where app.printers.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        await app.loadPrinters { ["Canon_MG3600_series", "PDF"] }
         #expect(app.printers == ["Canon_MG3600_series", "PDF"])
         app.openPhoto(try photo())
         app.setPrinter("Canon_MG3600_series")
@@ -56,6 +55,8 @@ struct GapsTests {
         }
         #expect(job == "Canon_MG3600_series-12" && app.status == "Sent to Canon_MG3600_series: job Canon_MG3600_series-12.")
         #expect(sent.prefix(3) == ["lp", "-d", "Canon_MG3600_series"] && sent.contains("PageSize=Letter"))
+        // The print file was only for lp, which keeps its own copy: it isn't left behind.
+        #expect(sent.last?.hasSuffix("openquad-print.tif") == true && !FileManager.default.fileExists(atPath: sent.last ?? ""))
         app.setPrinter(nil)
         #expect(app.session.printer == nil)
     }

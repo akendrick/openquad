@@ -18,6 +18,7 @@ public final class ContactSheetModel {
     }
 
     nonisolated static let longestSide = 2400
+    static let noRoom = "No room for these photos on a sheet this small."
 
     public private(set) var entries: [Entry] = []
     public var layout = SheetLayout()
@@ -175,7 +176,11 @@ public final class ContactSheetModel {
             }.value
             guard token == previewToken else { return }
             preview = sheet.flatMap { Self.greyImage($0.pixels, width: $0.width, height: $0.height) }
-            if sheet == nil { error = "No room for these photos on a sheet this small." }
+            if sheet == nil {
+                error = Self.noRoom
+            } else if error == Self.noRoom {
+                error = nil  // there's room again
+            }
         }
     }
 

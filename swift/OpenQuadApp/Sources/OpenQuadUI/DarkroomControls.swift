@@ -40,6 +40,8 @@ struct SheetSize: View {
     static let usual = (8.0, 10.0)
 
     var body: some View {
+        // Only real sizes: a width or height of 0 (or less) is ignored.
+        let set = { (size: (Double, Double)?) in if size.map({ $0.0 > 0 && $0.1 > 0 }) ?? true { self.set(size) } }
         Picker("Size", selection: Binding(get: { size != nil }, set: { set($0 ? Self.usual : nil) })) {
             Text("Standard").tag(false)
             Text("Fit within a set size").tag(true)

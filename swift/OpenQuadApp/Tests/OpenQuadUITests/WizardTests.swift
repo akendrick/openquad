@@ -21,7 +21,7 @@ func scannedPage() throws -> Data {
 
 @MainActor
 func waitUntilIdle(_ model: WizardModel) async throws {
-    for _ in 0..<1000 where model.busy { try await Task.sleep(for: .milliseconds(10)) }
+    for _ in 0..<3000 where model.busy { try await Task.sleep(for: .milliseconds(10)) }
 }
 
 @MainActor
