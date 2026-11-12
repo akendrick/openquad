@@ -38,8 +38,8 @@ public struct ContentView: View {
                 .disabled(setupName.trimmingCharacters(in: .whitespaces).isEmpty)
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Remembers the process curve, ink colour, mirror, safe edge, black outline, darkroom marks, printer and paper. "
-                 + "A setup with the same name is replaced.")
+            Text("Remembers the process curve, ink colour, mirror, safe edge, black outline, darkroom marks, printer and paper, "
+                 + "and any separation with its curves. A setup with the same name is replaced.")
         }
         .confirmationDialog("Delete the setup “\(deletingSetup?.name ?? "")”?", isPresented: Binding(
             get: { deletingSetup != nil }, set: { if !$0 { deletingSetup = nil } })) {
