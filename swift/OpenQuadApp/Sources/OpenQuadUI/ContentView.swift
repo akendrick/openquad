@@ -52,7 +52,7 @@ public struct ContentView: View {
         .onAppear {
             model.loadPrinters()
             model.loadProofProfiles()
-            if model.session.negativeCount > 1 { showOptions = true; showSeparations = true }
+            if model.session.negativeCount > 1 || model.separationKind == .colours { showOptions = true; showSeparations = true }
         }
     }
 
@@ -292,8 +292,8 @@ public struct ContentView: View {
         DisclosureGroup(isExpanded: $showSeparations) {
             SeparationControls(model: model)
         } label: {
-            Text(model.session.negativeCount > 1 ? "Separations: \(model.session.negativeCount) negatives"
-                                                  : "Separations")
+            Text(model.session.colourSeparation != nil ? "Separations: \(model.session.negativeCount) coats by colour"
+                 : model.session.negativeCount > 1 ? "Separations: \(model.session.negativeCount) negatives" : "Separations")
         }
     }
 

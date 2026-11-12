@@ -228,6 +228,9 @@ public final class AppModel {
     /// What the preview shows, when it isn't simply the print: a colour print, soft-proofed or not.
     public var previewCaption: String? {
         if showingCoats {
+            if session.colourSeparation != nil {
+                return "All \(session.negativeCount) coats together, in their pigments' colours (prints one negative at a time)"
+            }
             return "All \(session.negativeCount) coats together, each in its own colour (prints one negative at a time)"
         }
         guard session.printsColour else { return nil }
@@ -352,13 +355,109 @@ public final class AppModel {
 
     private func applySeparation() {
         separationOverlap = min(separationOverlap, Double(narrowestBand))
+        guard separationKind == .tones else { return applyColourSeparation() }
         attempt {
             let plan = separationSplits.isEmpty ? nil
                 : try SeparationPlan.fromSteps(separationSplits.map(Double.init), steps: separationSteps,
                                                overlap: separationOverlap)
+            session.setColourSeparation(nil)
             session.setSeparation(plan)
         }
         refreshPreview()
+    }
+
+    // MARK: colour separations
+
+    public enum SeparationKind: String, CaseIterable, Sendable {
+        case tones = "Tones", colours = "Colours"
+    }
+
+    /// Split the negative by tone (bands of the greyscale) or by colour (one negative per pigment).
+    public private(set) var separationKind = SeparationKind.tones
+    /// The colour separation as shown: each coat's pigment colour, in print order, and the saturation.
+    public private(set) var colourCoats: [ColourSeparation.RGB8] = ColourSeparation.defaultCoats.map { ColourSeparation.pigment($0)! }
+    public private(set) var colourSaturation = 1.0
+    /// The colour separation is being worked out (off the main thread).
+    public private(set) var separatingColours = false
+    private var colourToken = 0
+    /// The negative to show once the colour separation is worked out.
+    private var pendingLayer: Int?
+
+    public func setSeparationKind(_ kind: SeparationKind) {
+        separationKind = kind
+        applySeparation()
+    }
+
+    /// Change coat `index`'s pigment colour.
+    public func setCoat(_ index: Int, _ colour: ColourSeparation.RGB8) {
+        guard colourCoats.indices.contains(index) else { return }
+        colourCoats[index] = colour
+        applyColourSeparation()
+    }
+
+    /// Add a coat (up to four), of a pigment not used yet.
+    public func addCoat() {
+        guard colourCoats.count < ColourSeparation.maxCoats else { return }
+        let unused = ColourSeparation.pigments.first { !colourCoats.contains($0.colour) }
+        colourCoats.append(unused?.colour ?? ColourSeparation.pigment("Lamp black")!)
+        applyColourSeparation()
+    }
+
+    /// Remove coat `index` (keeping at least two).
+    public func removeCoat(_ index: Int) {
+        guard colourCoats.count > ColourSeparation.minCoats, colourCoats.indices.contains(index) else { return }
+        colourCoats.remove(at: index)
+        attempt { try session.setLayer(min(session.layer, colourCoats.count - 1)) }
+        // The negatives' own curves move with their coats.
+        let curves = session.layerProcessPaths
+        attempt {
+            for k in index..<colourCoats.count { try session.setLayerProcess(k, curves[k + 1]) }
+        }
+        applyColourSeparation()
+    }
+
+    /// How much the photo's colour is strengthened (above 1) or muted before it is split, 0-2.
+    public func setColourSaturation(_ saturation: Double) {
+        colourSaturation = min(max((saturation * 20).rounded() / 20, 0), ColourSeparation.maxSaturation)
+        applyColourSeparation()
+    }
+
+    /// The pigment a colour is, by name, if it is one of the presets.
+    public func pigmentName(_ colour: ColourSeparation.RGB8) -> String? {
+        ColourSeparation.pigments.first { $0.colour == colour }?.name
+    }
+
+    /// Work the colour separation out off the main thread (it takes a moment), then use it.
+    private func applyColourSeparation() {
+        let coats = colourCoats, saturation = colourSaturation
+        do {
+            try ColourSeparation.validate(coats: coats, saturation: saturation)
+        } catch {
+            self.error = String(describing: error)
+            return
+        }
+        error = nil
+        if let current = session.colourSeparation, current.coats == coats, current.saturation == saturation {
+            return refreshPreview()
+        }
+        colourToken += 1
+        let token = colourToken
+        separatingColours = true
+        Task.detached(priority: .userInitiated) {
+            // Wait a moment: while a colour or the saturation is being dragged, only the last counts.
+            try? await Task.sleep(for: .milliseconds(120))
+            guard await MainActor.run(body: { token == self.colourToken }) else { return }
+            let separation = try? ColourSeparation(coats: coats, saturation: saturation)
+            await MainActor.run {
+                guard token == self.colourToken else { return }  // a newer change wins
+                self.separatingColours = false
+                guard self.separationKind == .colours, let separation else { return }
+                self.session.setColourSeparation(separation)
+                if let layer = self.pendingLayer, layer < separation.count { try? self.session.setLayer(layer) }
+                self.pendingLayer = nil
+                self.refreshPreview()
+            }
+        }
     }
 
     /// Show every coat of the separation together on the photo, each in its own colour,
@@ -371,10 +470,14 @@ public final class AppModel {
     }
 
     /// The preview is the coats map rather than a negative.
-    public var showingCoats: Bool { showCoats && session.negative && session.separation != nil }
+    public var showingCoats: Bool { showCoats && session.negative && session.separated }
 
     /// Show (and print) negative `layer` of the separation.
     public func setLayer(_ layer: Int) {
+        if separationKind == .colours, separatingColours, colourCoats.indices.contains(layer) {
+            pendingLayer = layer  // its coat's negative is still being worked out
+            return
+        }
         attempt { try session.setLayer(layer) }
         refreshPreview()
     }
@@ -562,16 +665,26 @@ public final class AppModel {
 
     /// The separation as set now, for saving in a setup (nil for one negative).
     var currentSeparation: SetupSeparation? {
-        separationSplits.isEmpty ? nil
+        if separationKind == .colours {
+            return SetupSeparation(steps: separationSteps, splits: [], colours: colourCoats.map(\.hex),
+                                   saturation: colourSaturation)
+        }
+        return separationSplits.isEmpty ? nil
             : SetupSeparation(steps: separationSteps, splits: separationSplits, overlap: separationOverlap)
     }
 
     /// Whether the separation (bands, overlap, its negatives' own curves, the coats curve) is the setup's.
     func matchesSeparation(_ setup: NegativeSetup) -> Bool {
         let resolved = { (url: URL?) in url?.resolvingSymlinksInPath() }
-        guard let s = setup.separation else { return separationSplits.isEmpty }
+        guard let s = setup.separation else { return separationKind == .tones && separationSplits.isEmpty }
         let (curves, coats) = setupLibrary.separationURLs(setup)
-        return s.steps == separationSteps && s.splits == separationSplits && abs(s.overlap - separationOverlap) < 1e-9
+        let same = if let colours = s.colours {
+            separationKind == .colours && colours == colourCoats.map(\.hex) && abs(s.saturation - colourSaturation) < 1e-9
+        } else {
+            separationKind == .tones && s.steps == separationSteps && s.splits == separationSplits
+                && abs(s.overlap - separationOverlap) < 1e-9
+        }
+        return same
             && curves.mapValues { $0.resolvingSymlinksInPath() } == session.layerProcessPaths.mapValues { $0.resolvingSymlinksInPath() }
             && resolved(coats) == resolved(session.coatsCurvePath)
     }
@@ -598,13 +711,22 @@ public final class AppModel {
 
     /// The setup's separation (or one negative), with its negatives' own curves and the coats curve.
     private func applySeparation(of setup: NegativeSetup) {
-        if let s = setup.separation {
-            (separationSteps, separationSplits, separationOverlap) = (s.steps, s.splits, s.overlap)
-        } else {
-            separationSplits = []
-        }
-        applySeparation()
         let (curves, coats) = setupLibrary.separationURLs(setup)
+        if let s = setup.separation, let colours = try? s.coatColours() {
+            // Worked out here and now, so its negatives are there for their curves.
+            (separationKind, colourCoats, colourSaturation) = (.colours, colours, s.saturation)
+            colourToken += 1
+            separatingColours = false
+            attempt { session.setColourSeparation(try ColourSeparation(coats: colours, saturation: s.saturation)) }
+        } else {
+            separationKind = .tones
+            if let s = setup.separation {
+                (separationSteps, separationSplits, separationOverlap) = (s.steps, s.splits, s.overlap)
+            } else {
+                separationSplits = []
+            }
+            applySeparation()
+        }
         attempt {
             for k in 0..<session.negativeCount { try session.setLayerProcess(k, curves[k]) }
             try session.setCoatsCurve(coats)
@@ -625,7 +747,7 @@ public final class AppModel {
                                       safeEdge: session.safeEdge, outline: session.outline, guide: session.guide,
                                       registration: session.registration, printer: session.printer, paper: session.paper,
                                       separation: currentSeparation)
-            let separated = session.separation != nil
+            let separated = session.separated || separationKind == .colours
             try setupLibrary.save(setup, process: session.processPath,
                                   layerProcesses: separated ? session.layerProcessPaths : [:],
                                   coats: separated ? session.coatsCurvePath : nil)
@@ -782,6 +904,13 @@ public final class AppModel {
         }
         previewToken += 1
         let token = previewToken, snapshot = session
+        if showingCoats, let separation = snapshot.colourSeparation, let photo = snapshot.photo {
+            Task.detached(priority: .userInitiated) {
+                let image = CoatsPreview.proof(photo, separation: separation)
+                await MainActor.run { if token == self.previewToken { self.preview = image } }
+            }
+            return
+        }
         if showingCoats, let plan = snapshot.separation, let photo = snapshot.photo {
             Task.detached(priority: .userInitiated) {
                 let image = CoatsPreview.image(photo.pixels, width: photo.width, height: photo.height, plan: plan)

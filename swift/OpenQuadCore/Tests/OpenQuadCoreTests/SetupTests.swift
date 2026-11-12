@@ -68,11 +68,33 @@ struct SetupTests {
         #expect(!String(decoding: plain, as: UTF8.self).contains("separation"))
     }
 
+    @Test func keepsAColourSeparationWithItsCurves() throws {
+        let folder = try temporaryFolder()
+        let library = SetupLibrary(folder: folder.appendingPathComponent("setups"))
+        let curve = folder.appendingPathComponent("gum.oqproc")
+        try ProcessCurve.identity(colour: "green").encode().write(to: curve)
+        let tricolour = NegativeSetup(name: "Tricolour gum", colour: "green", registration: true,
+                                      separation: SetupSeparation(steps: 30, splits: [], curves: [:],
+                                                                  colours: ["#224A8C", "#B0306A", "#F2C230"], saturation: 1.5))
+        let saved = try library.save(tricolour, process: nil, layerProcesses: [2: curve])
+        #expect(saved.separation?.curves == [2: "tricolour-gum.neg3.oqproc"])
+        let listed = try #require(library.all().first)
+        #expect(listed == saved && listed.separation?.count == 3 && listed.separation?.saturation == 1.5)
+        #expect(try listed.separation?.coatColours() == [.init(34, 74, 140), .init(176, 48, 106), .init(242, 194, 48)])
+        #expect(try SetupSeparation(steps: 30, splits: [10]).coatColours() == nil)
+    }
+
     @Test func badSeparationsAreRefused() throws {
         var json = try JSONSerialization.jsonObject(with: NegativeSetup(name: "x", colour: "green").encode()) as! [String: Any]
         for bad: [String: Any] in [["steps": 30, "splits": [20, 10], "overlap": 0],
                                    ["steps": 30, "splits": [10], "overlap": 0, "curves": ["3": "a.oqproc"]],
-                                   ["steps": 30, "splits": [10, 20], "overlap": 11]] {
+                                   ["steps": 30, "splits": [10, 20], "overlap": 11],
+                                   ["steps": 30, "splits": [], "overlap": 0, "colours": ["#224A8C"]],
+                                   ["steps": 30, "splits": [], "overlap": 0, "colours": ["#224A8C", "#FFFFFF"]],
+                                   ["steps": 30, "splits": [], "overlap": 0, "colours": ["#224A8C", "nope"]],
+                                   ["steps": 30, "splits": [], "overlap": 0, "colours": ["#224A8C", "#B0306A"], "saturation": 3],
+                                   ["steps": 30, "splits": [], "overlap": 0, "colours": ["#224A8C", "#B0306A"],
+                                    "curves": ["3": "a.oqproc"]]] {
             json["separation"] = bad
             #expect(throws: FileFormatError.self) { try NegativeSetup.decode(JSONSerialization.data(withJSONObject: json)) }
         }

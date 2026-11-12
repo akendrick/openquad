@@ -7,6 +7,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Colour separations: a colour photo split by colour into 2-4 negatives, one per coat of a
+  coloured pigment (tricolour gum, cyanotype under gum). Each coat is the colour it prints at full
+  strength (pigment presets or any colour); each pixel gets the coat strengths whose stacked
+  densities come closest to its colour (bounded least squares, worked out on a 33³ grid and
+  interpolated). A saturation setting (0-2, in OKLab) strengthens the photo's colours first, for
+  processes that print duller than the photo. App: Options ▸ Separations, Split by Tones or
+  Colours, a row per coat, Add Coat, the saturation slider and "Preview the print" (the coats
+  stacked in their colours); setups keep the coats, saturation and each coat's curve. Core:
+  `ColourSeparation` and `PrintSession.set_colour_separation` in Python and Swift alike (shared
+  vectors).
 - Colour prints: a colour photo can be printed in colour on a colour-managed printer instead of
   being converted to greyscale. App: "Print in colour (colour-managed printer)" in the Print tab,
   off for every new photo. The print keeps the photo's colours and embedded RGB ICC profile

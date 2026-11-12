@@ -7,23 +7,41 @@
 
 import Foundation
 
-/// A setup's separation, as the app shows it: split points and overlap on a step scale, and
-/// the curve files (in the setups folder) of the negatives that have their own and the coats.
+/// A setup's separation, as the app shows it: split points and overlap on a step scale (or,
+/// split by colour, each coat's colour and the saturation), and the curve files (in the setups
+/// folder) of the negatives that have their own and the coats.
 public struct SetupSeparation: Sendable, Equatable {
     public var steps: Int
     public var splits: [Int]
     public var overlap: Double
-    /// Negative (0 = the lightest) -> its curve's file name in the setups folder.
+    /// Negative (0 = the lightest, or the first coat) -> its curve's file name in the setups folder.
     public var curves: [Int: String]
     /// The coats curve's file name in the setups folder, if any.
     public var coats: String?
+    /// Split by colour: each coat's colour ("#B0306A"), in the order they print; nil: by tone.
+    public var colours: [String]?
+    public var saturation: Double
 
-    public init(steps: Int, splits: [Int], overlap: Double = 0, curves: [Int: String] = [:], coats: String? = nil) {
+    public init(steps: Int, splits: [Int], overlap: Double = 0, curves: [Int: String] = [:], coats: String? = nil,
+                colours: [String]? = nil, saturation: Double = 1) {
         self.steps = steps
         self.splits = splits
         self.overlap = overlap
         self.curves = curves
         self.coats = coats
+        self.colours = colours
+        self.saturation = saturation
+    }
+
+    /// How many negatives it makes.
+    public var count: Int { colours?.count ?? splits.count + 1 }
+
+    /// The coats' colours, checked (throws if they don't make a colour separation).
+    public func coatColours() throws -> [ColourSeparation.RGB8]? {
+        guard let colours else { return nil }
+        let coats = try colours.map { try ColourSeparation.RGB8(hex: $0) }
+        try ColourSeparation.validate(coats: coats, saturation: saturation)
+        return coats
     }
 
     /// The plan it describes (throws if the bands don't make sense).
@@ -37,6 +55,8 @@ public struct SetupSeparation: Sendable, Equatable {
         var overlap: Double
         var curves: [String: String]?  // negative number (1 = the lightest) -> file
         var coats: String?
+        var colours: [String]?  // absent when split by tone
+        var saturation: Double?
     }
 }
 
@@ -109,13 +129,17 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
         if let s = file.separation {
             var curves: [Int: String] = [:]
             for (key, curve) in s.curves ?? [:] {
-                guard let n = Int(key), (1...s.splits.count + 1).contains(n) else {
+                guard let n = Int(key), (1...(s.colours?.count ?? s.splits.count + 1)).contains(n) else {
                     throw FileFormatError(description: "the separation has no negative \(key)")
                 }
                 curves[n - 1] = curve
             }
-            separation = SetupSeparation(steps: s.steps, splits: s.splits, overlap: s.overlap, curves: curves, coats: s.coats)
-            do { _ = try separation!.plan() } catch { throw FileFormatError(description: "bad separation: \(error)") }
+            separation = SetupSeparation(steps: s.steps, splits: s.splits, overlap: s.overlap, curves: curves, coats: s.coats,
+                                         colours: s.colours, saturation: s.saturation ?? 1)
+            do {
+                _ = try separation!.plan()
+                _ = try separation!.coatColours()
+            } catch { throw FileFormatError(description: "bad separation: \(error)") }
         }
         return NegativeSetup(name: file.name, colour: file.colour, process: file.process, mirror: file.mirror,
                              safeEdge: min(max(file.safe_edge, 0), 2), outline: min(max(file.outline, 0), 1),
@@ -130,7 +154,8 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
                             SetupSeparation.File(steps: s.steps, splits: s.splits, overlap: s.overlap,
                                                  curves: s.curves.isEmpty ? nil
                                                     : Dictionary(uniqueKeysWithValues: s.curves.map { ("\($0.key + 1)", $0.value) }),
-                                                 coats: s.coats)
+                                                 coats: s.coats, colours: s.colours,
+                                                 saturation: s.colours == nil ? nil : s.saturation)
                         },
                         created: created)
         let encoder = JSONEncoder()
@@ -213,7 +238,7 @@ public struct SetupLibrary: Sendable {
         if var separation = saved.separation {
             _ = try separation.plan()
             separation.curves = [:]
-            for (k, url) in layerProcesses where k <= separation.splits.count {
+            for (k, url) in layerProcesses where k < separation.count {
                 try keep(url, as: "\(slug).neg\(k + 1).oqproc")
                 separation.curves[k] = "\(slug).neg\(k + 1).oqproc"
             }

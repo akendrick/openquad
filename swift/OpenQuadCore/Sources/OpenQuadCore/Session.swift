@@ -55,6 +55,9 @@ public struct PrintSession: Sendable {
     /// printed through every negative), applied to the photo before it is split.
     public private(set) var coatsCurve: ProcessCurve?
     public private(set) var coatsCurvePath: URL?
+    /// Or the photo split by colour: one negative per coat of a coloured pigment, from the
+    /// photo's own colour. Only one of the two separations is set at a time.
+    public private(set) var colourSeparation: ColourSeparation?
     /// Print a colour photo in colour, on a colour-managed printer: its own colour and ICC
     /// profile go to macOS, with no toning or calibration. Off (greyscale) for each new photo.
     public private(set) var colourPrint = false
@@ -71,11 +74,27 @@ public struct PrintSession: Sendable {
     public var printsColour: Bool { colourPrint && !negative && photo?.colour != nil }
 
     /// How many negatives the photo is printed with.
-    public var negativeCount: Int { separation?.count ?? 1 }
+    public var negativeCount: Int { colourSeparation?.count ?? separation?.count ?? 1 }
+
+    /// Split into several negatives, by tone or by colour.
+    public var separated: Bool { negativeCount > 1 }
 
     /// Split the negative into `plan.count` negatives by tone (nil or 1: just one).
     public mutating func setSeparation(_ plan: SeparationPlan?) {
         separation = plan.flatMap { $0.count > 1 ? $0 : nil }
+        if separation != nil { colourSeparation = nil }
+        fitLayers()
+    }
+
+    /// Split the negative by colour, one negative per coat (nil: no colour separation).
+    public mutating func setColourSeparation(_ separation: ColourSeparation?) {
+        colourSeparation = separation
+        if separation != nil { self.separation = nil }
+        fitLayers()
+    }
+
+    /// Keep the shown negative and the negatives' own curves within the count.
+    private mutating func fitLayers() {
         layer = min(layer, negativeCount - 1)
         for k in layerProcesses.keys where k >= negativeCount {
             layerProcesses[k] = nil
@@ -186,7 +205,7 @@ public struct PrintSession: Sendable {
 
     /// The settings for negative `layer` of the separation (nil: the whole negative).
     func negativeSettings(_ layer: Int?) -> NegativeSettings {
-        let separated = separation != nil && layer != nil
+        let separated = self.separated && layer != nil
         let colour = separated ? layerProcess(layer!)?.colour ?? negativeColour : negativeColour
         return NegativeSettings(colour: colour, mirror: mirror, safeEdge: safeEdge, outline: outline, guide: guide,
                                 registration: registration, label: separated ? layer! + 1 : 0, clearTargets: separated)
@@ -230,23 +249,31 @@ public struct PrintSession: Sendable {
 
     /// What is sent to the printer: a toned, calibrated print, or (in negative mode) the
     /// negative through the process curve, with its safe edge at `dpi`.
-    public func render(_ pixels: [UInt16], width: Int, height: Int, dpi: Double? = nil) throws -> RGBImage {
-        if negative { return try renderLayer(pixels, width: width, height: height, layer: layer, dpi: dpi) }
+    /// `colour`: the pixels are 16-bit RGB, for a colour separation's negatives.
+    public func render(_ pixels: [UInt16], width: Int, height: Int, dpi: Double? = nil, colour: Bool = false) throws -> RGBImage {
+        if negative { return try renderLayer(pixels, width: width, height: height, layer: layer, dpi: dpi, colour: colour) }
         let rgb = Composite.composite(pixels, layers: Composite.presets[preset]!)
         return Marks.addPrintMarks(RGBImage(width: width, height: height, pixels: calibration?.apply(rgb) ?? rgb),
                                    dpi: try dpi ?? effectivePPI(), guide: guide, registration: registration)
     }
 
     /// Negative `layer` of the separation (any layer is the whole negative without one).
-    public func renderLayer(_ pixels: [UInt16], width: Int, height: Int, layer: Int, dpi: Double? = nil) throws -> RGBImage {
+    /// `pixels` are greyscale, or 16-bit RGB (`colour`) for a colour separation.
+    public func renderLayer(_ pixels: [UInt16], width: Int, height: Int, layer: Int, dpi: Double? = nil,
+                            colour: Bool = false) throws -> RGBImage {
         var shaped = pixels
         var curve = process
-        if let separation {
+        if let colourSeparation {
+            shaped = colourSeparation.coatImage(pixels, colour: colour, coat: layer)
+            curve = layerProcess(layer)
+        } else if colour {
+            throw SessionError(description: "a colour photo makes negatives only for a colour separation")
+        } else if let separation {
             shaped = separation.coatImage(coatsCurve?.apply(pixels) ?? pixels, layer: layer)
             curve = layerProcess(layer)
         }
         shaped = curve?.apply(shaped) ?? shaped
-        return Negative.make(shaped, width: width, height: height, settings: negativeSettings(separation != nil ? layer : nil),
+        return Negative.make(shaped, width: width, height: height, settings: negativeSettings(separated ? layer : nil),
                              dpi: try dpi ?? effectivePPI())
     }
 
@@ -262,7 +289,15 @@ public struct PrintSession: Sendable {
         if printsColour, let colour = photo.colour {
             return try renderColour(colour, width: photo.width, height: photo.height)
         }
-        return try render(photo.pixels, width: photo.width, height: photo.height)
+        let (pixels, colour) = negativeSource(photo)
+        return try render(pixels, width: photo.width, height: photo.height, colour: colour)
+    }
+
+    /// The pixels negatives are made from: the photo's colour for a colour separation (its
+    /// greyscale if it has none), otherwise its greyscale; and whether they are colour.
+    func negativeSource(_ photo: Photo) -> ([UInt16], Bool) {
+        if negative, colourSeparation != nil, let colour = photo.colour { return (colour, true) }
+        return (photo.pixels, false)
     }
 
     /// The ICC profile the print file carries: a colour print's own (sRGB if untagged).
@@ -293,7 +328,19 @@ public struct PrintSession: Sendable {
             }
             return try renderColour(rgb, width: width, height: height, dpi: try effectivePPI() * scale)
         }
-        if negative { return try render(pixels, width: width, height: height, dpi: try effectivePPI() * scale) }
+        if negative {
+            var (shown, colour) = negativeSource(photo)
+            if colour && scale < 1.0 {
+                let planes = (0..<3).map { c in
+                    Self.resize(stride(from: c, to: shown.count, by: 3).map { shown[$0] }, from: (photo.width, photo.height),
+                                to: (width, height))
+                }
+                shown = (0..<width * height).flatMap { i in planes.map { $0[i] } }
+            } else if !colour {
+                shown = pixels
+            }
+            return try render(shown, width: width, height: height, dpi: try effectivePPI() * scale, colour: colour)
+        }
         let toned = RGBImage(width: width, height: height, pixels: Composite.composite(pixels, layers: Composite.presets[preset]!))
         return Marks.addPrintMarks(toned, dpi: try effectivePPI() * scale, guide: guide, registration: registration)
     }
@@ -323,6 +370,14 @@ public struct PrintSession: Sendable {
     }
 
     var separationLines: [String] {
+        if let colourSeparation {
+            return [
+                "Colour separation: \(colourSeparation.describe())",
+                "This negative: coat \(layer + 1) of \(colourSeparation.count) (\(colourSeparation.coats[layer].hex))",
+                "Colour: \(negativeSettings(layer).colour)",
+                "Process curve: \(layerProcessName(layer))",
+            ]
+        }
         guard let separation else {
             return ["Colour: \(negativeColour)",
                     "Process curve: \(processPath?.lastPathComponent ?? "none (uncalibrated)")"]
@@ -387,12 +442,13 @@ public struct PrintSession: Sendable {
     /// Every negative of the separation as `<stem>-<k>of<n>.tif` in `folder`.
     @discardableResult
     public func writeSeparations(_ folder: URL, stem: String? = nil) throws -> [URL] {
-        guard let separation, negative else { throw SessionError(description: "set up a separation of the negative first") }
-        let photo = try currentPhoto(), ppi = try effectivePPI()
+        guard separated, negative else { throw SessionError(description: "set up a separation of the negative first") }
+        let photo = try currentPhoto(), ppi = try effectivePPI(), count = negativeCount
         let stem = stem ?? source?.deletingPathExtension().lastPathComponent ?? "negative"
-        return try (0..<separation.count).map { k in
-            let url = folder.appendingPathComponent("\(stem)-\(k + 1)of\(separation.count).tif")
-            let image = try renderLayer(photo.pixels, width: photo.width, height: photo.height, layer: k, dpi: ppi)
+        let (pixels, colour) = negativeSource(photo)
+        return try (0..<count).map { k in
+            let url = folder.appendingPathComponent("\(stem)-\(k + 1)of\(count).tif")
+            let image = try renderLayer(pixels, width: photo.width, height: photo.height, layer: k, dpi: ppi, colour: colour)
             try ImageFiles.saveRGB(url, image, dpi: (ppi, ppi), iccProfile: ImageFiles.srgbProfile())
             return url
         }
@@ -401,8 +457,8 @@ public struct PrintSession: Sendable {
     /// The print job's title, naming the negative of a separation.
     public var jobTitle: String {
         let title = source.map { "OpenQuad: \($0.lastPathComponent)" } ?? "OpenQuad"
-        guard negative, let separation else { return title }
-        return title + " (negative \(layer + 1) of \(separation.count))"
+        guard negative, separated else { return title }
+        return title + " (negative \(layer + 1) of \(negativeCount))"
     }
 
     public func printJob(_ path: URL) throws -> PrintJob {

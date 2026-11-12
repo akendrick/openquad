@@ -237,6 +237,14 @@ Every curve chooser lists the curves OpenQuad already has (saved setups, the lat
 process calibration, coats curves) as well as Other File…. "Preview all coats together" shows each coat
 in its own colour on the photo, and a saved setup keeps the whole separation with its curves.
 
+Split by **Colours** instead, and a colour photo becomes one negative per coat of a coloured pigment
+(tricolour gum, cyanotype under gum): 2-4 coats, each given the colour it prints at full strength
+(pigment presets or a colour well), in print order. Each pixel's colour is matched by the stack of
+coats closest to it in density (coats add like filters), and a saturation slider (0-2) strengthens
+the photo's colours before the split, for processes that print duller than the photo. "Preview the
+print" shows the coats stacked in their colours. The Python core has the same
+(`openquad.colour_separations`, `PrintSession.set_colour_separation`).
+
 ### Contact sheets
 
 Up to 16 photos as thumbnails on one greyscale sheet, which then prints like any photo (or becomes a
