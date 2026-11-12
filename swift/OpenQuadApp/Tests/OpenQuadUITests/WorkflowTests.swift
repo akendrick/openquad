@@ -106,10 +106,13 @@ struct WorkflowTests {
         let plan = try SeparationPlan.even(3)
         let image = try #require(CoatsPreview.image([65535, 60000, 30000, 0], width: 4, height: 1, plan: plan))
         let data = try #require(image.dataProvider?.data as Data?)
-        let rgb = (0..<4).map { i in Array(data[(3 * i)..<(3 * i + 3)]).map(Int.init) }
+        let bytes: [Int] = data.map { Int($0) }
+        let rgb: [[Int]] = (0..<4).map { i in Array(bytes[(3 * i)..<(3 * i + 3)]) }
         #expect(rgb[0] == [255, 255, 255])
         #expect(rgb[1][0] > rgb[1][2] && rgb[3][2] > rgb[3][0])  // orange, then blue
         #expect(rgb[2][1] > rgb[2][0] && rgb[2][1] > rgb[2][2])  // the middle tones: green
-        #expect(rgb.map { $0.reduce(0, +) } == rgb.map { $0.reduce(0, +) }.sorted(by: >))
+        let lightness: [Int] = rgb.map { $0.reduce(0, +) }
+        let lightToDark: [Int] = lightness.sorted(by: >)
+        #expect(lightness == lightToDark)
     }
 }
