@@ -934,6 +934,13 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
          "guide": True, "registration": True},
         {"photo": "photo-colour-icc.png", "colour_print": True, "mode": "negative",
          "fit": False, "ppi": 40.0},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
+         "placement": [1.0, 2.0]},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
+         "placement": [-3.0, 50.0], "paper": "5x7", "safe_edge": 0.3, "units": "mm"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 3.0,
+         "placement": [1.0, 1.0]},
+        {"photo": "photo-grey16.tif", "fit": False, "ppi": 8.0, "placement": [1.0, 1.0]},
     ]  # fmt: skip
     sessions = []
     for config in configurations:
@@ -959,11 +966,13 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         session.set_units(config.get("units", "in"))
         session.printer = "Canon_MG3600_series"
         session.set_colour_print(config.get("colour_print", False))
+        session.set_placement(tuple(config["placement"]) if "placement" in config else None)
         rendered = session.render_print()
         sessions.append({**config, "ppi_used": session.effective_ppi(),
                          "prints_colour": session.prints_colour,
                          "size": list(session.size_inches()), "fits": session.fits_on_paper(),
                          "summary": session.summary(), "notes": session.notes,
+                         "placed": session.placed, "position": list(session.page_position()),
                          "rendered_shape": list(rendered.shape),
                          "rendered": _ints(rendered)})  # fmt: skip
     return {"photos": photos, "calibration": calibration.read_text(), "sessions": sessions}, written

@@ -7,6 +7,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A negative can go anywhere on the page. App: "Preview on the page" under Page in the Negative
+  tab shows the whole sheet with its margins dashed; drag the negative to move it, or step it with
+  From the left and From the top, and Centre puts it back. It is kept inside the margins, and the
+  summary gives its position. When moved, the print is the page inside its margins with the
+  negative in place on clear film, so it lands where it was put through the print panel or `lp`.
+  Core: `PrintSession.set_placement` and `page_position` in Python and Swift alike (shared
+  vectors).
 - JPEG 2000 and GIMP photos. `.jp2`, `.j2k` and `.jpx` files open at their full bit depth through
   OpenJPEG 2.5.4: Pillow's copy in Python, built into the Mac app (COpenJPEG, BSD 2-clause) since
   macOS's ImageIO reads 16-bit JPEG 2000 as 8-bit. Grey, grey and alpha, RGB and RGB and alpha
@@ -15,7 +22,6 @@ versions follow [Semantic Versioning](https://semver.org/).
   /Applications, ~/Applications, on the PATH or through `OPENQUAD_GIMP`): it merges the visible
   layers, keeping transparency, into a 16-bit TIFF that loads as usual; the app does this off
   the main thread, saying "Opening … in GIMP". The Open dialogs offer both.
-
 - Colour separations: a colour photo split by colour into 2-4 negatives, one per coat of a
   coloured pigment (tricolour gum, cyanotype under gum). Each coat is the colour it prints at full
   strength (pigment presets or any colour); each pixel gets the coat strengths whose stacked

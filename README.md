@@ -164,6 +164,12 @@ openquad negative photo.tif -o neg.tif --colour orange --fit Letter --guide --re
 openquad target --kind blocking --size 5x7 --guide -o blocking.tif
 ```
 
+To put a negative somewhere other than the middle of the sheet (several on one sheet of film,
+say), turn on **Preview on the page** under Page in the Negative tab: it shows the whole sheet
+with its margins dashed, and you drag the negative where you want it (or step it with From the
+left and From the top). It stays inside the margins, and every negative of a separation prints
+in the same place.
+
 In the app, the Process Calibration tab does the same. **Calibration Wizard** takes you from the
 blocking test to a finished curve one step at a time, with a button for each next step. **Advanced**
 shows every setting at once. Test sheets print on the Negative tab's paper.

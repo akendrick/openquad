@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 21
+    public static let version = 22
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -75,6 +75,9 @@ public struct GuideView: View {
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
                      "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",
+                     "Preview on the page (under Page) shows the whole sheet with its margins dashed. Drag the "
+                        + "negative to put it anywhere inside the margins, or step it with From the left and From the "
+                        + "top; Centre puts it back. Every negative of a separation prints in the same place.",
                      "Print on transparency film at 100% with your usual film settings."]),
         Page(symbol: "square.stack.3d.up", title: "Multi-coat separations",
              text: "For processes that build their tones up in several coats (gum, multi-coat cyanotype): the photo "
