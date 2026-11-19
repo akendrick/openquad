@@ -1,3 +1,5 @@
+# The vendored OpenJPEG source stays exactly as upstream has it.
+exclude: ^swift/OpenQuadCore/Sources/COpenJPEG/
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0

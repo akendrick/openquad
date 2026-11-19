@@ -107,6 +107,13 @@ public struct ContentView: View {
                 }
             }
             .formStyle(.grouped)
+            if let name = model.openingInGIMP {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Opening \(name) in GIMP…").font(.callout).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal)
+            }
             if let status = model.status {
                 Text(status)
                     .font(.callout)
@@ -340,8 +347,7 @@ public struct ContentView: View {
     // MARK: actions
 
     private func openPhoto() {
-        let types: [UTType] = [.tiff, .png, .jpeg]
-        if let url = Self.askOpen(types: types, folder: model.settings.lastFolder) { model.openPhoto(url) }
+        if let url = Self.askOpen(types: PhotoTypes.all, folder: model.settings.lastFolder) { model.openPhoto(url) }
     }
 
     private func savePrintFile() {

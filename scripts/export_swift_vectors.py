@@ -979,6 +979,102 @@ def _rgb_profile() -> bytes:
     return bytes(data)
 
 
+def _jp2_with(
+    data: bytes, dpi: tuple[float, float] | None = None, icc: bytes | None = None
+) -> bytes:
+    """A JP2 from Pillow with a capture resolution ('resc') and an ICC profile (a 'colr' box,
+    method 2) put into its header, neither of which Pillow writes."""
+    import struct
+
+    from openquad.jpeg2000 import _boxes
+
+    def box(kind: bytes, content: bytes) -> bytes:
+        return struct.pack(">I4s", 8 + len(content), kind) + content
+
+    out = b""
+    for kind, start, end in _boxes(data, 0, len(data)):
+        content = data[start:end]
+        if kind == b"jp2h":
+            parts = b""
+            for sub, s, e in _boxes(data, start, end):
+                if sub == b"colr" and icc is not None:
+                    parts += box(b"colr", bytes([2, 0, 0]) + icc)
+                else:
+                    parts += box(sub, data[s:e])
+            if dpi is not None:
+                # dots per metre, as numerator / denominator x 10^exponent with 1 and 0
+                per_metre = [round(d * 10000 / 254) for d in dpi]
+                resc = struct.pack(">HHHHbb", per_metre[1], 1, per_metre[0], 1, 0, 0)
+                parts += box(b"res ", box(b"resc", resc))
+            content = parts
+        out += box(kind, content)
+    return out
+
+
+def formats_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
+    """JPEG 2000 photos of every kind, read straight through OpenJPEG and as photos, and how
+    an XCF is handed to GIMP."""
+    import shutil
+
+    from PIL import Image
+
+    from openquad import xcf
+    from openquad.jpeg2000 import read_jpeg2000
+    from openquad.photo import load_photo
+
+    rng = np.random.default_rng(29)
+    written = []
+
+    def save(
+        name: str, image: Any, dpi: Any = None, icc: bytes | None = None, **kwargs: Any
+    ) -> None:
+        path = directory / name
+        image.save(path, **kwargs)
+        if dpi is not None or icc is not None:
+            path.write_bytes(_jp2_with(path.read_bytes(), dpi, icc))
+        written.append(path)
+
+    ramp = np.tile(np.linspace(0, 255, 40), (32, 1)).astype(np.uint8)
+    save("jp2-grey8.jp2", Image.fromarray(ramp, "L"), dpi=(300, 300))
+    ramp16 = np.tile(np.linspace(0, 65535, 40), (32, 1)).astype(np.uint16)
+    save("jp2-grey16.j2k", Image.fromarray(ramp16))
+    colour = rng.integers(0, 256, (32, 40, 3)).astype(np.uint8)
+    save("jp2-rgb8-icc.jp2", Image.fromarray(colour, "RGB"), dpi=(240, 180), icc=_rgb_profile())
+    rgba = np.dstack([colour, np.full((32, 40), 255, np.uint8)])
+    rgba[:, :3, 3] = 0  # a transparent band, cropped off
+    rgba[9:13, 5:9, 3] = 100  # partly transparent: onto paper white
+    save("jp2-rgba8.jp2", Image.fromarray(rgba, "RGBA"))
+    la = np.dstack([ramp, np.where(ramp > 128, 255, 60).astype(np.uint8)])
+    save("jp2-la8.jp2", Image.fromarray(la, "LA"))
+    save("jp2-rgb8-lossy.jp2", Image.fromarray(colour, "RGB"), irreversible=True,
+         quality_mode="rates", quality_layers=[12])  # fmt: skip
+    layers = directory / "layers.xcf"  # a two-layer XCF, for the tests that run a real GIMP
+    shutil.copyfile(ROOT / "fixtures" / "layers.xcf", layers)
+    for fixture in sorted((ROOT / "fixtures" / "jpeg2000").glob("*.j*")):
+        path = directory / f"jp2-{fixture.name}"
+        shutil.copyfile(fixture, path)
+        written.append(path)
+
+    files = []
+    for path in written:
+        raw, dpi, profile = read_jpeg2000(path)
+        photo = load_photo(path)
+        files.append({
+            "file": path.name, "lossy": "lossy" in path.name,
+            "shape": list(raw.shape), "bits": 16 if raw.dtype == np.uint16 else 8,
+            "raw": _ints(raw), "dpi": list(dpi) if dpi else None,
+            "profile_length": len(profile) if profile else 0,
+            "photo": {"shape": list(photo.pixels.shape), "pixels": _ints(photo.pixels),
+                      "converted": photo.converted, "cropped": photo.cropped,
+                      "colour": None if photo.colour is None else _ints(photo.colour),
+                      "has_profile": photo.icc_profile is not None},
+        })  # fmt: skip
+    gimp = {"script": xcf.SCRIPT, "console_names": list(xcf.CONSOLE_NAMES),
+            "arguments": xcf.command(Path("gimp-console"))[1:], "needs_gimp": xcf.NEEDS_GIMP,
+            "signature": xcf.SIGNATURE.decode()}  # fmt: skip
+    return {"jpeg2000": files, "xcf": gimp}, [*written, layers]
+
+
 def _digest(pixels: Any) -> dict[str, Any]:
     """Shape and SHA-256 of a uint16 image (little-endian), for images too big to list."""
     import hashlib
@@ -1302,13 +1398,16 @@ def export(directory: Path) -> list[Path]:
         json.dumps(colour_separations_vectors(directory), separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
+    formats, formats_files = formats_vectors(directory)
+    formats_path = directory / "formats.json"
+    formats_path.write_text(json.dumps(formats, separators=(",", ":")) + "\n", encoding="utf-8")
     wizards_path = directory / "wizards.json"
     wizards_path.write_text(
         json.dumps(wizards_vectors(directory), separators=(",", ":")) + "\n", encoding="utf-8"
     )
     return [*written, path, reading_path, devices_path, session_path, separations_path,
-            colour_path, wizards_path, *images,
-            *prints, *files, *photos]  # fmt: skip
+            colour_path, formats_path, wizards_path, *images,
+            *prints, *files, *photos, *formats_files]  # fmt: skip
 
 
 def main(argv: list[str]) -> None:

@@ -7,6 +7,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- JPEG 2000 and GIMP photos. `.jp2`, `.j2k` and `.jpx` files open at their full bit depth through
+  OpenJPEG 2.5.4: Pillow's copy in Python, built into the Mac app (COpenJPEG, BSD 2-clause) since
+  macOS's ImageIO reads 16-bit JPEG 2000 as 8-bit. Grey, grey and alpha, RGB and RGB and alpha
+  are read, with the file's ICC profile and capture resolution; subsampled, YCC and CMYK files are
+  refused (save those as TIFF). GIMP's `.xcf` files open through GIMP 3 (`gimp-console`, found in
+  /Applications, ~/Applications, on the PATH or through `OPENQUAD_GIMP`): it merges the visible
+  layers, keeping transparency, into a 16-bit TIFF that loads as usual; the app does this off
+  the main thread, saying "Opening … in GIMP". The Open dialogs offer both.
+
 - Colour separations: a colour photo split by colour into 2-4 negatives, one per coat of a
   coloured pigment (tricolour gum, cyanotype under gum). Each coat is the colour it prints at full
   strength (pigment presets or any colour); each pixel gets the coat strengths whose stacked
@@ -137,6 +146,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- A 16-bit colour JPEG 2000 read through Pillow came out 8-bit with its brightest values (65408
+  and up) turned black; JPEG 2000 is now decoded straight through OpenJPEG instead.
 - The app no longer crashes when a blocking colour is chosen while a process run in other
   colours is under way and that run's curve is then used or exported; the run keeps its colours.
 - The Negative tab no longer switches printer calibrations (or says a negative "will print
