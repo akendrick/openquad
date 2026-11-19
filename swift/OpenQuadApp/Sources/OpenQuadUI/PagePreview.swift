@@ -35,8 +35,8 @@ struct PagePreview: View {
                             .onChanged { drag in
                                 let start = dragStart ?? negative.origin
                                 if dragStart == nil { dragStart = start }
-                                model.setPlacement((start.x + drag.translation.width / scale,
-                                                    start.y + drag.translation.height / scale))
+                                model.setPlacement((Double(start.x + drag.translation.width / scale),
+                                                    Double(start.y + drag.translation.height / scale)))
                             }
                             .onEnded { _ in dragStart = nil })
                         .onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }

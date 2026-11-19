@@ -149,9 +149,9 @@ public struct ContentView: View {
             let maxLeft = paperWidth - layout.margin - negative.width, maxTop = paperHeight - layout.margin - negative.height
             if maxLeft >= layout.margin - 1e-6 && maxTop >= layout.margin - 1e-6 {
                 LengthStepper(title: "From the left", inches: negative.minX, range: layout.margin...max(layout.margin, maxLeft),
-                              inchStep: 0.125, mmStep: 1, units: model.units) { model.setPlacement(($0, negative.minY)) }
+                              inchStep: 0.125, mmStep: 1, units: model.units) { model.setPlacement((Double($0), Double(negative.minY))) }
                 LengthStepper(title: "From the top", inches: negative.minY, range: layout.margin...max(layout.margin, maxTop),
-                              inchStep: 0.125, mmStep: 1, units: model.units) { model.setPlacement((negative.minX, $0)) }
+                              inchStep: 0.125, mmStep: 1, units: model.units) { model.setPlacement((Double(negative.minX), Double($0))) }
             } else {
                 Text("The negative fills the page inside its margins, so it prints centred.")
                     .font(.caption)
