@@ -58,6 +58,9 @@ public struct PrintSession: Sendable {
     /// Or the photo split by colour: one negative per coat of a coloured pigment, from the
     /// photo's own colour. Only one of the two separations is set at a time.
     public private(set) var colourSeparation: ColourSeparation?
+    /// Where a negative goes on the page: its outer top-left corner, in inches from the paper's
+    /// left and top edges, kept inside the margins. nil = centred (as a print always is).
+    public private(set) var placement: (Double, Double)?
     /// Print a colour photo in colour, on a colour-managed printer: its own colour and ICC
     /// profile go to macOS, with no toning or calibration. Off (greyscale) for each new photo.
     public private(set) var colourPrint = false
@@ -245,6 +248,54 @@ public struct PrintSession: Sendable {
         return width <= paperWidth + 1e-6 && height <= paperHeight + 1e-6
     }
 
+    // MARK: placing a negative on the page
+
+    /// Put the negative's top-left corner at (left, top) inches on the page; nil centres it.
+    public mutating func setPlacement(_ placement: (Double, Double)?) throws {
+        if let (left, top) = placement, !left.isFinite || !top.isFinite {
+            throw SessionError(description: "not a position on the page: (\(left), \(top))")
+        }
+        self.placement = placement
+    }
+
+    /// A negative moved from the centre, with room to move inside the margins.
+    public var placed: Bool {
+        guard negative, placement != nil, let (width, height) = try? sizeInches() else { return false }
+        let (roomWidth, roomHeight) = room
+        return width <= roomWidth + 1e-6 && height <= roomHeight + 1e-6
+    }
+
+    /// The page inside its margins, (width, height) in inches.
+    public var room: (Double, Double) {
+        let (paperWidth, paperHeight) = Paper.sizes[paper]!
+        return (paperWidth - 2 * margin, paperHeight - 2 * margin)
+    }
+
+    /// Where the print's top-left corner lands: inches from the paper's left and top.
+    public func pagePosition() throws -> (Double, Double) {
+        let (width, height) = try sizeInches()
+        let (paperWidth, paperHeight) = Paper.sizes[paper]!
+        guard placed, let (left, top) = placement else { return ((paperWidth - width) / 2, (paperHeight - height) / 2) }
+        return (min(max(left, margin), paperWidth - margin - width), min(max(top, margin), paperHeight - margin - height))
+    }
+
+    /// The image on clear film filling the page inside its margins, at its position. That
+    /// area prints centred on the page, so the negative lands where it was put.
+    func onPage(_ image: RGBImage, ppi: Double) throws -> RGBImage {
+        let (roomWidth, roomHeight) = room
+        let pageWidth = max(pyRound(roomWidth * ppi), image.width), pageHeight = max(pyRound(roomHeight * ppi), image.height)
+        let (left, top) = try pagePosition()
+        let x = min(max(pyRound((left - margin) * ppi), 0), pageWidth - image.width)
+        let y = min(max(pyRound((top - margin) * ppi), 0), pageHeight - image.height)
+        var page = [UInt16](repeating: UInt16(maxValue), count: pageWidth * pageHeight * 3)
+        let row = image.width * 3
+        for r in 0..<image.height {
+            let to = ((y + r) * pageWidth + x) * 3
+            page.replaceSubrange(to..<to + row, with: image.pixels[r * row..<(r + 1) * row])
+        }
+        return RGBImage(width: pageWidth, height: pageHeight, pixels: page)
+    }
+
     // MARK: rendering
 
     /// What is sent to the printer: a toned, calibrated print, or (in negative mode) the
@@ -290,7 +341,8 @@ public struct PrintSession: Sendable {
             return try renderColour(colour, width: photo.width, height: photo.height)
         }
         let (pixels, colour) = negativeSource(photo)
-        return try render(pixels, width: photo.width, height: photo.height, colour: colour)
+        let image = try render(pixels, width: photo.width, height: photo.height, colour: colour)
+        return placed ? try onPage(image, ppi: try effectivePPI()) : image
     }
 
     /// The pixels negatives are made from: the photo's colour for a colour separation (its
@@ -395,6 +447,13 @@ public struct PrintSession: Sendable {
     }
 
     /// Lines for the print confirmation.
+    func positionLine() throws -> [String] {
+        guard placement != nil else { return [] }
+        guard placed else { return ["Position: centred (no room to move it inside the margins)"] }
+        let (left, top) = try pagePosition()
+        return ["Position: \(units.length(left)) from the left, \(units.length(top)) from the top"]
+    }
+
     public func summary() throws -> [String] {
         let (width, height) = try sizeInches()
         let photoName = source?.lastPathComponent ?? "untitled"
@@ -413,7 +472,7 @@ public struct PrintSession: Sendable {
             ] + within + [
                 "Size: \(size) with a \(units.length(safeEdge)) safe edge"
                     + (outline != 0 ? " and a \(units.length(outline)) black outline" : ""),
-            ] + separationLines + [
+            ] + (try positionLine()) + separationLines + [
                 "Mirrored: \(mirror ? "yes" : "no")",
             ] + marksLine
         }

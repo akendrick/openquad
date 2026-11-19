@@ -25,6 +25,7 @@ from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, make_negative,
 from openquad.paper import DEFAULT_MARGIN, PAPER_SIZES, box_ppi, fit_ppi, oriented, print_size
 from openquad.photo import Photo, load_photo
 from openquad.printing import PrintJob, Runner, run_command, send
+from openquad.quadfile import MAX_VALUE
 from openquad.separations import SeparationPlan, coat_image
 from openquad.units import box, check, length, size
 
@@ -80,6 +81,9 @@ class PrintSession:
     # Print a colour photo in colour, on a colour-managed printer: its own colour and ICC
     # profile go to macOS, with no toning or calibration. Off (greyscale) for each new photo.
     colour_print: bool = False
+    # Where a negative goes on the page: its outer top-left corner, in inches from the paper's
+    # left and top edges, kept inside the margins. None = centred (as a print always is).
+    placement: tuple[float, float] | None = None
 
     # --- choosing things ------------------------------------------------------------
 
@@ -267,6 +271,52 @@ class PrintSession:
         paper_w, paper_h = PAPER_SIZES[self.paper]
         return width <= paper_w + 1e-6 and height <= paper_h + 1e-6
 
+    # --- placing a negative on the page ---------------------------------------------
+
+    def set_placement(self, placement: tuple[float, float] | None) -> None:
+        """Put the negative's top-left corner at (left, top) inches on the page; None centres it."""
+        if placement is not None and not all(np.isfinite(placement)):
+            raise SessionError(f"not a position on the page: {placement}")
+        self.placement = placement
+
+    @property
+    def placed(self) -> bool:
+        """A negative moved from the centre, with room to move inside the margins."""
+        if not self.negative or self.placement is None:
+            return False
+        room_w, room_h = self._room()
+        width, height = self.size_inches()
+        return width <= room_w + 1e-6 and height <= room_h + 1e-6
+
+    def _room(self) -> tuple[float, float]:
+        paper_w, paper_h = PAPER_SIZES[self.paper]
+        return paper_w - 2 * self.margin, paper_h - 2 * self.margin
+
+    def page_position(self) -> tuple[float, float]:
+        """Where the print's top-left corner lands: inches from the paper's left and top."""
+        width, height = self.size_inches()
+        paper_w, paper_h = PAPER_SIZES[self.paper]
+        if not self.placed or self.placement is None:
+            return (paper_w - width) / 2, (paper_h - height) / 2
+        left, top = self.placement
+        return (
+            min(max(left, self.margin), paper_w - self.margin - width),
+            min(max(top, self.margin), paper_h - self.margin - height),
+        )
+
+    def _on_page(self, image: NDArray[np.uint16], ppi: float) -> NDArray[np.uint16]:
+        """The image on clear film filling the page inside its margins, at its position. That
+        area prints centred on the page, so the negative lands where it was put."""
+        room_w, room_h = self._room()
+        height, width = image.shape[:2]
+        page_w, page_h = max(round(room_w * ppi), width), max(round(room_h * ppi), height)
+        left, top = self.page_position()
+        x = min(max(round((left - self.margin) * ppi), 0), page_w - width)
+        y = min(max(round((top - self.margin) * ppi), 0), page_h - height)
+        page = np.full((page_h, page_w, image.shape[2]), MAX_VALUE, dtype=np.uint16)
+        page[y : y + height, x : x + width] = image
+        return page
+
     # --- rendering ------------------------------------------------------------------
 
     def render(self, pixels: NDArray[np.uint16], dpi: float | None = None) -> NDArray[np.uint16]:
@@ -289,7 +339,8 @@ class PrintSession:
         colour = self._colour()
         if self.prints_colour and colour is not None:
             return self.render_colour(colour)
-        return self.render(self._source())
+        image = self.render(self._source())
+        return self._on_page(image, self.effective_ppi()) if self.placed else image
 
     def _source(self) -> NDArray[np.uint16]:
         """The pixels negatives are made from: the photo's colour for a colour separation
@@ -373,6 +424,14 @@ class PrintSession:
         marks = [name for on, name in named if on]
         return [f"Darkroom marks: {' and '.join(marks)}"] if marks else []
 
+    def _position_line(self) -> list[str]:
+        if self.placement is None:
+            return []
+        if not self.placed:
+            return ["Position: centred (no room to move it inside the margins)"]
+        left, top = self.page_position()
+        return [f"Position: {self._length(left)} from the left, {self._length(top)} from the top"]
+
     def _length(self, inches: float) -> str:
         return length(inches, self.units)
 
@@ -420,6 +479,7 @@ class PrintSession:
                 *self._within(),
                 f"Size: {size(width, height, self.units)} with a {self._length(self.safe_edge)} "
                 f"safe edge{outline}",
+                *self._position_line(),
                 *self._separation_lines(process),
                 f"Mirrored: {'yes' if self.mirror else 'no'}",
                 *self._marks_line(),

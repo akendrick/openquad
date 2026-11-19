@@ -6,6 +6,7 @@
 //                                       [--outline INCHES] [--units in|mm] [--setups FOLDER] [--setup NAME]
 //                                       [--separations N] [--layer K] [--overlap STEPS] [--step-test] [--coats-chart]
 //                                       [--show-coats] [--colour-separation] [--saturation S]
+//                                       [--on-page] [--place LEFT,TOP] [--fit-off] [--ppi PPI]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide|contact-sheet [--scan SCAN] [--run RUN]
 //                                       [--photos P1,P2,...] [--landscape] [--white] [--wedge] [--labels] [--crop]
 //                                       (contact-sheet)
@@ -133,6 +134,12 @@ enum Snapshot {
         if arguments.contains("--coats-chart") { model.openCoatsChart() }
         if arguments.contains("--show-coats") { model.setShowCoats(true) }
         if let layer = value("--layer").flatMap(Int.init) { model.setLayer(layer - 1) }
+        if arguments.contains("--fit-off") { model.setFit(false) }
+        if let ppi = value("--ppi").flatMap(Double.init) { model.setPPI(ppi) }
+        if arguments.contains("--on-page") { model.setShowOnPage(true) }
+        if let place = value("--place")?.split(separator: ",").compactMap({ Double($0) }), place.count == 2 {
+            model.setPlacement((place[0], place[1]))
+        }
         if arguments.contains("--sheet-size") {  // the test sheets' set size, and their marks
             root.show(.processCalibration)
             root.blocking?.sheetSize = (8, 10)
