@@ -1046,8 +1046,6 @@ def formats_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
     save("jp2-rgba8.jp2", Image.fromarray(rgba, "RGBA"))
     la = np.dstack([ramp, np.where(ramp > 128, 255, 60).astype(np.uint8)])
     save("jp2-la8.jp2", Image.fromarray(la, "LA"))
-    save("jp2-rgb8-lossy.jp2", Image.fromarray(colour, "RGB"), irreversible=True,
-         quality_mode="rates", quality_layers=[12])  # fmt: skip
     layers = directory / "layers.xcf"  # a two-layer XCF, for the tests that run a real GIMP
     shutil.copyfile(ROOT / "fixtures" / "layers.xcf", layers)
     for fixture in sorted((ROOT / "fixtures" / "jpeg2000").glob("*.j*")):

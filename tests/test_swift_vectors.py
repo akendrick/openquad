@@ -23,16 +23,39 @@ def load_script() -> ModuleType:
 EXPORT = load_script()
 
 
-def same(a: Any, b: Any) -> bool:
-    """Equal, except floats may differ in the last digits: numpy's maths routines vary
-    slightly between CPUs (the Swift tests allow the same 1e-12)."""
+def difference(a: Any, b: Any, where: str = "", off_by: int = 0) -> str | None:
+    """Where a and b first differ, or None. Floats may differ in the last digits: numpy's
+    maths routines vary slightly between CPUs (the Swift tests allow the same 1e-12). Inside
+    a lossy JPEG 2000 entry, whole numbers may differ by 1: its wavelet is floating point."""
     if isinstance(a, float) or isinstance(b, float):
-        return math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-12)
+        close = math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-12)
+        return None if close else f"{where}: {a!r} != {b!r}"
     if isinstance(a, dict) and isinstance(b, dict):
-        return a.keys() == b.keys() and all(same(a[k], b[k]) for k in a)
+        if a.keys() != b.keys():
+            return f"{where}: keys {sorted(a)} != {sorted(b)}"
+        if a.get("lossy") is True and b.get("lossy") is True:
+            off_by = 1
+        for k in a:
+            found = difference(a[k], b[k], f"{where}.{k}", off_by)
+            if found:
+                return found
+        return None
     if isinstance(a, list) and isinstance(b, list):
-        return len(a) == len(b) and all(same(x, y) for x, y in zip(a, b, strict=True))
-    return bool(a == b)
+        if len(a) != len(b):
+            return f"{where}: {len(a)} items != {len(b)}"
+        for i, (x, y) in enumerate(zip(a, b, strict=True)):
+            found = difference(x, y, f"{where}[{i}]", off_by)
+            if found:
+                return found
+        return None
+    numbers = type(a) is int and type(b) is int
+    if numbers and abs(a - b) <= off_by:
+        return None
+    return None if a == b else f"{where}: {a!r} != {b!r}"
+
+
+def same(a: Any, b: Any) -> bool:
+    return difference(a, b) is None
 
 
 def test_same_allows_only_tiny_float_differences() -> None:
@@ -40,6 +63,12 @@ def test_same_allows_only_tiny_float_differences() -> None:
     assert not same({"x": [1.0]}, {"x": [1.0001]})
     assert not same([1, 2], [1, 3])
     assert not same({"x": 1}, {"y": 1})
+    lossy = {"lossy": True, "raw": [10, 20]}
+    assert same(lossy, {"lossy": True, "raw": [11, 19]})
+    assert not same(lossy, {"lossy": True, "raw": [12, 20]})
+    assert not same({"lossy": False, "raw": [10]}, {"lossy": False, "raw": [11]})
+    assert not same([True], [False])
+    assert difference({"a": [1, 2]}, {"a": [1, 3]}) == ".a[1]: 2 != 3"
 
 
 def test_committed_vectors_match_the_python_core(tmp_path: Path) -> None:
@@ -47,8 +76,9 @@ def test_committed_vectors_match_the_python_core(tmp_path: Path) -> None:
     for path in (p for p in fresh if p.suffix == ".json"):  # scans are checked via measure.json
         committed = EXPORT.DEFAULT_DIR / path.name
         assert committed.exists(), f"missing {committed}; run scripts/export_swift_vectors.py"
-        assert same(json.loads(committed.read_text()), json.loads(path.read_text())), (
-            f"{path.name} is out of date: the Python core changed. If intended, run "
+        found = difference(json.loads(committed.read_text()), json.loads(path.read_text()))
+        assert found is None, (
+            f"{path.name} is out of date at {found}: the Python core changed. If intended, run "
             "scripts/export_swift_vectors.py and update the Swift port to match."
         )
 
