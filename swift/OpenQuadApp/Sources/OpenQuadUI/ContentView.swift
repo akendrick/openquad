@@ -104,6 +104,7 @@ public struct ContentView: View {
                     if !model.sizeDescription.isEmpty {
                         LabeledContent("Print size") { Text(model.sizeDescription).multilineTextAlignment(.trailing) }
                     }
+                    if model.session.negative { placementControls }
                 }
             }
             .formStyle(.grouped)
@@ -130,6 +131,32 @@ public struct ContentView: View {
                     .disabled(!model.canPrint)
             }
             .padding()
+        }
+    }
+
+    /// Where the negative goes on the page: centred, or moved (by dragging it on the page
+    /// preview, or step by step here). Every negative of a separation prints in the same place.
+    @ViewBuilder private var placementControls: some View {
+        Toggle("Preview on the page", isOn: Binding(get: { model.showOnPage }, set: { model.setShowOnPage($0) }))
+        LabeledContent("Position") {
+            HStack {
+                Text(model.positionDescription).multilineTextAlignment(.trailing)
+                if model.session.placement != nil { Button("Centre") { model.setPlacement(nil) } }
+            }
+        }
+        if let layout = model.pageLayout, model.session.photo != nil {
+            let (paperWidth, paperHeight) = layout.paper, negative = layout.negative
+            let maxLeft = paperWidth - layout.margin - negative.width, maxTop = paperHeight - layout.margin - negative.height
+            if maxLeft >= layout.margin - 1e-6 && maxTop >= layout.margin - 1e-6 {
+                LengthStepper(title: "From the left", inches: negative.minX, range: layout.margin...max(layout.margin, maxLeft),
+                              inchStep: 0.125, mmStep: 1, units: model.units) { model.setPlacement((Double($0), Double(negative.minY))) }
+                LengthStepper(title: "From the top", inches: negative.minY, range: layout.margin...max(layout.margin, maxTop),
+                              inchStep: 0.125, mmStep: 1, units: model.units) { model.setPlacement((Double(negative.minX), Double($0))) }
+            } else {
+                Text("The negative fills the page inside its margins, so it prints centred.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -313,12 +340,16 @@ public struct ContentView: View {
         ZStack {
             Color(nsColor: .underPageBackgroundColor)
             if let image = model.preview {
-                Image(decorative: image, scale: 1)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fit)
-                    .shadow(radius: 4)
-                    .padding(24)
+                if model.showingPage {
+                    PagePreview(model: model, image: image)
+                } else {
+                    Image(decorative: image, scale: 1)
+                        .resizable()
+                        .interpolation(.high)
+                        .aspectRatio(contentMode: .fit)
+                        .shadow(radius: 4)
+                        .padding(24)
+                }
                 if let caption = model.previewCaption {
                     VStack {
                         Spacer()

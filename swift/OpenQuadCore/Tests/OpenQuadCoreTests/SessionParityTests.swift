@@ -55,6 +55,7 @@ struct SessionParity {
             session.units = LengthUnit(rawValue: c["units"] as? String ?? "in")!
             session.printer = "Canon_MG3600_series"
             try session.setColourPrint(c["colour_print"] as? Bool ?? false)
+            try session.setPlacement((c["placement"] as? [NSNumber]).map { ($0[0].doubleValue, $0[1].doubleValue) })
 
             #expect(session.printsColour == c["prints_colour"] as? Bool)
             #expect(abs(try session.effectivePPI() - (c["ppi_used"] as! NSNumber).doubleValue) < 1e-9)
@@ -63,6 +64,9 @@ struct SessionParity {
             #expect(try session.fitsOnPaper() == c["fits"] as? Bool)
             #expect(try session.summary() == c["summary"] as? [String])
             #expect(session.notes == c["notes"] as? [String])
+            #expect(session.placed == c["placed"] as? Bool)
+            let position = try session.pagePosition(), expectedPosition = doubles(c["position"])
+            #expect(abs(position.0 - expectedPosition[0]) < 1e-9 && abs(position.1 - expectedPosition[1]) < 1e-9)
             let rendered = try session.renderPrint()
             #expect([rendered.height, rendered.width, 3] == ints(c["rendered_shape"]))
             #expect(rendered.pixels.map(Int.init) == ints(c["rendered"]))

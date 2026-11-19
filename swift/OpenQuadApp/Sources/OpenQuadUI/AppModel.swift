@@ -227,6 +227,10 @@ public final class AppModel {
 
     /// What the preview shows, when it isn't simply the print: a colour print, soft-proofed or not.
     public var previewCaption: String? {
+        if showingPage {
+            if session.placement != nil && !session.placed { return "On the page: too big to move inside the margins" }
+            return "On the page: drag the negative to move it (it stays inside the margins)"
+        }
         if showingCoats {
             if session.colourSeparation != nil {
                 return "All \(session.negativeCount) coats together, in their pigments' colours (prints one negative at a time)"
@@ -466,11 +470,49 @@ public final class AppModel {
 
     public func setShowCoats(_ on: Bool) {
         showCoats = on
+        if on { showOnPage = false }
         refreshPreview()
     }
 
     /// The preview is the coats map rather than a negative.
     public var showingCoats: Bool { showCoats && session.negative && session.separated }
+
+    /// Show the negative on its page, where it will print, to move it about.
+    public private(set) var showOnPage = false
+
+    public func setShowOnPage(_ on: Bool) {
+        showOnPage = on
+        if on { showCoats = false }
+        refreshPreview()
+    }
+
+    /// The preview is the whole page with the negative on it.
+    public var showingPage: Bool { showOnPage && session.negative && session.photo != nil && !showingCoats }
+
+    /// Move the negative's top-left corner to (left, top) inches on the page, kept inside the
+    /// margins; nil centres it. Every negative of a separation prints in the same place.
+    public func setPlacement(_ placement: (Double, Double)?) {
+        do {
+            try session.setPlacement(placement)
+            if session.placed { try session.setPlacement(try session.pagePosition()) }  // as kept inside the margins
+            error = nil
+        } catch {
+            self.error = String(describing: error)
+        }
+    }
+
+    /// The page, the room inside its margins and the negative on it, all in inches.
+    public var pageLayout: (paper: (Double, Double), margin: Double, negative: CGRect)? {
+        guard session.negative, let size = try? session.sizeInches(), let position = try? session.pagePosition() else { return nil }
+        return (Paper.sizes[session.paper]!, session.margin, CGRect(x: position.0, y: position.1, width: size.0, height: size.1))
+    }
+
+    /// Where the negative is, for the Page section: "Centred" or its distance from two edges.
+    public var positionDescription: String {
+        guard session.placement != nil else { return "Centred" }
+        guard session.placed, let (left, top) = try? session.pagePosition() else { return "Centred (no room to move it)" }
+        return "\(units.length(left)) from the left, \(units.length(top)) from the top"
+    }
 
     /// Show (and print) negative `layer` of the separation.
     public func setLayer(_ layer: Int) {
@@ -972,9 +1014,12 @@ public final class AppModel {
 
     /// Everything the native print panel needs: the rendered image, its size and a title.
     public func printRequest() async -> (RGBImage, Double, Double, String, String)? {
-        guard canPrint, let (width, height) = try? session.sizeInches() else { return nil }
+        guard canPrint, var (width, height) = try? session.sizeInches() else { return nil }
         do {
             let image = try await renderedPrint()
+            if session.placed, let ppi = try? session.effectivePPI() {  // the page inside its margins
+                (width, height) = (Double(image.width) / ppi, Double(image.height) / ppi)
+            }
             return (image, width, height, session.paper, session.jobTitle)
         } catch {
             self.error = String(describing: error)

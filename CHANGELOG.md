@@ -7,6 +7,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A negative can go anywhere on the page. App: "Preview on the page" under Page in the Negative
+  tab shows the whole sheet with its margins dashed; drag the negative to move it, or step it with
+  From the left and From the top, and Centre puts it back. It is kept inside the margins, and the
+  summary gives its position. When moved, the print is the page inside its margins with the
+  negative in place on clear film, so it lands where it was put through the print panel or `lp`.
+  Core: `PrintSession.set_placement` and `page_position` in Python and Swift alike (shared
+  vectors).
 - Colour separations: a colour photo split by colour into 2-4 negatives, one per coat of a
   coloured pigment (tricolour gum, cyanotype under gum). Each coat is the colour it prints at full
   strength (pigment presets or any colour); each pixel gets the coat strengths whose stacked
