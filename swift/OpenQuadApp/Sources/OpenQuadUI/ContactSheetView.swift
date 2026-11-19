@@ -363,7 +363,7 @@ public struct ContactSheetView: View {
 
     private func addPhotos() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.image]
+        panel.allowedContentTypes = [.image] + PhotoTypes.extra
         panel.allowsMultipleSelection = true
         if panel.runModal() == .OK { model.add(panel.urls) }
     }

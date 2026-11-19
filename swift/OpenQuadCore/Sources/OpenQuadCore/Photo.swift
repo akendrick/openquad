@@ -1,4 +1,5 @@
-// Loading a photo for printing: any greyscale image, whatever it was saved as.
+// Loading a photo for printing: any greyscale image, whatever it was saved as (TIFF, PNG,
+// JPEG and the like through ImageIO, JPEG 2000 through OpenJPEG, GIMP's XCF through GIMP).
 // Mirrors openquad/photo.py: transparent edges are cropped, partly transparent pixels
 // go onto paper white, greyscale stored as RGB is read as grey, and a true colour image
 // is converted by luminance (`converted` says so); its colour (on white, 16-bit) and
@@ -59,7 +60,38 @@ public enum Photos {
 
     /// Load a photo as 16-bit greyscale.
     public static func load(_ url: URL) throws -> Photo {
+        let decoded = Xcf.isXcf(head(url, 9)) ? try Xcf.flattened(url) { try decode($0) } : try decode(url)
+        return try build(decoded, name: url.path)
+    }
+
+    /// The first `count` bytes of a file (empty if it can't be read).
+    static func head(_ url: URL, _ count: Int) -> Data {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return Data() }
+        defer { try? handle.close() }
+        return (try? handle.read(upToCount: count)) ?? Data()
+    }
+
+    /// A file's samples before cropping, placing on white and conversion to grey.
+    struct Decoded {
+        var values: [UInt16]  // interleaved, alpha last
+        var width: Int
+        var height: Int
+        var channels: Int
+        var scale: Double  // 255 or 65535
+        var minIsWhite = false
+        var premultiplied = false
+        var dpi: (Double, Double)?
+        var profile: Data?  // only when the file embeds one
+    }
+
+    /// Read a file's samples: JPEG 2000 through OpenJPEG, anything else through ImageIO.
+    static func decode(_ url: URL) throws -> Decoded {
         let name = url.path
+        if JPEG2000.isJPEG2000(head(url, 12)) {
+            let j = try JPEG2000.read(url, data: try Data(contentsOf: url))
+            return Decoded(values: j.values, width: j.width, height: j.height, channels: j.channels,
+                           scale: j.bits == 16 ? 65535 : 255, dpi: j.dpi, profile: j.profile)
+        }
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
             throw ImageFormatError(description: "\(name): not a readable image")
@@ -67,11 +99,20 @@ public enum Photos {
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
         let isTIFF = ["tif", "tiff"].contains(url.pathExtension.lowercased())
         let (values, channels, scale) = try samples(image, isTIFF: isTIFF, name: name)
-        let width = image.width, height = image.height
         let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
-        let minIsWhite = isTIFF && (tiff[kCGImagePropertyTIFFPhotometricInterpretation] as? NSNumber)?.intValue == 0
-        let premultiplied = isTIFF && [.premultipliedLast, .premultipliedFirst].contains(image.alphaInfo)
-        let pixels = values.map { Double($0) / scale }
+        // ImageIO names a profile only when the file embeds one.
+        let embedded = properties[kCGImagePropertyProfileName] != nil ? image.colorSpace?.copyICCData() as Data? : nil
+        return Decoded(values: values, width: image.width, height: image.height, channels: channels, scale: scale,
+                       minIsWhite: isTIFF && (tiff[kCGImagePropertyTIFFPhotometricInterpretation] as? NSNumber)?.intValue == 0,
+                       premultiplied: isTIFF && [.premultipliedLast, .premultipliedFirst].contains(image.alphaInfo),
+                       dpi: dpi(properties, isTIFF: isTIFF, source: source), profile: embedded)
+    }
+
+    /// Crop transparent edges, place on white, and convert to grey (keeping true colour).
+    static func build(_ decoded: Decoded, name: String) throws -> Photo {
+        let (width, height, channels) = (decoded.width, decoded.height, decoded.channels)
+        let (minIsWhite, premultiplied) = (decoded.minIsWhite, decoded.premultiplied)
+        let pixels = decoded.values.map { Double($0) / decoded.scale }
         let hasAlpha = channels == 2 || channels == 4
         let colours = hasAlpha ? channels - 1 : channels
 
@@ -124,11 +165,9 @@ public enum Photos {
                 out[y * outWidth + x] = onWhite(grey, alpha: a, premultiplied: premultiplied)
             }
         }
-        // ImageIO names a profile only when the file embeds one.
-        let embedded = properties[kCGImagePropertyProfileName] != nil ? image.colorSpace?.copyICCData() as Data? : nil
-        return Photo(width: outWidth, height: outHeight, pixels: out, dpi: dpi(properties, isTIFF: isTIFF, source: source),
+        return Photo(width: outWidth, height: outHeight, pixels: out, dpi: decoded.dpi,
                      converted: converted, cropped: cropped, colour: colour,
-                     iccProfile: converted ? rgbProfile(embedded) : nil)
+                     iccProfile: converted ? rgbProfile(decoded.profile) : nil)
     }
 
     /// The resolution as Python reads it: TIFF tags, or a PNG's pixels per metre x 0.0254.

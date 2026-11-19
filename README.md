@@ -37,7 +37,8 @@ opens on first launch (and later from **Help** or the **?** button).
 
 - **Print a photo:** open a photo, leave toning neutral or choose a duotone, and print through the
   macOS print panel or straight to a printer. Does the print match the preview, and come out at the
-  size it says?
+  size it says? Photos can be TIFF, PNG, JPEG, JPEG 2000 (`.jp2`, `.j2k`, `.jpx`, read at full
+  16-bit depth) or GIMP's `.xcf` (opened through GIMP 3, which must be installed).
 - **Calibrate your printer**, if it has a network (AirScan / eSCL) scanner: Calibrate This Printer…
   prints a test page, scans it and corrects colour casts and tone. How many rounds did it take, and
   did the goals get met?
@@ -281,3 +282,8 @@ The Swift core is matched against the Python reference with test vectors
 ## Licence
 
 GPL-2.0-or-later. See [LICENSE](LICENSE). OpenQuad is not affiliated with QuadToneRIP.
+
+The Mac app includes the JPEG 2000 decoder from [OpenJPEG](https://github.com/uclouvain/openjpeg)
+2.5.4, under the BSD 2-clause licence
+([swift/OpenQuadCore/Sources/COpenJPEG/LICENSE](swift/OpenQuadCore/Sources/COpenJPEG/LICENSE),
+also inside the app as `OpenJPEG-LICENSE.txt`).

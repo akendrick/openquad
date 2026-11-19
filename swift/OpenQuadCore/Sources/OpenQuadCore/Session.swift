@@ -146,7 +146,12 @@ public struct PrintSession: Sendable {
     // MARK: choosing things
 
     public mutating func open(_ url: URL) throws {
-        photo = try Photos.load(url)
+        open(url, photo: try Photos.load(url))
+    }
+
+    /// Use a photo already loaded from `url` (e.g. an XCF, which GIMP takes a few seconds over).
+    public mutating func open(_ url: URL, photo loaded: Photo) {
+        photo = loaded
         source = url
         notes = []
         colourPrint = false

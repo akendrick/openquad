@@ -48,7 +48,7 @@ PRESET_LABELS = {
     "red-only": "Red only",
     "warm-split": "Warm split tone",
 }
-IMAGE_FILTER = "Images (*.tif *.tiff *.png *.jpg *.jpeg)"
+IMAGE_FILTER = "Images (*.tif *.tiff *.png *.jpg *.jpeg *.jp2 *.j2k *.jpx *.jpf *.xcf)"
 
 
 class _Signals(QObject):

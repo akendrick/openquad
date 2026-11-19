@@ -188,12 +188,33 @@ public final class AppModel {
     // MARK: choosing things
 
     public func openPhoto(_ url: URL) {
-        attempt {
-            try session.open(url)
-            remember()
+        guard Xcf.isXcf(url) else {
+            attempt {
+                try session.open(url)
+                remember()
+            }
+            refreshPreview()
+            return
         }
-        refreshPreview()
+        // GIMP takes a few seconds to merge an XCF: do it off the main thread.
+        let token = UUID()
+        openingToken = token
+        openingInGIMP = url.lastPathComponent
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { Result { try Photos.load(url) } }.value
+            guard openingToken == token else { return }
+            openingInGIMP = nil
+            attempt {
+                session.open(url, photo: try result.get())
+                remember()
+            }
+            refreshPreview()
+        }
     }
+
+    /// The XCF being opened through GIMP, if any (its file name).
+    public private(set) var openingInGIMP: String?
+    private var openingToken: UUID?
 
     public func setPreset(_ name: String) {
         attempt { try session.setPreset(name) }

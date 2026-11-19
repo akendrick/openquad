@@ -11,7 +11,9 @@ let package = Package(
         .library(name: "OpenQuadCore", targets: ["OpenQuadCore"]),
     ],
     targets: [
-        .target(name: "OpenQuadCore"),
+        // OpenJPEG 2.5.4's decoder (BSD 2-clause), for JPEG 2000 photos at full bit depth.
+        .target(name: "COpenJPEG"),
+        .target(name: "OpenQuadCore", dependencies: ["COpenJPEG"]),
         .testTarget(
             name: "OpenQuadCoreTests",
             dependencies: ["OpenQuadCore"],

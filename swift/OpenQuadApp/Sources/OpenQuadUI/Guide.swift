@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 21
+    public static let version = 22
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -29,7 +29,9 @@ public struct GuideView: View {
         Page(symbol: "printer", title: "Print a photo",
              text: "The Print tab: everything is on the left; the preview on the right shows how the print should look.",
              steps: ["Open Photo… (⌘O): greyscale or colour, any size. Colour photos are converted to grey, "
-                        + "unless you turn on Print in colour.",
+                        + "unless you turn on Print in colour. TIFF, PNG, JPEG and JPEG 2000 (read at full 16-bit "
+                        + "depth) open directly; a GIMP .xcf opens through GIMP 3, if it is installed, which takes a "
+                        + "few seconds.",
                      "Print in colour (colour-managed printer), for a colour photo: it keeps its colours and colour "
                         + "profile, skips toning and calibration, and macOS matches it to the printer: choose the "
                         + "paper type or profile in the print panel. Soft-proof with a paper's profile to see it in "

@@ -1,5 +1,8 @@
 """Load a photo for printing: any greyscale image, whatever it was saved as.
 
+TIFF goes through tifffile, JPEG 2000 through OpenJPEG at full depth (jpeg2000.py), GIMP's
+XCF through GIMP 3 (xcf.py), and PNG, JPEG and the rest through Pillow.
+
 Real files come in many forms: 8- or 16-bit, greyscale saved as RGB, with an
 alpha channel, with a transparent band left from canvas resizing. `load_photo`
 turns all of these into 16-bit greyscale (0 black, 65535 white):
@@ -13,6 +16,7 @@ turns all of these into 16-bit greyscale (0 black, 65535 white):
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,7 +27,9 @@ from PIL import Image
 
 from openquad.colour import linear_to_srgb, luminance, srgb_to_linear
 from openquad.imageio import ImageFormatError, read_dpi
+from openquad.jpeg2000 import is_jpeg2000, read_jpeg2000
 from openquad.quadfile import MAX_VALUE
+from openquad.xcf import flattened, is_xcf
 
 _ICC_TAG = 34675
 GREY_TOLERANCE = 2 / 255  # channels within this count as grey (JPEG noise)
@@ -69,6 +75,9 @@ def _read(
             tag = page.tags.get(_ICC_TAG)
             profile = bytes(tag.value) if tag is not None else None
         dpi = read_dpi(path)
+    elif _head(path, 12, is_jpeg2000):
+        raw, dpi, profile = read_jpeg2000(path)
+        premultiplied, min_is_white = False, False
     else:
         with Image.open(path) as image:
             info_dpi = image.info.get("dpi")
@@ -94,10 +103,23 @@ def _read(
     return pixels, premultiplied, min_is_white, dpi, profile
 
 
+def _head(path: Path, count: int, test: Callable[[bytes], bool]) -> bool:
+    """Do the file's first `count` bytes pass `test`? (False if it can't be read.)"""
+    try:
+        with path.open("rb") as f:
+            return test(f.read(count))
+    except OSError:
+        return False
+
+
 def load_photo(path: str | Path) -> Photo:
     """Load a photo as 16-bit greyscale; see the module docstring for what's handled."""
     path = Path(path)
-    pixels, premultiplied, min_is_white, dpi, profile = _read(path)
+    if _head(path, len(b"gimp xcf "), is_xcf):
+        with flattened(path) as tiff:
+            pixels, premultiplied, min_is_white, dpi, profile = _read(tiff)
+    else:
+        pixels, premultiplied, min_is_white, dpi, profile = _read(path)
     channels = pixels.shape[-1]
     has_alpha = channels in (2, 4)
     colour = pixels[..., : channels - 1] if has_alpha else pixels
