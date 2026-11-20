@@ -75,12 +75,15 @@ def test_a_negative_that_fills_the_page_can_still_move_along(tmp_path: Path) -> 
     assert (page[-10:] == MAX_VALUE).all()  # clear film below it
 
 
-def test_only_negatives_are_moved(tmp_path: Path) -> None:
+def test_a_print_is_moved_too(tmp_path: Path) -> None:
     session = negative(tmp_path)
-    session.set_placement((1.0, 1.0))
     session.set_mode("print")
-    assert not session.placed and session.render_print().shape == (400, 300, 3)
-    assert not any(line.startswith("Position") for line in session.summary())
+    centred = session.render_print()
+    session.set_placement((1.0, 1.0))
+    assert session.placed
+    page = session.render_print()  # the page inside its margins, the print where it was put
+    assert page.shape[0] > centred.shape[0] and page.shape[1] > centred.shape[1]
+    assert any(line.startswith("Position: 1") for line in session.summary())
 
 
 def test_placement_is_checked_and_cleared(tmp_path: Path) -> None:

@@ -93,8 +93,17 @@ def _wedge(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
         return None
     side, gap = value.get("side"), value.get("gap")
-    if side not in ("top", "bottom", "left", "right") or not isinstance(gap, (int, float)):
+    if side not in ("top", "bottom", "left", "right") or not _number(gap):
         return None
+    steps, width, style = value.get("steps"), value.get("width"), value.get("style")
     return {"grey": value.get("grey") is True, "colour": value.get("colour") is True,
-            "side": side, "gap": min(max(float(gap), 0.0), 2.0),
-            "separate": value.get("separate") is True}  # fmt: skip
+            "side": side, "gap": min(max(float(gap), 0.0), 2.0),  # type: ignore[arg-type]
+            "separate": value.get("separate") is True,
+            "steps": steps if steps in (11, 21, 31, 51) and not isinstance(steps, bool) else 31,
+            "width": min(max(float(width), 0.2), 1.0) if _number(width) else 0.4,  # type: ignore[arg-type]
+            "style": style if style in ("strip", "calibration") else "strip",
+            "labels": value.get("labels") is True}  # fmt: skip
+
+
+def _number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)

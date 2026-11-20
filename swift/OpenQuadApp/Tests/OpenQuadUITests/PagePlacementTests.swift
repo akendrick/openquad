@@ -77,4 +77,16 @@ struct PagePlacementTests {
         m.setShowOnPage(true)
         #expect(m.previewCaption == "On the page: too big to move inside the margins")
     }
+
+    @Test func aPrintIsPlacedOnItsPageToo() throws {
+        let m = AppModel(settingsURL: folder.appendingPathComponent("settings.json"), role: .print)
+        let photo = folder.appendingPathComponent("print.tif")
+        try ImageFiles.saveGrey(photo, GreyImage(width: 300, height: 400, pixels: Array(repeating: 30000, count: 120_000), dpi: (100, 100)))
+        m.openPhoto(photo)
+        m.setFit(false)
+        m.setShowOnPage(true)
+        #expect(m.showingPage && m.pageLayout?.negative.size == CGSize(width: 3, height: 4))
+        m.setPlacement((1, 1))
+        #expect(m.positionDescription == "1 in from the left, 1 in from the top")
+    }
 }

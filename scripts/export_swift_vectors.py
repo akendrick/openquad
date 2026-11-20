@@ -975,6 +975,18 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         {"photo": "photo-colour.png", "colour_wedge": True, "wedge": True, "paper": "4x6"},
         {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
          "placement": [1.0, 2.0], "wedge": True},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 100.0,
+         "outline": 0.02, "wedge": True, "wedge_gap": 0.03, "wedge_steps": 21,
+         "wedge_width": 0.6, "wedge_style": "calibration", "wedge_labels": True},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 100.0,
+         "mirror": True, "wedge": True, "wedge_side": "left", "wedge_gap": 0.05,
+         "wedge_steps": 11, "wedge_labels": True},
+        {"photo": "photo-grey.png", "fit": False, "ppi": 300.0, "wedge": True,
+         "wedge_side": "right", "wedge_gap": 0.02, "wedge_steps": 11, "wedge_width": 0.2,
+         "wedge_style": "calibration", "wedge_labels": True},
+        {"photo": "photo-colour.png", "colour_print": True, "fit": False, "ppi": 100.0,
+         "wedge": True, "colour_wedge": True, "wedge_side": "top", "wedge_labels": True,
+         "wedge_steps": 51},
     ]  # fmt: skip
     sessions = []
     for config in configurations:
@@ -1005,6 +1017,10 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         session.set_wedge_side(config.get("wedge_side", "bottom"))
         session.set_wedge_gap(config.get("wedge_gap", 0.25))
         session.wedge_separate = config.get("wedge_separate", False)
+        session.set_wedge_steps(config.get("wedge_steps", 31))
+        session.set_wedge_width(config.get("wedge_width", 0.4))
+        session.set_wedge_style(config.get("wedge_style", "strip"))
+        session.wedge_labels = config.get("wedge_labels", False)
         session.set_placement(tuple(config["placement"]) if "placement" in config else None)
         rendered = session.render_print()
         sessions.append({**config, "ppi_used": session.effective_ppi(),
@@ -1014,7 +1030,23 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
                          "placed": session.placed, "position": list(session.page_position()),
                          "rendered_shape": list(rendered.shape),
                          "rendered": _ints(rendered)})  # fmt: skip
-    return {"photos": photos, "calibration": calibration.read_text(), "sessions": sessions}, written
+    # Grey wedges on their own, with numbers every step, every 2nd and 5th.
+    from openquad.wedge import grey_wedge
+
+    grey_wedges = []
+    for length, thickness, horizontal, steps, calibration_style, frame, band, first in (
+        (330, 24, True, 11, False, 0, 36, False), (200, 30, False, 21, True, 3, 48, True),
+        (120, 40, True, 31, True, 2, 24, True), (510, 12, False, 51, False, 0, 60, False),
+        (60, 5, True, 11, True, 4, 0, False),
+    ):  # fmt: skip
+        made = grey_wedge(length, thickness, horizontal, steps, calibration_style, frame, band,
+                          first)  # fmt: skip
+        grey_wedges.append({"length": length, "thickness": thickness, "horizontal": horizontal,
+                            "steps": steps, "calibration": calibration_style, "frame": frame,
+                            "band": band, "band_first": first, "shape": list(made.shape),
+                            "sha256": _digest(made)["sha256"]})  # fmt: skip
+    return {"photos": photos, "calibration": calibration.read_text(), "sessions": sessions,
+            "grey_wedges": grey_wedges}, written  # fmt: skip
 
 
 def _rgb_profile() -> bytes:

@@ -79,7 +79,8 @@ def test_printer_options_are_remembered_and_checked(tmp_path: Path) -> None:
 
 def test_step_wedges_are_remembered_and_checked(tmp_path: Path) -> None:
     path = tmp_path / "settings.json"
-    wedge = {"grey": True, "colour": False, "side": "left", "gap": 0.5, "separate": True}
+    wedge = {"grey": True, "colour": False, "side": "left", "gap": 0.5, "separate": True,
+             "steps": 21, "width": 0.6, "style": "calibration", "labels": True}  # fmt: skip
     Settings(print_wedge=wedge).save(path)
     assert Settings.load(path).print_wedge == wedge and Settings.load(path).negative_wedge is None
     path.write_text(
@@ -94,4 +95,8 @@ def test_step_wedges_are_remembered_and_checked(tmp_path: Path) -> None:
         "side": "top",
         "gap": 2.0,
         "separate": False,
+        "steps": 31,
+        "width": 0.4,
+        "style": "strip",
+        "labels": False,
     }
