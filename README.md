@@ -86,7 +86,7 @@ The app keeps its calibration runs, scans and measurements in
 
 Hardware results: [docs/hardware-tests.md](docs/hardware-tests.md). Calibration data from real prints
 and scans: [calibration-data/](calibration-data/). Mac app details: [swift/README.md](swift/README.md).
-Screenshots: [docs/screenshots/](docs/screenshots/).
+Screenshots: [docs/screenshots/](docs/screenshots/) (the Print and Negative tabs are remade by `scripts/screenshots.py`).
 
 ## Python tools (command line and desktop app)
 
