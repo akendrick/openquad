@@ -108,6 +108,15 @@ struct ColourSeparationParity {
         let photo = try #require(session.photo)
         let byHand = try session.renderLayer(photo.colour!, width: photo.width, height: photo.height, layer: 2, colour: true)
         #expect(print.pixels == byHand.pixels)
+        session.wedge = true
+        session.mirror = true
+        try session.setWedgeSide("left")
+        for (k, expected) in ((v["session"] as! [String: Any])["wedged"] as! [[String: Any]]).enumerated() {
+            let negative = try session.renderLayer(photo.colour!, width: photo.width, height: photo.height, layer: k, colour: true)
+            #expect(digest(negative.pixels) == expected["sha256"] as? String, "wedged colour negative \(k + 1)")
+        }
+        session.wedge = false
+        session.mirror = false
         #expect(try session.preview(maxSide: 10).width <= 20)
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

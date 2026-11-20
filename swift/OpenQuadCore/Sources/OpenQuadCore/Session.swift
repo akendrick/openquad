@@ -45,6 +45,13 @@ public struct PrintSession: Sendable {
     /// Darkroom marks in black: in a negative's safe edge, or a white border round a print.
     public var guide = false  // a guide line round the image
     public var registration = false  // crosshair targets and corner crop marks
+    /// Step wedges beside the print, `wedgeGap` inches away on `wedgeSide`: the 31-step grey
+    /// wedge (through the same toning, calibration or process curve as the photo), and for a
+    /// colour print a colour gamut wedge.
+    public var wedge = false
+    public var colourWedge = false
+    public private(set) var wedgeSide = "bottom"
+    public private(set) var wedgeGap = Wedge.defaultGap
     /// How the summary shows lengths.
     public var units = LengthUnit.inches
     /// Separations: the photo split into several negatives by tone, printed one after another
@@ -162,6 +169,37 @@ public struct PrintSession: Sendable {
         if photo!.converted { notes.append("This is a colour image; it is converted to greyscale unless printed in colour.") }
     }
 
+    public mutating func setWedgeSide(_ side: String) throws {
+        guard Wedge.sides.contains(side) else {
+            throw SessionError(description: "unknown side \(pyRepr(side)); choose from \(Wedge.sides.joined(separator: ", "))")
+        }
+        wedgeSide = side
+    }
+
+    public mutating func setWedgeGap(_ gap: Double) throws {
+        guard gap.isFinite, (0...Wedge.maxGap).contains(gap) else {
+            throw SessionError(description: "the gap must be 0 to 2 in, got \(gap)")
+        }
+        wedgeGap = gap
+    }
+
+    /// The wedges printed, nearest the print first: grey, and colour on a colour print.
+    public var wedgeKinds: [Wedge.Kind] {
+        var kinds: [Wedge.Kind] = wedge ? [.grey] : []
+        if colourWedge && !negative && printsColour { kinds.append(.colour) }
+        return kinds
+    }
+
+    func wedgeExtra() -> (Double, Double) {
+        Wedge.extra(wedgeKinds, side: layoutWedgeSide, gap: wedgeGap, border: negative ? safeEdge : 0)
+    }
+
+    /// The side as laid out before a negative is mirrored, so it prints on the side chosen.
+    var layoutWedgeSide: String {
+        guard negative && mirror else { return wedgeSide }
+        return ["left": "right", "right": "left"][wedgeSide] ?? wedgeSide
+    }
+
     public mutating func setPreset(_ name: String) throws {
         guard Composite.presets[name] != nil else { throw SessionError(description: "unknown preset \(pyRepr(name))") }
         preset = name
@@ -232,7 +270,9 @@ public struct PrintSession: Sendable {
     public func effectivePPI() throws -> Double {
         let photo = try currentPhoto()
         if fit {
-            var ppi = border != 0
+            let (extraWidth, extraHeight) = wedgeExtra()
+            var ppi = extraWidth != 0 || extraHeight != 0 ? try pagePPI(extraWidth, extraHeight)
+                : border != 0
                 ? try Paper.negativePPI(width: photo.width, height: photo.height, paper: paper, safeEdge: border, margin: margin)
                 : try Paper.fitPPI(width: photo.width, height: photo.height, paper: paper, margin: margin)
             if let maxSize {  // smaller of the page and the box (never past the page)
@@ -244,10 +284,24 @@ public struct PrintSession: Sendable {
         return photo.dpi?.0 ?? Self.fallbackPPI
     }
 
+    /// The resolution that fits the photo, its border and its wedges within the margins.
+    func pagePPI(_ extraWidth: Double, _ extraHeight: Double) throws -> Double {
+        let photo = try currentPhoto()
+        let (paperWidth, paperHeight) = Paper.sizes[paper]!
+        let roomWidth = paperWidth - 2 * margin - 2 * border - extraWidth
+        let roomHeight = paperHeight - 2 * margin - 2 * border - extraHeight
+        guard roomWidth > 0, roomHeight > 0 else {
+            throw SessionError(description: "no room for the photo and its wedge on \(paper)")
+        }
+        return max(Double(photo.width) / roomWidth, Double(photo.height) / roomHeight)
+    }
+
     public func sizeInches() throws -> (Double, Double) {
         let photo = try currentPhoto(), ppi = try effectivePPI()
-        // A negative's safe edge, or a print's border for its marks, goes round the photo.
-        return (Double(photo.width) / ppi + 2 * border, Double(photo.height) / ppi + 2 * border)
+        // A negative's safe edge, or a print's border for its marks, goes round the photo;
+        // any wedges sit beside it.
+        let (extraWidth, extraHeight) = wedgeExtra()
+        return (Double(photo.width) / ppi + 2 * border + extraWidth, Double(photo.height) / ppi + 2 * border + extraHeight)
     }
 
     public func fitsOnPaper() throws -> Bool {
@@ -311,15 +365,52 @@ public struct PrintSession: Sendable {
     /// `colour`: the pixels are 16-bit RGB, for a colour separation's negatives.
     public func render(_ pixels: [UInt16], width: Int, height: Int, dpi: Double? = nil, colour: Bool = false) throws -> RGBImage {
         if negative { return try renderLayer(pixels, width: width, height: height, layer: layer, dpi: dpi, colour: colour) }
+        let dpi = try dpi ?? effectivePPI()
         let rgb = Composite.composite(pixels, layers: Composite.presets[preset]!)
-        return Marks.addPrintMarks(RGBImage(width: width, height: height, pixels: calibration?.apply(rgb) ?? rgb),
-                                   dpi: try dpi ?? effectivePPI(), guide: guide, registration: registration)
+        let printed = Marks.addPrintMarks(RGBImage(width: width, height: height, pixels: calibration?.apply(rgb) ?? rgb),
+                                          dpi: dpi, guide: guide, registration: registration)
+        return withPrintWedges(printed, width: width, height: height, dpi: dpi, calibrated: true)
+    }
+
+    /// A print with its wedges: the grey wedge toned (and calibrated) like the photo, or left
+    /// neutral on a colour print, and the colour wedge.
+    func withPrintWedges(_ image: RGBImage, width: Int, height: Int, dpi: Double, calibrated: Bool = false,
+                         colour: Bool = false) -> RGBImage {
+        let horizontal = wedgeSide == "top" || wedgeSide == "bottom"
+        let length = horizontal ? width : height
+        let made = wedgeKinds.map { kind -> RGBImage in
+            if kind == .colour {
+                return Wedge.colour(length: length, row: max(1, pyRound(Wedge.colourRow * dpi)), horizontal: horizontal)
+            }
+            let (ramp, w, h) = Wedge.grey(length: length, thickness: max(1, pyRound(Wedge.width * dpi)), horizontal: horizontal)
+            if colour { return RGBImage(width: w, height: h, pixels: ramp.flatMap { [$0, $0, $0] }) }
+            let rgb = Composite.composite(ramp, layers: Composite.presets[preset]!)
+            return RGBImage(width: w, height: h, pixels: calibrated ? calibration?.apply(rgb) ?? rgb : rgb)
+        }
+        return Wedge.attach(image, made, side: wedgeSide, gap: pyRound(wedgeGap * dpi))
     }
 
     /// Negative `layer` of the separation (any layer is the whole negative without one).
     /// `pixels` are greyscale, or 16-bit RGB (`colour`) for a colour separation.
+    /// A grey wedge is made into a negative the same way, with its own safe edge.
     public func renderLayer(_ pixels: [UInt16], width: Int, height: Int, layer: Int, dpi: Double? = nil,
                             colour: Bool = false) throws -> RGBImage {
+        let dpi = try dpi ?? effectivePPI()
+        let settings = negativeSettings(separated ? layer : nil)
+        let image = try negativeLayer(pixels, width: width, height: height, layer: layer, dpi: dpi, colour: colour,
+                                      settings: settings)
+        guard wedge else { return image }
+        let side = layoutWedgeSide, horizontal = side == "top" || side == "bottom"
+        var (ramp, w, h) = Wedge.grey(length: horizontal ? width : height, thickness: max(1, pyRound(Wedge.width * dpi)),
+                                      horizontal: horizontal)
+        if colour { ramp = ramp.flatMap { [$0, $0, $0] } }
+        let bare = NegativeSettings(colour: settings.colour, mirror: settings.mirror, safeEdge: settings.safeEdge, mark: false)
+        let made = try negativeLayer(ramp, width: w, height: h, layer: layer, dpi: dpi, colour: colour, settings: bare)
+        return Wedge.attach(image, [made], side: side, gap: pyRound(wedgeGap * dpi))
+    }
+
+    func negativeLayer(_ pixels: [UInt16], width: Int, height: Int, layer: Int, dpi: Double, colour: Bool,
+                       settings: NegativeSettings) throws -> RGBImage {
         var shaped = pixels
         var curve = process
         if let colourSeparation {
@@ -332,14 +423,15 @@ public struct PrintSession: Sendable {
             curve = layerProcess(layer)
         }
         shaped = curve?.apply(shaped) ?? shaped
-        return Negative.make(shaped, width: width, height: height, settings: negativeSettings(separated ? layer : nil),
-                             dpi: try dpi ?? effectivePPI())
+        return Negative.make(shaped, width: width, height: height, settings: settings, dpi: dpi)
     }
 
     /// A colour print: the photo's own colour, untouched, with any darkroom marks.
     public func renderColour(_ rgb: [UInt16], width: Int, height: Int, dpi: Double? = nil) throws -> RGBImage {
-        Marks.addPrintMarks(RGBImage(width: width, height: height, pixels: rgb), dpi: try dpi ?? effectivePPI(),
-                            guide: guide, registration: registration)
+        let dpi = try dpi ?? effectivePPI()
+        let printed = Marks.addPrintMarks(RGBImage(width: width, height: height, pixels: rgb), dpi: dpi,
+                                          guide: guide, registration: registration)
+        return withPrintWedges(printed, width: width, height: height, dpi: dpi, colour: true)
     }
 
     /// The full-resolution print: in colour, or rendered from the greyscale photo.
@@ -401,8 +493,10 @@ public struct PrintSession: Sendable {
             }
             return try render(shown, width: width, height: height, dpi: try effectivePPI() * scale, colour: colour)
         }
+        let dpi = try effectivePPI() * scale
         let toned = RGBImage(width: width, height: height, pixels: Composite.composite(pixels, layers: Composite.presets[preset]!))
-        return Marks.addPrintMarks(toned, dpi: try effectivePPI() * scale, guide: guide, registration: registration)
+        let shown = Marks.addPrintMarks(toned, dpi: dpi, guide: guide, registration: registration)
+        return withPrintWedges(shown, width: width, height: height, dpi: dpi)
     }
 
     /// Smooth 16-bit greyscale resampling (for previews only).
@@ -482,7 +576,7 @@ public struct PrintSession: Sendable {
                     + (outline != 0 ? " and a \(units.length(outline)) black outline" : ""),
             ] + (try positionLine()) + separationLines + [
                 "Mirrored: \(mirror ? "yes" : "no")",
-            ] + marksLine
+            ] + marksLine + wedgeLines
         }
         let tones = printsColour
             ? ["Output: colour print (colour-managed by macOS)",
@@ -494,7 +588,16 @@ public struct PrintSession: Sendable {
             "Paper: \(paper)",
         ] + within + [
             "Size: \(size) at \(String(format: "%.0f", try effectivePPI())) ppi",
-        ] + tones + marksLine
+        ] + tones + marksLine + wedgeLines
+    }
+
+    var wedgeLines: [String] {
+        let whereTo = ["top": "above", "bottom": "below", "left": "left of", "right": "right of"][wedgeSide]!
+        let thing = negative ? "negative" : "print"
+        return wedgeKinds.map { kind in
+            let name = kind == .grey ? "Step wedge: \(Wedge.steps) steps" : "Colour wedge: \(Wedge.steps) hues"
+            return "\(name), \(whereTo) the \(thing), \(units.length(wedgeGap)) away"
+        }
     }
 
     // MARK: output
@@ -570,6 +673,9 @@ public struct AppSettings: Sendable, Equatable {
     /// it, for prints and for negatives: [printer: [option: value]].
     public var printerOptions: [String: [String: String]] = [:]
     public var negativePrinterOptions: [String: [String: String]] = [:]
+    /// The step wedges each tab prints beside the photo; nil for none chosen yet.
+    public var printWedge: WedgeSettings?
+    public var negativeWedge: WedgeSettings?
 
     public init() {}
 
@@ -609,6 +715,8 @@ public struct AppSettings: Sendable, Equatable {
         settings.proofProfile = object["proof_profile"] as? String
         settings.printerOptions = options(object["printer_options"])
         settings.negativePrinterOptions = options(object["negative_printer_options"])
+        settings.printWedge = WedgeSettings(object["print_wedge"])
+        settings.negativeWedge = WedgeSettings(object["negative_wedge"])
         return settings
     }
 
@@ -622,9 +730,35 @@ public struct AppSettings: Sendable, Equatable {
             "negative_printer": negativePrinter ?? NSNull(), "negative_paper": negativePaper ?? NSNull(),
             "chart_size": chartSize ?? NSNull(), "proof_profile": proofProfile ?? NSNull(),
             "printer_options": printerOptions, "negative_printer_options": negativePrinterOptions,
+            "print_wedge": printWedge?.json ?? NSNull(), "negative_wedge": negativeWedge?.json ?? NSNull(),
         ]
         var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         data.append(0x0a)
         try data.write(to: url, options: .atomic)
     }
+}
+
+/// A tab's step wedges, as remembered: the grey wedge, the colour wedge, the side and the gap.
+public struct WedgeSettings: Sendable, Equatable {
+    public var grey: Bool
+    public var colour: Bool
+    public var side: String
+    public var gap: Double
+
+    public init(grey: Bool, colour: Bool, side: String, gap: Double) {
+        self.grey = grey
+        self.colour = colour
+        self.side = side
+        self.gap = gap
+    }
+
+    /// As saved, or nil if it isn't readable (as the Python app reads it).
+    init?(_ value: Any?) {
+        guard let object = value as? [String: Any], let side = object["side"] as? String, Wedge.sides.contains(side),
+              let gap = object["gap"] as? NSNumber, CFGetTypeID(gap) != CFBooleanGetTypeID() else { return nil }
+        let isTrue = { (key: String) in (object[key] as? NSNumber).map { CFGetTypeID($0) == CFBooleanGetTypeID() && $0.boolValue } ?? false }
+        self.init(grey: isTrue("grey"), colour: isTrue("colour"), side: side, gap: min(max(gap.doubleValue, 0), Wedge.maxGap))
+    }
+
+    var json: [String: Any] { ["grey": grey, "colour": colour, "side": side, "gap": gap] }
 }

@@ -959,6 +959,20 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 3.0,
          "placement": [1.0, 1.0]},
         {"photo": "photo-grey16.tif", "fit": False, "ppi": 8.0, "placement": [1.0, 1.0]},
+        {"photo": "photo-grey16.tif", "preset": "black-red", "calibration": True, "wedge": True},
+        {"photo": "photo-grey.png", "fit": False, "ppi": 20.0, "guide": True, "wedge": True,
+         "wedge_side": "left", "wedge_gap": 0.3},
+        {"photo": "photo-grey16.tif", "mode": "negative", "process": True, "mirror": True,
+         "safe_edge": 0.1, "wedge": True, "wedge_side": "top", "units": "mm"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 20.0,
+         "mirror": True, "outline": 0.15, "wedge": True, "wedge_side": "right", "wedge_gap": 0.0},
+        {"photo": "photo-colour16.tif", "colour_print": True, "fit": False, "ppi": 20.0,
+         "wedge": True, "colour_wedge": True, "wedge_side": "right", "wedge_gap": 0.5},
+        {"photo": "photo-colour.png", "colour_print": True, "colour_wedge": True,
+         "wedge_side": "top"},
+        {"photo": "photo-colour.png", "colour_wedge": True, "wedge": True, "paper": "4x6"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
+         "placement": [1.0, 2.0], "wedge": True},
     ]  # fmt: skip
     sessions = []
     for config in configurations:
@@ -984,6 +998,10 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         session.set_units(config.get("units", "in"))
         session.printer = "Canon_MG3600_series"
         session.set_colour_print(config.get("colour_print", False))
+        session.wedge = config.get("wedge", False)
+        session.colour_wedge = config.get("colour_wedge", False)
+        session.set_wedge_side(config.get("wedge_side", "bottom"))
+        session.set_wedge_gap(config.get("wedge_gap", 0.25))
         session.set_placement(tuple(config["placement"]) if "placement" in config else None)
         rendered = session.render_print()
         sessions.append({**config, "ppi_used": session.effective_ppi(),
@@ -1322,11 +1340,14 @@ def separations_vectors(directory: Path) -> dict[str, Any]:
     session.set_coats_curve(directory / "session-process.oqproc")
     coated = [_digest(session.render_layer(session._photo().pixels, k)) for k in range(3)]
     coated_summary = session.summary()
+    session.wedge = True  # each negative's wedge goes through its own band and curve
+    wedged = [_digest(session.render_layer(session._photo().pixels, k)) for k in range(3)]
     return {
         "plans": plans, "even": even, "labels": labels,
         "targets": targets, "photo": {"height": 12, "width": 30, "pixels": _ints(photo)},
         "negatives": negatives, "session": {"rendered": rendered, "summaries": summaries,
-                                           "coated": coated, "coated_summary": coated_summary},
+                                           "coated": coated, "coated_summary": coated_summary,
+                                           "wedged": wedged},
         "step_tests": [{"steps": n, "dpi": d, **_digest(step_test(n, d))} for n, d in
                        [(30, 300.0), (21, 100.0), (101, 20.0), (2, 72.0), (101, 300.0)]],
     }  # fmt: skip
@@ -1376,11 +1397,14 @@ def colour_separations_vectors(directory: Path) -> dict[str, Any]:
     for k in range(3):
         session.set_layer(k)
         summaries.append(session.summary())
+    session.wedge, session.mirror = True, True
+    session.set_wedge_side("left")
+    wedged = [_digest(session.render_layer(session._source(), k)) for k in range(3)]
     return {
         "grid": GRID, "pigments": {n: list(c) for n, c in PIGMENTS.items()},
         "default": list(DEFAULT_COATS), "photo": {"height": colour.shape[0],
                                                   "width": colour.shape[1]},
-        "separations": separations, "session": {"summaries": summaries},
+        "separations": separations, "session": {"summaries": summaries, "wedged": wedged},
     }  # fmt: skip
 
 
