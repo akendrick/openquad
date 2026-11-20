@@ -55,6 +55,10 @@ struct SessionParity {
             session.units = LengthUnit(rawValue: c["units"] as? String ?? "in")!
             session.printer = "Canon_MG3600_series"
             try session.setColourPrint(c["colour_print"] as? Bool ?? false)
+            session.wedge = c["wedge"] as? Bool ?? false
+            session.colourWedge = c["colour_wedge"] as? Bool ?? false
+            try session.setWedgeSide(c["wedge_side"] as? String ?? "bottom")
+            try session.setWedgeGap((c["wedge_gap"] as? NSNumber)?.doubleValue ?? 0.25)
             try session.setPlacement((c["placement"] as? [NSNumber]).map { ($0[0].doubleValue, $0[1].doubleValue) })
 
             #expect(session.printsColour == c["prints_colour"] as? Bool)
@@ -144,10 +148,14 @@ struct SessionParity {
         settings.proofProfile = "/Library/ColorSync/Profiles/Paper.icc"
         settings.printerOptions = ["Canon_MG3600_series": ["CNIJMediaType": "28", "CNIJPrintQuality": "0"]]
         settings.negativePrinterOptions = ["Epson_ET_2900": ["MediaType": "transparency"]]
+        settings.printWedge = WedgeSettings(grey: true, colour: false, side: "left", gap: 0.5)
         try settings.save(url)
         #expect(AppSettings.load(url) == settings)
         try Data(#"{"printer_options": {"A": {"x": "1", "y": 2}, "B": 3}, "negative_printer_options": []}"#.utf8).write(to: url)
         #expect(AppSettings.load(url).printerOptions == ["A": ["x": "1"]] && AppSettings.load(url).negativePrinterOptions.isEmpty)
+        try Data(#"{"print_wedge": {"side": "middle", "gap": 1}, "negative_wedge": {"grey": 1, "side": "top", "gap": 9}}"#.utf8).write(to: url)
+        #expect(AppSettings.load(url).printWedge == nil)
+        #expect(AppSettings.load(url).negativeWedge == WedgeSettings(grey: false, colour: false, side: "top", gap: 2))
         try settings.save(url)
         let text = try String(contentsOf: url, encoding: .utf8)
         #expect(text.contains("\"scanner_host\"") && !text.contains("preset") && text.contains("\"mm\""))

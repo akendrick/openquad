@@ -147,6 +147,12 @@ public final class AppModel {
         }
         session.printer = role == .negative ? settings.negativePrinter ?? settings.printer : settings.printer
         loadPrinterOptions()
+        if let wedge = role == .negative ? settings.negativeWedge : settings.printWedge {
+            session.wedge = wedge.grey
+            session.colourWedge = wedge.colour
+            try? session.setWedgeSide(wedge.side)
+            try? session.setWedgeGap(wedge.gap)
+        }
         if let size = settings.maxSize, size.count == 2 { session.maxSize = (size[0], size[1]) }
         session.units = settings.units
     }
@@ -307,6 +313,50 @@ public final class AppModel {
     public func setRegistration(_ on: Bool) {
         session.registration = on
         refreshPreview()
+    }
+
+    // MARK: step wedges
+
+    /// The 31-step grey wedge beside the print (toned and calibrated, or through the process curve).
+    public func setWedge(_ on: Bool) {
+        session.wedge = on
+        rememberWedge()
+        refreshPreview()
+    }
+
+    /// The colour gamut wedge, for a colour print.
+    public func setColourWedge(_ on: Bool) {
+        session.colourWedge = on
+        rememberWedge()
+        refreshPreview()
+    }
+
+    public func setWedgeSide(_ side: String) {
+        attempt { try session.setWedgeSide(side) }
+        rememberWedge()
+        refreshPreview()
+    }
+
+    public func setWedgeGap(_ gap: Double) {
+        attempt { try session.setWedgeGap(min(max(gap, 0), Wedge.maxGap)) }
+        rememberWedge()
+        refreshPreview()
+    }
+
+    /// The wedges are remembered for each tab.
+    func rememberWedge() {
+        let chosen = WedgeSettings(grey: session.wedge, colour: session.colourWedge, side: session.wedgeSide, gap: session.wedgeGap)
+        let negative = role == .negative
+        saveSettings { if negative { $0.negativeWedge = chosen } else { $0.printWedge = chosen } }
+    }
+
+    /// "31 steps, below", "31 steps and colour, right", or "none".
+    public var wedgeDescription: String {
+        let kinds = session.wedgeKinds
+        guard !kinds.isEmpty else { return "none" }
+        let what = kinds == [.colour] ? "colour" : kinds.count == 2 ? "31 steps and colour" : "31 steps"
+        let whereTo = ["top": "above", "bottom": "below", "left": "on the left", "right": "on the right"][session.wedgeSide] ?? ""
+        return "\(what), \(whereTo)"
     }
 
     /// The black outline's width, kept while it is turned off so turning it back on restores it.

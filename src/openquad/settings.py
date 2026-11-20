@@ -50,6 +50,10 @@ class Settings:
     # it, for prints and for negatives: {printer: {option: value}}.
     printer_options: dict[str, dict[str, str]] = field(default_factory=dict)
     negative_printer_options: dict[str, dict[str, str]] = field(default_factory=dict)
+    # The step wedges each tab prints beside the photo: {"grey": bool, "colour": bool,
+    # "side": "top" | "bottom" | "left" | "right", "gap": inches}; None for none chosen yet.
+    print_wedge: dict[str, object] | None = None
+    negative_wedge: dict[str, object] | None = None
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:
@@ -63,6 +67,8 @@ class Settings:
         known = {k: v for k, v in data.items() if k in cls.__dataclass_fields__}
         for key in ("printer_options", "negative_printer_options"):
             known[key] = _options(known.get(key))
+        for key in ("print_wedge", "negative_wedge"):
+            known[key] = _wedge(known.get(key))
         return cls(**known)
 
     def save(self, path: Path | None = None) -> None:
@@ -80,3 +86,14 @@ def _options(value: object) -> dict[str, dict[str, str]]:
         for printer, chosen in value.items()
         if isinstance(printer, str) and isinstance(chosen, dict)
     }
+
+
+def _wedge(value: object) -> dict[str, object] | None:
+    """A tab's step wedges as saved, or None if they aren't readable."""
+    if not isinstance(value, dict):
+        return None
+    side, gap = value.get("side"), value.get("gap")
+    if side not in ("top", "bottom", "left", "right") or not isinstance(gap, (int, float)):
+        return None
+    return {"grey": value.get("grey") is True, "colour": value.get("colour") is True,
+            "side": side, "gap": min(max(float(gap), 0.0), 2.0)}  # fmt: skip

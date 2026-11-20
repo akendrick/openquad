@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 24
+    public static let version = 25
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -43,6 +43,8 @@ public struct GuideView: View {
                      "Printer and paper, then Size and resolution: Fit to page, or turn Fit off and give a resolution. Photo's "
                         + "own shows the resolution saved in the photo (and the size it makes); left empty, that's "
                         + "the one used. Print size shows the result.",
+                     "Step wedges: a black and white wedge (31 steps, toned and calibrated like the photo) and, for a "
+                        + "colour print, a colour gamut wedge, on the side you choose with a gap. They're remembered.",
                      "Print… (⌘P). With \"Choose in the print panel\" the macOS panel opens: pick the printer and the "
                         + "same Media & Quality settings every time. Or pick a printer to print straight to it: its own "
                         + "Media type and Quality then appear under Printer and paper, remembered for that printer.",
@@ -77,6 +79,9 @@ public struct GuideView: View {
                         + "side, crop marks at the corners), in the safe edge. Red and orange negatives all but vanish "
                         + "under a red safelight; black shows. The marks block UV like the safe edge, so they don't print. "
                         + "The Print tab offers them too, in a thin white border round the print.",
+                     "Step wedges: a 31-step wedge beside the negative (top, bottom, left or right, with the gap you "
+                        + "set), made with the same process curve and safe edge, so the contact print shows how the "
+                        + "process holds every tone.",
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
                      "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",

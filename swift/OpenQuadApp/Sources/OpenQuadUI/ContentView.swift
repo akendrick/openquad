@@ -20,6 +20,7 @@ public struct ContentView: View {
     @AppStorage("sidebar.separations") private var showSeparations = false
     @AppStorage("sidebar.marks") private var openMarks = false
     @AppStorage("sidebar.page") private var openPage = true
+    @AppStorage("sidebar.wedges") private var openWedges = false
     @AppStorage("sidebar.size") private var openSize = true
     @AppStorage("sidebar.position") private var openPosition = false
     /// Switch to another tab (e.g. to calibrate).
@@ -82,6 +83,7 @@ public struct ContentView: View {
                                   negative: model.session.negative, units: model.units,
                                   setGuide: model.setGuide, setRegistration: model.setRegistration)
                 }
+                FoldingSection(title: "Step wedges", summary: model.wedgeDescription, open: $openWedges) { wedgeControls }
                 FoldingSection(title: "Printer and paper", summary: pageSummary, open: $openPage) { printerAndPaper }
                 FoldingSection(title: "Size and resolution", summary: sizeSummary, open: $openSize) { sizeControls }
                 if model.session.negative {
@@ -144,6 +146,32 @@ public struct ContentView: View {
                 Text(note).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             }
         }
+    }
+
+    /// Step wedges beside the print: the 31-step grey wedge (toned and calibrated like the photo,
+    /// or through the process curve), and for a colour print the colour gamut wedge.
+    @ViewBuilder private var wedgeControls: some View {
+        let negative = model.session.negative
+        Toggle(negative ? "31-step wedge" : "Black and white wedge (31 steps)",
+               isOn: Binding(get: { model.session.wedge }, set: { model.setWedge($0) }))
+        if !negative && model.session.printsColour {
+            Toggle("Colour gamut wedge", isOn: Binding(get: { model.session.colourWedge }, set: { model.setColourWedge($0) }))
+        }
+        if !model.session.wedgeKinds.isEmpty {
+            Picker("Side", selection: Binding(get: { model.session.wedgeSide }, set: { model.setWedgeSide($0) })) {
+                ForEach(Wedge.sides, id: \.self) { Text($0.capitalized).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            LengthStepper(title: "Gap", inches: model.session.wedgeGap, range: 0...Wedge.maxGap, inchStep: 0.05, mmStep: 1,
+                          units: model.units) { model.setWedgeGap($0) }
+        }
+        Text(negative
+             ? "Paper white to full black in 31 steps, made into a negative with the same process curve and safe edge, "
+                + "so the contact print shows how the process holds every tone."
+             : "Paper white to full black in 31 steps, toned and calibrated like the photo, to check every tone"
+                + (model.session.printsColour ? "; the colour wedge is 31 hues as a tint, the full colour and a shade." : "."))
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 
     @ViewBuilder private var printerAndPaper: some View {

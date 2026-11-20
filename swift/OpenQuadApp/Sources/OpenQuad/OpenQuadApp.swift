@@ -136,6 +136,12 @@ enum Snapshot {
         if let layer = value("--layer").flatMap(Int.init) { model.setLayer(layer - 1) }
         if arguments.contains("--fit-off") { model.setFit(false) }
         if let ppi = value("--ppi").flatMap(Double.init) { model.setPPI(ppi) }
+        if let side = value("--step-wedge") {  // the step wedges, on this side
+            model.setWedge(true)
+            model.setWedgeSide(side)
+        }
+        if arguments.contains("--colour-print") { model.setColourPrint(true) }
+        if arguments.contains("--colour-wedge") { model.setColourWedge(true) }
         if arguments.contains("--on-page") { model.setShowOnPage(true) }
         if let place = value("--place")?.split(separator: ",").compactMap({ Double($0) }), place.count == 2 {
             model.setPlacement((place[0], place[1]))

@@ -106,6 +106,12 @@ struct SeparationParity {
             #expect(digest(negative.pixels) == expected["sha256"] as? String, "coated negative \(k + 1)")
         }
         #expect(try session.summary() == v["coated_summary"] as? [String])
+        session.wedge = true  // each negative's wedge goes through its own band and curve
+        for (k, expected) in (v["wedged"] as! [[String: Any]]).enumerated() {
+            let negative = try session.renderLayer(photo.pixels, width: photo.width, height: photo.height, layer: k)
+            #expect(digest(negative.pixels) == expected["sha256"] as? String, "wedged negative \(k + 1)")
+        }
+        session.wedge = false
         try session.setCoatsCurve(nil)
         #expect(session.coatsCurvePath == nil)
         // The shown negative is the one printed, and each can have its own curve.

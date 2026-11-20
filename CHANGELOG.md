@@ -7,6 +7,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Step wedges beside the print or negative. The Step wedges section (Print and Negative tabs) adds
+  an optional 31-step wedge, paper white to full black, on the top, bottom, left or right with a
+  gap of 0 to 2 in. On a print it is toned and calibrated like the photo; on a negative it goes
+  through the same process curve and safe edge, so the contact print shows every tone. A colour
+  print can add a colour gamut wedge: 31 hues as a tint, the full colour and a shade. The print
+  size and page fit allow for them, the summary lists them, and each tab remembers its own. Core:
+  `openquad.wedge` and `PrintSession.wedge`, `colour_wedge`, `set_wedge_side` and `set_wedge_gap`
+  in Python and Swift alike (shared vectors).
 - A printer's own media type and quality. Printing straight to a printer, the app's Printer and
   paper section offers that printer's Media type and Quality (Matte Photo Paper, Super Fine and so
   on, or the printer's default), read from its CUPS driver (PPD); AirPrint media get plain names.
