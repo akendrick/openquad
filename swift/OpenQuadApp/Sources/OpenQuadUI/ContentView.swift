@@ -8,7 +8,6 @@ import UniformTypeIdentifiers
 
 public struct ContentView: View {
     @Bindable var model: AppModel
-    @State private var ppiText = ""
     @State private var savingSetup = false
     @State private var setupName = ""
     @State private var deletingSetup: NegativeSetup?
@@ -16,12 +15,10 @@ public struct ContentView: View {
     /// start closed (most negatives use the defaults); a separation already set opens its own.
     @AppStorage("sidebar.negative") private var openNegative = true
     @AppStorage("sidebar.toning") private var openToning = true
-    @AppStorage("sidebar.options") private var showOptions = false
     @AppStorage("sidebar.separations") private var showSeparations = false
     @AppStorage("sidebar.marks") private var openMarks = false
     @AppStorage("sidebar.page") private var openPage = true
     @AppStorage("sidebar.wedges") private var openWedges = false
-    @AppStorage("sidebar.size") private var openSize = true
     @AppStorage("sidebar.position") private var openPosition = false
     /// Switch to another tab (e.g. to calibrate).
     let goTo: (AppTab) -> Void
@@ -71,24 +68,29 @@ public struct ContentView: View {
                 photoSection
                 if model.session.negative {
                     FoldingSection(title: "Negative", summary: negativeSummary, open: $openNegative) { negativeControls }
-                    FoldingSection(title: "Options", summary: optionsSummary, open: $showOptions) { negativeOptions }
                     FoldingSection(title: "Separations", summary: separationsSummary, open: $showSeparations) {
                         SeparationControls(model: model)
                     }
                 } else {
                     FoldingSection(title: "Toning and calibration", summary: toningSummary, open: $openToning) { printControls }
                 }
-                FoldingSection(title: "Darkroom marks", summary: marksSummary, open: $openMarks) {
+                FoldingSection(title: "Registration", summary: registrationSummary, open: $openMarks) {
+                    registrationOptions
                     DarkroomMarks(guide: model.session.guide, registration: model.session.registration,
                                   negative: model.session.negative, units: model.units,
                                   setGuide: model.setGuide, setRegistration: model.setRegistration)
                 }
                 FoldingSection(title: "Step wedges", summary: model.wedgeDescription, open: $openWedges) { wedgeControls }
-                FoldingSection(title: "Printer and paper", summary: pageSummary, open: $openPage) { printerAndPaper }
-                FoldingSection(title: "Size and resolution", summary: sizeSummary, open: $openSize) { sizeControls }
-                if model.session.negative {
-                    FoldingSection(title: "Position on the page", summary: model.positionDescription, open: $openPosition) {
-                        placementControls
+                FoldingSection(title: "Printer and size", summary: [pageSummary, sizeSummary].joined(separator: ", "),
+                               open: $openPage) {
+                    printerAndPaper
+                    sizeControls
+                    if model.session.negative {
+                        DisclosureGroup(isExpanded: $openPosition) {
+                            placementControls
+                        } label: {
+                            Text("Position on the page")
+                        }
                     }
                 }
             }
@@ -142,9 +144,37 @@ public struct ContentView: View {
                     Text("TIFF, PNG, JPEG, JPEG 2000 or GIMP XCF")
                 }
             }
+            if let resolution = model.resolution { resolutionRows(resolution) }
             ForEach(model.session.notes, id: \.self) { note in
                 Text(note).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
             }
+        }
+    }
+
+    /// The resolution the print is made at, typed here when Fit to page is off, and the
+    /// photo's own beside it.
+    @ViewBuilder private func resolutionRows(_ resolution: Double) -> some View {
+        LabeledContent("Resolution") {
+            HStack(spacing: 4) {
+                if !model.session.fit && model.session.ppi != nil {
+                    Button("Photo's Own") { model.setPPI(nil) }
+                }
+                TextField("Resolution", value: Binding(get: { (resolution * 10).rounded() / 10 }, set: { model.setPPI($0) }),
+                          format: .number.precision(.fractionLength(0...1)))
+                    .labelsHidden()
+                    .frame(width: 64)
+                    .multilineTextAlignment(.trailing)
+                    .disabled(model.session.fit)
+                Text("ppi")
+            }
+        }
+        if let own = model.photoResolutionDescription {
+            LabeledContent("Photo's own") { Text(own).multilineTextAlignment(.trailing) }
+        }
+        if model.session.fit {
+            Text("Fit to page (under Printer and size) sets the resolution; turn it off to type one.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -162,12 +192,15 @@ public struct ContentView: View {
                 ForEach(Wedge.sides, id: \.self) { Text($0.capitalized).tag($0) }
             }
             .pickerStyle(.segmented)
-            LengthStepper(title: "Gap", inches: model.session.wedgeGap, range: 0...Wedge.maxGap, inchStep: 0.05, mmStep: 1,
-                          units: model.units) { model.setWedgeGap($0) }
+            Toggle("Create wedge separately", isOn: Binding(get: { model.session.wedgeSeparate }, set: { model.setWedgeSeparate($0) }))
+            if model.session.wedgeSeparate {
+                LengthStepper(title: "Gap", inches: model.session.wedgeGap, range: 0...Wedge.maxGap, inchStep: 0.05, mmStep: 1,
+                              units: model.units) { model.setWedgeGap($0) }
+            }
         }
         Text(negative
-             ? "Paper white to full black in 31 steps, made into a negative with the same process curve and safe edge, "
-                + "so the contact print shows how the process holds every tone."
+             ? "Paper white to full black in 31 steps, made into a negative with the same process curve. It sits at the "
+                + "edge of the safe edge, with no clear film between, unless made separately with a gap."
              : "Paper white to full black in 31 steps, toned and calibrated like the photo, to check every tone"
                 + (model.session.printsColour ? "; the colour wedge is 31 hues as a tint, the full colour and a shade." : "."))
             .font(.caption)
@@ -215,12 +248,6 @@ public struct ContentView: View {
         Toggle("Fit to page (\(model.units.length(model.session.margin)) margins)",
                isOn: Binding(get: { model.session.fit }, set: { model.setFit($0) }))
         if model.session.fit { fitWithin }
-        TextField("Resolution (ppi)", text: $ppiText, prompt: Text("photo's own"))
-            .disabled(model.session.fit)
-            .onSubmit { model.setPPI(Double(ppiText)) }
-        if let own = model.photoResolutionDescription {
-            LabeledContent("Photo's own") { Text(own).multilineTextAlignment(.trailing) }
-        }
         if !model.sizeDescription.isEmpty {
             LabeledContent("Print size") { Text(model.sizeDescription).multilineTextAlignment(.trailing) }
         }
@@ -408,9 +435,13 @@ public struct ContentView: View {
         }
     }
 
-    /// Mirror, the safe edge, the outline and separations: set once per process, then left alone.
-    @ViewBuilder private var negativeOptions: some View {
+    /// Mirror (both tabs), then a negative's safe edge and outline: set once per process, then left alone.
+    @ViewBuilder private var registrationOptions: some View {
         Toggle("Mirror (flip left to right)", isOn: Binding(get: { model.session.mirror }, set: { model.setMirror($0) }))
+        if model.session.negative { negativeEdges }
+    }
+
+    @ViewBuilder private var negativeEdges: some View {
         LengthStepper(title: "Safe edge", inches: model.session.safeEdge, range: 0...2, inchStep: 0.05, mmStep: 1,
                       units: model.units) { model.setSafeEdge($0) }
         Toggle("Outline in black", isOn: Binding(get: { model.session.outline > 0 }, set: { model.setOutline($0) }))
@@ -430,12 +461,17 @@ public struct ContentView: View {
         return [model.currentSetup?.name, model.session.negativeColour.capitalized, curve].compactMap { $0 }.joined(separator: ", ")
     }
 
-    private var optionsSummary: String {
+    /// Mirror, safe edge and outline (on a negative), then the darkroom marks.
+    private var registrationSummary: String {
         var set = [String]()
         if model.session.mirror { set.append("mirrored") }
-        set.append("\(model.units.length(model.session.safeEdge)) edge")
-        if model.session.outline > 0 { set.append("outlined") }
-        return set.joined(separator: ", ")
+        if model.session.negative {
+            set.append("\(model.units.length(model.session.safeEdge)) edge")
+            if model.session.outline > 0 { set.append("outlined") }
+        }
+        if model.session.guide { set.append("guide line") }
+        if model.session.registration { set.append("marks") }
+        return set.isEmpty ? "none" : set.joined(separator: ", ")
     }
 
     private var separationsSummary: String {
@@ -448,11 +484,6 @@ public struct ContentView: View {
         if model.session.printsColour { return "colour" }
         let preset = presetLabels.first { $0.0 == model.session.preset }?.1 ?? model.session.preset
         return [preset, model.currentCalibration?.label ?? "uncorrected"].joined(separator: ", ")
-    }
-
-    private var marksSummary: String {
-        let marks = [model.session.guide ? "guide line" : nil, model.session.registration ? "registration" : nil].compactMap { $0 }
-        return marks.isEmpty ? "none" : marks.joined(separator: ", ")
     }
 
     private var pageSummary: String {

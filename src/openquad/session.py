@@ -67,13 +67,15 @@ class PrintSession:
     # Darkroom marks in black: in a negative's safe edge, or a white border round a print.
     guide: bool = False  # a guide line round the image
     registration: bool = False  # crosshair targets and corner crop marks
-    # Step wedges beside the print, `wedge_gap` inches away on `wedge_side`: the 31-step grey
-    # wedge (through the same toning, calibration or process curve as the photo), and for a
-    # colour print a colour gamut wedge.
+    # Step wedges beside the print on `wedge_side`: the 31-step grey wedge (through the same
+    # toning, calibration or process curve as the photo), and for a colour print a colour
+    # gamut wedge. Joined to the print (on a negative, inside its safe edge with no clear film
+    # between), or made separately `wedge_gap` inches away.
     wedge: bool = False
     colour_wedge: bool = False
     wedge_side: str = "bottom"
     wedge_gap: float = wedges.DEFAULT_GAP
+    wedge_separate: bool = False
     units: str = "in"  # how the summary shows lengths: "in" or "mm"
     # Separations: the photo split into several negatives by tone, printed one after another
     # in register on one sheet. None for a single negative. `layer` is the negative shown and
@@ -147,7 +149,16 @@ class PrintSession:
 
     def _wedge_extra(self) -> tuple[float, float]:
         border = self.safe_edge if self.negative else 0.0
-        return wedges.extra(self.wedge_kinds, self._wedge_side(), self.wedge_gap, border)
+        if self.wedge_separate:
+            return wedges.extra(self.wedge_kinds, self._wedge_side(), self.wedge_gap, border)
+        # Joined: no gap, and a negative's wedge shares the photo's safe edge on its inner side.
+        width, height = wedges.extra(self.wedge_kinds, self._wedge_side(), 0.0, border)
+        shared = border * len(self.wedge_kinds)
+        return (width - shared, height) if width else (width, height - shared)
+
+    def _wedge_gap(self, dpi: float) -> int:
+        """Pixels between the print and its wedges: none unless made separately."""
+        return round(self.wedge_gap * dpi) if self.wedge_separate else 0
 
     def _wedge_side(self) -> str:
         """The side as laid out before a negative is mirrored, so it prints on the side chosen."""
@@ -382,7 +393,7 @@ class PrintSession:
         if self.negative:
             return self.render_layer(pixels, self.layer, dpi)
         dpi = dpi or self.effective_ppi()
-        rgb = composite(pixels, PRESETS[self.preset])
+        rgb = composite(self._mirrored(pixels), PRESETS[self.preset])
         rgb = self.calibration.apply(rgb) if self.calibration else rgb
         printed = add_print_marks(rgb, dpi, self.guide, self.registration)
         return self._with_print_wedges(printed, pixels.shape[:2], dpi, calibrated=True)
@@ -392,8 +403,13 @@ class PrintSession:
     ) -> NDArray[np.uint16]:
         """A colour print: the photo's own colour, untouched, with any darkroom marks and wedges."""
         dpi = dpi or self.effective_ppi()
-        printed = add_print_marks(rgb, dpi, self.guide, self.registration)
+        printed = add_print_marks(self._mirrored(rgb), dpi, self.guide, self.registration)
         return self._with_print_wedges(printed, rgb.shape[:2], dpi, colour=True)
+
+    def _mirrored(self, pixels: NDArray[np.uint16]) -> NDArray[np.uint16]:
+        """A print's photo flipped left to right when mirrored (for transfers); its marks and
+        wedges stay where they were put."""
+        return np.ascontiguousarray(pixels[:, ::-1]) if self.mirror else pixels
 
     def _with_print_wedges(
         self, image: NDArray[np.uint16], shape: tuple[int, ...], dpi: float,
@@ -417,7 +433,7 @@ class PrintSession:
             else:
                 row = max(1, round(wedges.COLOUR_ROW * dpi))
                 made.append(wedges.colour_wedge(length, row, horizontal))
-        return wedges.attach(image, made, self.wedge_side, round(self.wedge_gap * dpi))
+        return wedges.attach(image, made, self.wedge_side, self._wedge_gap(dpi))
 
     def render_print(self) -> NDArray[np.uint16]:
         """The full-resolution print: in colour, or rendered from the greyscale photo."""
@@ -446,7 +462,8 @@ class PrintSession:
     ) -> NDArray[np.uint16]:
         """Negative `layer` of the separation (any layer is the whole negative without one).
         `pixels` are greyscale, or 16-bit colour (height, width, 3) for a colour separation.
-        A grey wedge is made into a negative the same way, with its own safe edge."""
+        A grey wedge is made into a negative the same way, with its own safe edge; joined, it
+        runs the full width inside the photo's safe edge, with no clear film between."""
         dpi = dpi or self.effective_ppi()
         settings = self._negative_settings(layer if self.separated else None)
         image = self._negative_layer(pixels, layer, dpi, settings)
@@ -455,13 +472,20 @@ class PrintSession:
         side = self._wedge_side()
         horizontal = side in ("top", "bottom")
         length = pixels.shape[1] if horizontal else pixels.shape[0]
+        if not self.wedge_separate:  # as long as the photo and its outline, edge to edge
+            length += 2 * round(settings.outline * dpi)
         ramp = wedges.grey_wedge(length, max(1, round(wedges.WEDGE_WIDTH * dpi)), horizontal)
         if self.colour_separation is not None:
             ramp = np.stack([ramp] * 3, -1)
         bare = replace(settings, outline=0.0, guide=False, registration=False, mark=False,
                        label=0, clear_targets=False)  # fmt: skip
         wedge = self._negative_layer(ramp, layer, dpi, bare)
-        return wedges.attach(image, [wedge], side, round(self.wedge_gap * dpi))
+        if not self.wedge_separate:  # the photo's safe edge is the wedge's inner edge
+            edge = round(settings.safe_edge * dpi)
+            height, width = wedge.shape[:2]
+            wedge = {"top": wedge[: height - edge], "bottom": wedge[edge:],
+                     "left": wedge[:, : width - edge], "right": wedge[:, edge:]}[side]  # fmt: skip
+        return wedges.attach(image, [wedge], side, self._wedge_gap(dpi))
 
     def _negative_layer(
         self, pixels: NDArray[np.uint16], layer: int, dpi: float, settings: NegativeSettings
@@ -513,7 +537,7 @@ class PrintSession:
             return (shown >> 8).astype(np.uint8)
         small = shrink(pixels)
         dpi = self.effective_ppi() * scale
-        toned = composite(small, PRESETS[self.preset])
+        toned = composite(self._mirrored(small), PRESETS[self.preset])
         shown = add_print_marks(toned, dpi, self.guide, self.registration)
         shown = self._with_print_wedges(shown, small.shape, dpi)
         return (shown >> 8).astype(np.uint8)
@@ -535,8 +559,8 @@ class PrintSession:
             "grey": f"Step wedge: {wedges.WEDGE_STEPS} steps",
             "colour": f"Colour wedge: {wedges.WEDGE_STEPS} hues",
         }
-        return [f"{names[kind]}, {where} the {thing}, {self._length(self.wedge_gap)} away"
-                for kind in self.wedge_kinds]  # fmt: skip
+        away = f"{self._length(self.wedge_gap)} away" if self.wedge_separate else "joined to it"
+        return [f"{names[kind]}, {where} the {thing}, {away}" for kind in self.wedge_kinds]
 
     def _marks_line(self) -> list[str]:
         named = ((self.guide, "guide line"), (self.registration, "registration marks"))
@@ -617,6 +641,7 @@ class PrintSession:
             *self._within(),
             f"Size: {size(width, height, self.units)} at {self.effective_ppi():.0f} ppi",
             *tones,
+            *(["Mirrored: yes"] if self.mirror else []),
             *self._marks_line(),
             *self._wedge_lines(),
         ]

@@ -133,3 +133,16 @@ public enum Wedge {
         return RGBImage(width: width, height: height, pixels: canvas)
     }
 }
+
+extension RGBImage {
+    /// The `width` x `height` pixels from (`x`, `y`).
+    func cropped(x: Int, y: Int, width: Int, height: Int) -> RGBImage {
+        var pixels = [UInt16]()
+        pixels.reserveCapacity(width * height * 3)
+        for row in y..<y + height {
+            let from = (row * self.width + x) * 3
+            pixels += self.pixels[from..<from + width * 3]
+        }
+        return RGBImage(width: width, height: height, pixels: pixels)
+    }
+}

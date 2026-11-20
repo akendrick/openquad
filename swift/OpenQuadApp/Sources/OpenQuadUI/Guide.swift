@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 25
+    public static let version = 27
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -39,15 +39,17 @@ public struct GuideView: View {
                         + "the preview.",
                      "Toning stays Neutral unless you choose a duotone; it's never remembered.",
                      "Calibration: pick one of your saved calibrations (Import… adds a file). Choosing a printer "
-                        + "under Printer and paper picks its newest calibration for that paper.",
-                     "Printer and paper, then Size and resolution: Fit to page, or turn Fit off and give a resolution. Photo's "
-                        + "own shows the resolution saved in the photo (and the size it makes); left empty, that's "
-                        + "the one used. Print size shows the result.",
+                        + "under Printer and size picks its newest calibration for that paper.",
+                     "Resolution, at the top under the photo, shows the ppi the print is made at, with the photo's own "
+                        + "beside it. Fit to page (under Printer and size) sets it; turn Fit off to type one, and "
+                        + "Photo's Own goes back to the photo's. Print size shows the result.",
+                     "Registration: Mirror flips the photo left to right (for transfers), and the darkroom marks.",
                      "Step wedges: a black and white wedge (31 steps, toned and calibrated like the photo) and, for a "
-                        + "colour print, a colour gamut wedge, on the side you choose with a gap. They're remembered.",
+                        + "colour print, a colour gamut wedge, on the side you choose, joined to the print. Create "
+                        + "wedge separately puts a gap between them. They're remembered.",
                      "Print… (⌘P). With \"Choose in the print panel\" the macOS panel opens: pick the printer and the "
                         + "same Media & Quality settings every time. Or pick a printer to print straight to it: its own "
-                        + "Media type and Quality then appear under Printer and paper, remembered for that printer.",
+                        + "Media type and Quality then appear under Printer and size, remembered for that printer.",
                      "Save Print File… writes the finished 16-bit file to print from another app at 100%."]),
         Page(symbol: "slider.horizontal.3", title: "Calibrate your printer",
              text: "The Printer Calibration tab (or Calibrate This Printer… in Print). Calibration goes in rounds; each "
@@ -71,21 +73,22 @@ public struct GuideView: View {
                         + "Once a process is calibrated, Save Setup… (in the ⋯ menu beside it) keeps it under a name, e.g. Cyanotype on Pictorico.",
                      "Ink colour and Process curve: both come from the Process Calibration tab (Calibrate a Process… is in the "
                         + "curve's Choose menu).",
-                     "Options (folded until you need it) holds Mirror, Safe edge and Outline in black; Separations has "
-                        + "its own section. Mirror if the film's printed side must face the tissue: the F cut into the safe "
+                     "Registration holds Mirror, Safe edge, Outline in black and the darkroom marks; Separations has "
+                        + "its own section. Lengths can be typed or stepped. Mirror if the film's printed side must face the tissue: the F cut into the safe "
                         + "edge reads correctly in the print when the mirror setting was right. Outline in black adds a "
                         + "border of the width you set between the safe edge and the photo.",
-                     "Darkroom marks: a black guide line round the image and registration marks (targets on each "
+                     "Darkroom marks (under Registration): a black guide line round the image and registration marks (targets on each "
                         + "side, crop marks at the corners), in the safe edge. Red and orange negatives all but vanish "
                         + "under a red safelight; black shows. The marks block UV like the safe edge, so they don't print. "
                         + "The Print tab offers them too, in a thin white border round the print.",
-                     "Step wedges: a 31-step wedge beside the negative (top, bottom, left or right, with the gap you "
-                        + "set), made with the same process curve and safe edge, so the contact print shows how the "
-                        + "process holds every tone.",
+                     "Step wedges: a 31-step wedge beside the negative (top, bottom, left or right) made with the "
+                        + "same process curve, so the contact print shows how the process holds every tone. It sits "
+                        + "at the edge of the safe edge with no clear film between; Create wedge separately makes it "
+                        + "a piece of its own, the gap you set away.",
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
-                     "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
+                     "Tissue smaller than the page? Under Printer and size, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",
-                     "Preview on the page (under Position on the page) shows the whole sheet with its margins dashed. Drag the "
+                     "Preview on the page (Position on the page, under Printer and size) shows the whole sheet with its margins dashed. Drag the "
                         + "negative to put it anywhere inside the margins, or step it with From the left and From the "
                         + "top; Centre puts it back. Every negative of a separation prints in the same place.",
                      "Print on transparency film at 100% with your usual film settings."]),

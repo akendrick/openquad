@@ -7,6 +7,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Mirror in the Print tab too (for transfers): the photo flips left to right; its marks and
+  wedges stay where they were put. The summary says so. Core: in Python and Swift alike.
+- Create wedge separately. A step wedge now joins the print by default: on a negative it sits at
+  the edge of the safe edge with no clear film between, running the full width of the photo and
+  its outline. Create wedge separately makes it a piece of its own, the gap away (as before).
+  Core: `PrintSession.wedge_separate`, remembered as `separate` in each tab's wedge settings.
 - Step wedges beside the print or negative. The Step wedges section (Print and Negative tabs) adds
   an optional 31-step wedge, paper white to full black, on the top, bottom, left or right with a
   gap of 0 to 2 in. On a print it is toned and calibrated like the photo; on a negative it goes
@@ -150,6 +156,13 @@ versions follow [Semantic Versioning](https://semver.org/).
   strong as it prints, to check the bands and seams before printing film.
 
 ### Changed
+
+- The sidebar is regrouped. Darkroom marks is now Registration, and holds Mirror, Safe edge and
+  Outline in black (the Negative tab's Options section is gone). Printer and paper, Size and
+  resolution and Position on the page are one Printer and size section, with Position on the
+  page folded inside it. Resolution moves to the top, under the photo, and shows the ppi the
+  print is made at (not "photo's own"), with the photo's own beside it. Every length (safe edge,
+  wedge gap, outline, position) can be typed as well as stepped.
 
 - A tidier sidebar in the Print and Negative tabs. Every section folds away (click its title) and,
   folded, shows what's set in it, e.g. "Darkroom marks: guide line" or "Separations: 3 negatives";
