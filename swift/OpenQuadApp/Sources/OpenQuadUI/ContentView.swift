@@ -12,10 +12,16 @@ public struct ContentView: View {
     @State private var savingSetup = false
     @State private var setupName = ""
     @State private var deletingSetup: NegativeSetup?
-    /// The negative's Options section, and Separations inside it, are closed until wanted (or a
-    /// separation is already set).
-    @State private var showOptions = false
-    @State private var showSeparations = false
+    /// Which sidebar sections are open, remembered between launches. Options and Separations
+    /// start closed (most negatives use the defaults); a separation already set opens its own.
+    @AppStorage("sidebar.negative") private var openNegative = true
+    @AppStorage("sidebar.toning") private var openToning = true
+    @AppStorage("sidebar.options") private var showOptions = false
+    @AppStorage("sidebar.separations") private var showSeparations = false
+    @AppStorage("sidebar.marks") private var openMarks = false
+    @AppStorage("sidebar.page") private var openPage = true
+    @AppStorage("sidebar.size") private var openSize = true
+    @AppStorage("sidebar.position") private var openPosition = false
     /// Switch to another tab (e.g. to calibrate).
     let goTo: (AppTab) -> Void
 
@@ -52,7 +58,7 @@ public struct ContentView: View {
         .onAppear {
             model.loadPrinters()
             model.loadProofProfiles()
-            if model.session.negativeCount > 1 || model.separationKind == .colours { showOptions = true; showSeparations = true }
+            if model.session.negativeCount > 1 || model.separationKind == .colours { showSeparations = true }
         }
     }
 
@@ -61,52 +67,30 @@ public struct ContentView: View {
     private var controls: some View {
         VStack(spacing: 0) {
             Form {
-                Section("Photo") {
-                    Button("Open Photo…", action: openPhoto)
-                        .keyboardShortcut("o")
-                    Text(model.photoDescription)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-                Section(model.session.negative ? "Negative" : "Toning and calibration") {
-                    if model.session.negative { negativeControls } else { printControls }
-                }
+                photoSection
                 if model.session.negative {
-                    // Closed until wanted: most negatives use the defaults.
-                    Section(isExpanded: $showOptions) {
-                        negativeOptions
-                    } header: {
-                        Text(optionsHeader)
+                    FoldingSection(title: "Negative", summary: negativeSummary, open: $openNegative) { negativeControls }
+                    FoldingSection(title: "Options", summary: optionsSummary, open: $showOptions) { negativeOptions }
+                    FoldingSection(title: "Separations", summary: separationsSummary, open: $showSeparations) {
+                        SeparationControls(model: model)
                     }
+                } else {
+                    FoldingSection(title: "Toning and calibration", summary: toningSummary, open: $openToning) { printControls }
                 }
-                Section("Darkroom marks") {
+                FoldingSection(title: "Darkroom marks", summary: marksSummary, open: $openMarks) {
                     DarkroomMarks(guide: model.session.guide, registration: model.session.registration,
                                   negative: model.session.negative, units: model.units,
                                   setGuide: model.setGuide, setRegistration: model.setRegistration)
                 }
-                Section("Page") {
-                    Picker("Printer", selection: Binding(get: { model.session.printer }, set: { model.setPrinter($0) })) {
-                        Text("Choose in the print panel").tag(String?.none)
-                        ForEach(model.printers, id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ")).tag(String?.some($0)) }
-                        if let printer = model.session.printer, !model.printers.contains(printer) {
-                            Text(printer.replacingOccurrences(of: "_", with: " ")).tag(String?.some(printer))
-                        }
+                FoldingSection(title: "Printer and paper", summary: pageSummary, open: $openPage) { printerAndPaper }
+                FoldingSection(title: "Size and resolution", summary: sizeSummary, open: $openSize) { sizeControls }
+                if model.session.negative {
+                    FoldingSection(title: "Position on the page", summary: model.positionDescription, open: $openPosition) {
+                        placementControls
                     }
-                    Picker("Paper", selection: Binding(get: { model.session.paper }, set: { model.setPaper($0) })) {
-                        ForEach(paperOrder, id: \.self) { Text($0).tag($0) }
-                    }
-                    Toggle("Fit to page (\(model.units.length(model.session.margin)) margins)", isOn: Binding(get: { model.session.fit }, set: { model.setFit($0) }))
-                    if model.session.fit { fitWithin }
-                    TextField("Resolution (ppi)", text: $ppiText, prompt: Text("photo's own"))
-                        .disabled(model.session.fit)
-                        .onSubmit { model.setPPI(Double(ppiText)) }
-                    if !model.sizeDescription.isEmpty {
-                        LabeledContent("Print size") { Text(model.sizeDescription).multilineTextAlignment(.trailing) }
-                    }
-                    if model.session.negative { placementControls }
                 }
             }
+            .controlSize(.small)
             .formStyle(.grouped)
             if let name = model.openingInGIMP {
                 HStack(spacing: 6) {
@@ -138,6 +122,57 @@ public struct ContentView: View {
                     .disabled(!model.canPrint)
             }
             .padding()
+        }
+    }
+
+    /// The photo: its name and size on one line, with Open beside it.
+    private var photoSection: some View {
+        Section {
+            LabeledContent {
+                Button("Open…", action: openPhoto)
+                    .keyboardShortcut("o")
+            } label: {
+                if let photo = model.session.photo, let source = model.session.source {
+                    Text(source.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                    Text("\(photo.width) × \(photo.height) px" + (photo.dpi.map { String(format: ", %.0f ppi", $0.0) } ?? ""))
+                } else {
+                    Text("No photo open")
+                    Text("TIFF, PNG, JPEG, JPEG 2000 or GIMP XCF")
+                }
+            }
+            ForEach(model.session.notes, id: \.self) { note in
+                Text(note).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+        }
+    }
+
+    @ViewBuilder private var printerAndPaper: some View {
+        Picker("Printer", selection: Binding(get: { model.session.printer }, set: { model.setPrinter($0) })) {
+            Text("Choose in the print panel").tag(String?.none)
+            ForEach(model.printers, id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ")).tag(String?.some($0)) }
+            if let printer = model.session.printer, !model.printers.contains(printer) {
+                Text(printer.replacingOccurrences(of: "_", with: " ")).tag(String?.some(printer))
+            }
+        }
+        Picker("Paper", selection: Binding(get: { model.session.paper }, set: { model.setPaper($0) })) {
+            ForEach(paperOrder, id: \.self) { Text($0).tag($0) }
+        }
+    }
+
+    /// Fit or a set resolution, and the size that makes. The photo's own resolution is shown
+    /// as soon as it's open, so you know what "the photo's own" means.
+    @ViewBuilder private var sizeControls: some View {
+        Toggle("Fit to page (\(model.units.length(model.session.margin)) margins)",
+               isOn: Binding(get: { model.session.fit }, set: { model.setFit($0) }))
+        if model.session.fit { fitWithin }
+        TextField("Resolution (ppi)", text: $ppiText, prompt: Text("photo's own"))
+            .disabled(model.session.fit)
+            .onSubmit { model.setPPI(Double(ppiText)) }
+        if let own = model.photoResolutionDescription {
+            LabeledContent("Photo's own") { Text(own).multilineTextAlignment(.trailing) }
+        }
+        if !model.sizeDescription.isEmpty {
+            LabeledContent("Print size") { Text(model.sizeDescription).multilineTextAlignment(.trailing) }
         }
     }
 
@@ -280,19 +315,31 @@ public struct ContentView: View {
             .padding(8)
             .background(Color.accentColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
         }
-        Picker("Setup", selection: Binding(get: { model.currentSetup?.name ?? "" }, set: { name in
-            if let setup = model.setups.first(where: { $0.name == name }) { model.applySetup(setup) }
-        })) {
-            Text(model.setups.isEmpty ? "None saved" : "Custom").tag("")
-            ForEach(model.setups) { Text($0.name).tag($0.name) }
-        }
-        HStack {
-            Button("Save Setup…") {
-                setupName = model.currentSetup?.name ?? model.suggestedSetupName
-                savingSetup = true
-            }
-            if let current = model.currentSetup {
-                Button("Delete Setup…") { deletingSetup = current }
+        LabeledContent("Setup") {
+            HStack(spacing: 4) {
+                Picker("Setup", selection: Binding(get: { model.currentSetup?.name ?? "" }, set: { name in
+                    if let setup = model.setups.first(where: { $0.name == name }) { model.applySetup(setup) }
+                })) {
+                    Text(model.setups.isEmpty ? "None saved" : "Custom").tag("")
+                    ForEach(model.setups) { Text($0.name).tag($0.name) }
+                }
+                .labelsHidden()
+                .fixedSize()
+                Menu {
+                    Button("Save Setup…") {
+                        setupName = model.currentSetup?.name ?? model.suggestedSetupName
+                        savingSetup = true
+                    }
+                    if let current = model.currentSetup {
+                        Button("Delete “\(current.name)”…") { deletingSetup = current }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.borderlessButton)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Save or delete setups")
             }
         }
         Picker("Ink colour", selection: Binding(get: { model.session.negativeColour }, set: { model.setNegativeColour($0) })) {
@@ -300,14 +347,15 @@ public struct ContentView: View {
         }
         .disabled(model.session.process != nil)  // the process curve decides the colour
         LabeledContent("Process curve") {
-            HStack {
-                Text(model.session.processPath?.lastPathComponent ?? "none")
+            HStack(spacing: 6) {
+                Text(model.session.processPath?.deletingPathExtension().lastPathComponent ?? "none")
                     .foregroundStyle(model.session.processPath == nil ? .secondary : .primary)
-                CurveMenu(model: model) { model.setProcess($0) }
-                if model.session.processPath != nil { Button("Clear") { model.setProcess(nil) } }
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                CurveMenu(model: model, clear: model.session.processPath == nil ? nil : { model.setProcess(nil) },
+                          calibrate: { goTo(.processCalibration) }) { model.setProcess($0) }
             }
         }
-        Button("Calibrate a Process…") { goTo(.processCalibration) }
     }
 
     /// Mirror, the safe edge, the outline and separations: set once per process, then left alone.
@@ -323,23 +371,47 @@ public struct ContentView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        DisclosureGroup(isExpanded: $showSeparations) {
-            SeparationControls(model: model)
-        } label: {
-            Text(model.session.colourSeparation != nil ? "Separations: \(model.session.negativeCount) coats by colour"
-                 : model.session.negativeCount > 1 ? "Separations: \(model.session.negativeCount) negatives" : "Separations")
-        }
     }
 
-    /// "Options", with what's set when it's closed: e.g. "Options: mirrored, 3 negatives".
-    private var optionsHeader: String {
+    // MARK: what a closed section shows in its header
+
+    private var negativeSummary: String {
+        let curve = model.session.processPath?.deletingPathExtension().lastPathComponent
+        return [model.currentSetup?.name, model.session.negativeColour.capitalized, curve].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    private var optionsSummary: String {
         var set = [String]()
         if model.session.mirror { set.append("mirrored") }
+        set.append("\(model.units.length(model.session.safeEdge)) edge")
         if model.session.outline > 0 { set.append("outlined") }
-        if model.session.negativeCount > 1 { set.append("\(model.session.negativeCount) negatives") }
-        return set.isEmpty ? "Options" : "Options: " + set.joined(separator: ", ")
+        return set.joined(separator: ", ")
     }
 
+    private var separationsSummary: String {
+        let count = model.session.negativeCount
+        if model.session.colourSeparation != nil { return "\(count) coats by colour" }
+        return count > 1 ? "\(count) negatives" : "none"
+    }
+
+    private var toningSummary: String {
+        if model.session.printsColour { return "colour" }
+        let preset = presetLabels.first { $0.0 == model.session.preset }?.1 ?? model.session.preset
+        return [preset, model.currentCalibration?.label ?? "uncorrected"].joined(separator: ", ")
+    }
+
+    private var marksSummary: String {
+        let marks = [model.session.guide ? "guide line" : nil, model.session.registration ? "registration" : nil].compactMap { $0 }
+        return marks.isEmpty ? "none" : marks.joined(separator: ", ")
+    }
+
+    private var pageSummary: String {
+        [model.session.paper, model.session.printer?.replacingOccurrences(of: "_", with: " ")].compactMap { $0 }.joined(separator: ", ")
+    }
+
+    private var sizeSummary: String {
+        model.sizeDescription.split(separator: "\n").first.map(String.init) ?? (model.session.fit ? "fit to page" : "")
+    }
 
     // MARK: the preview
 
@@ -415,5 +487,44 @@ public struct ContentView: View {
         panel.allowsMultipleSelection = false
         if let folder { panel.directoryURL = URL(fileURLWithPath: folder) }
         return panel.runModal() == .OK ? panel.url : nil
+    }
+}
+
+/// A sidebar section that folds away: its title (and, while folded, what's set in it) is the
+/// first row of its box, so a folded section takes one row rather than a header and a gap.
+struct FoldingSection<Content: View>: View {
+    let title: String
+    let summary: String
+    @Binding var open: Bool
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        Section {
+            Button {
+                withAnimation(.snappy(duration: 0.2)) { open.toggle() }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                        .frame(width: 10)
+                    Text(title).font(.headline)
+                    Spacer(minLength: 8)
+                    if !open && !summary.isEmpty {
+                        Text(summary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityValue(open ? "open" : "closed: \(summary)")
+            if open { content }
+        }
     }
 }

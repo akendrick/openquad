@@ -7,7 +7,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- A negative can go anywhere on the page. App: "Preview on the page" under Page in the Negative
+- Size and resolution shows the photo's own resolution as soon as it is open ("Photo's own: 300 ppi
+  (4.00 x 2.66 in)"), or that it has none and 300 ppi is used, so an empty Resolution field is no
+  longer a guess.
+
+- A negative can go anywhere on the page. App: "Preview on the page" under Position on the page in the Negative
   tab shows the whole sheet with its margins dashed; drag the negative to move it, or step it with
   From the left and From the top, and Centre puts it back. It is kept inside the margins, and the
   summary gives its position. When moved, the print is the page inside its margins with the
@@ -131,6 +135,13 @@ versions follow [Semantic Versioning](https://semver.org/).
   strong as it prints, to check the bands and seams before printing film.
 
 ### Changed
+
+- A tidier sidebar in the Print and Negative tabs. Every section folds away (click its title) and,
+  folded, shows what's set in it, e.g. "Darkroom marks: guide line" or "Separations: 3 negatives";
+  which are open is remembered. The photo is one row with Open… beside it. The Negative section
+  is three rows: Save and Delete setup moved to a ⋯ menu by Setup, Calibrate a Process… and Clear
+  to the process curve's Choose menu. Separations has its own section (it was inside Options), Page
+  is split into Printer and paper, Size and resolution, and Position on the page.
 
 - The blocking test and process charts print on the Negative tab's paper instead of always Letter.
 - The wizards and curve menus no longer re-read every kept run (or redraw the chart preview) on each

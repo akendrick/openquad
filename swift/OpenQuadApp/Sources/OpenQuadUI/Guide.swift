@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 22
+    public static let version = 23
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -27,8 +27,9 @@ public struct GuideView: View {
                      "This is a beta. Please report anything that goes wrong, or reads unclearly, at "
                         + "github.com/akendrick/openquad/issues."]),
         Page(symbol: "printer", title: "Print a photo",
-             text: "The Print tab: everything is on the left; the preview on the right shows how the print should look.",
-             steps: ["Open Photo… (⌘O): greyscale or colour, any size. Colour photos are converted to grey, "
+             text: "The Print tab: everything is on the left, in sections you can fold away (click a title; a folded section "
+                + "shows what's set in it); the preview on the right shows how the print should look.",
+             steps: ["Open… (⌘O): greyscale or colour, any size. Colour photos are converted to grey, "
                         + "unless you turn on Print in colour. TIFF, PNG, JPEG and JPEG 2000 (read at full 16-bit "
                         + "depth) open directly; a GIMP .xcf opens through GIMP 3, if it is installed, which takes a "
                         + "few seconds.",
@@ -38,8 +39,10 @@ public struct GuideView: View {
                         + "the preview.",
                      "Toning stays Neutral unless you choose a duotone; it's never remembered.",
                      "Calibration: pick one of your saved calibrations (Import… adds a file). Choosing a printer "
-                        + "under Page picks its newest calibration for that paper.",
-                     "Page: paper, Fit to page, or turn Fit off and give a resolution. Print size shows the result.",
+                        + "under Printer and paper picks its newest calibration for that paper.",
+                     "Printer and paper, then Size and resolution: Fit to page, or turn Fit off and give a resolution. Photo's "
+                        + "own shows the resolution saved in the photo (and the size it makes); left empty, that's "
+                        + "the one used. Print size shows the result.",
                      "Print… (⌘P). With \"Choose in the print panel\" the macOS panel opens: pick the printer and the "
                         + "same quality settings every time. Or pick a printer to print straight to it.",
                      "Save Print File… writes the finished 16-bit file to print from another app at 100%."]),
@@ -62,10 +65,11 @@ public struct GuideView: View {
                 + "blocks UV. It has its own photo, printer and paper.",
              steps: ["Setup: switch between saved setups (curve, colour, mirror, edges, printer, paper and any separation) "
                         + "in one step. "
-                        + "Once a process is calibrated, Save Setup… keeps it under a name, e.g. Cyanotype on Pictorico.",
-                     "Ink colour and Process curve: both come from the Process Calibration tab.",
-                     "Options (collapsed until you need it) holds Mirror, Safe edge, Outline in black and "
-                        + "Separations. Mirror if the film's printed side must face the tissue: the F cut into the safe "
+                        + "Once a process is calibrated, Save Setup… (in the ⋯ menu beside it) keeps it under a name, e.g. Cyanotype on Pictorico.",
+                     "Ink colour and Process curve: both come from the Process Calibration tab (Calibrate a Process… is in the "
+                        + "curve's Choose menu).",
+                     "Options (folded until you need it) holds Mirror, Safe edge and Outline in black; Separations has "
+                        + "its own section. Mirror if the film's printed side must face the tissue: the F cut into the safe "
                         + "edge reads correctly in the print when the mirror setting was right. Outline in black adds a "
                         + "border of the width you set between the safe edge and the photo.",
                      "Darkroom marks: a black guide line round the image and registration marks (targets on each "
@@ -75,13 +79,13 @@ public struct GuideView: View {
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
                      "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",
-                     "Preview on the page (under Page) shows the whole sheet with its margins dashed. Drag the "
+                     "Preview on the page (under Position on the page) shows the whole sheet with its margins dashed. Drag the "
                         + "negative to put it anywhere inside the margins, or step it with From the left and From the "
                         + "top; Centre puts it back. Every negative of a separation prints in the same place.",
                      "Print on transparency film at 100% with your usual film settings."]),
         Page(symbol: "square.stack.3d.up", title: "Multi-coat separations",
              text: "For processes that build their tones up in several coats (gum, multi-coat cyanotype): the photo "
-                + "split by tone into 2-6 negatives, printed one over another. In the Negative tab, under Options.",
+                + "split by tone into 2-6 negatives, printed one over another. In the Negative tab, under Separations.",
              steps: ["Negatives: how many. Set where the bands meet on the step scale, and an overlap so the seams "
                         + "don't show. Each negative prints nothing lighter than its band and full strength darker, "
                         + "so the coats add up.",
@@ -99,7 +103,7 @@ public struct GuideView: View {
                         + "a second print to check."]),
         Page(symbol: "paintpalette", title: "Colour separations",
              text: "For colour from coloured coats (tricolour gum, cyanotype under gum): a colour photo split by "
-                + "colour into 2-4 negatives, one per pigment. In the Negative tab, under Options ▸ Separations, "
+                + "colour into 2-4 negatives, one per pigment. In the Negative tab, under Separations, "
                 + "choose Split by: Colours.",
              steps: ["Set each coat's colour, in the order you print them: pick a pigment (Cyanotype blue, "
                         + "Quinacridone magenta, Hansa yellow, ...) or match your own coat's colour with the colour "

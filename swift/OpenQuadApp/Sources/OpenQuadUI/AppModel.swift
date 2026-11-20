@@ -946,6 +946,17 @@ public final class AppModel {
         return ([text] + session.notes).joined(separator: "\n")
     }
 
+    /// The photo's own resolution and the size it makes, e.g. "300 ppi (4 x 2.66 in)", or
+    /// that it has none (and what's used instead). Nil with no photo open.
+    public var photoResolutionDescription: String? {
+        guard let photo = session.photo else { return nil }
+        guard let dpi = photo.dpi, dpi.0 > 0 else {
+            return String(format: "none set (%.0f ppi is used)", PrintSession.fallbackPPI)
+        }
+        let size = units.size(Double(photo.width) / dpi.0, Double(photo.height) / dpi.1)
+        return String(format: "%.0f ppi", dpi.0) + " (\(size))"
+    }
+
     public var sizeDescription: String {
         guard session.photo != nil, let (width, height) = try? session.sizeInches(),
               let ppi = try? session.effectivePPI() else { return "" }
