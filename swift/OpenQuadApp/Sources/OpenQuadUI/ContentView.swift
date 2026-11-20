@@ -157,6 +157,28 @@ public struct ContentView: View {
         Picker("Paper", selection: Binding(get: { model.session.paper }, set: { model.setPaper($0) })) {
             ForEach(paperOrder, id: \.self) { Text($0).tag($0) }
         }
+        if model.session.printer == nil {
+            Text("Media type and quality are set in the print panel (Media & Quality). Choose the same every time.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else if model.printerMedia == nil && model.printerQuality == nil {
+            Text("This printer has no media type or quality settings OpenQuad can set: it prints with its own.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        } else {
+            if let media = model.printerMedia { printerOptionPicker("Media type", media) }
+            if let quality = model.printerQuality { printerOptionPicker("Quality", quality) }
+        }
+    }
+
+    /// One of the printer's own settings, remembered for the printer; "Printer default" leaves it to the driver.
+    private func printerOptionPicker(_ title: String, _ option: PrinterOption) -> some View {
+        Picker(title, selection: Binding(get: { model.session.printerOptions[option.keyword] },
+                                         set: { model.setPrinterOption(option.keyword, $0) })) {
+            Text("Printer default" + (option.defaultValue.map { " (\(option.name(of: $0)))" } ?? "")).tag(String?.none)
+            Divider()
+            ForEach(option.choices, id: \.self) { Text($0.name).tag(String?.some($0.value)) }
+        }
     }
 
     /// Fit or a set resolution, and the size that makes. The photo's own resolution is shown
@@ -406,7 +428,9 @@ public struct ContentView: View {
     }
 
     private var pageSummary: String {
-        [model.session.paper, model.session.printer?.replacingOccurrences(of: "_", with: " ")].compactMap { $0 }.joined(separator: ", ")
+        let media = model.printerMedia.flatMap { option in model.session.printerOptions[option.keyword].map(option.name(of:)) }
+        return [model.session.paper, model.session.printer?.replacingOccurrences(of: "_", with: " "), media]
+            .compactMap { $0 }.joined(separator: ", ")
     }
 
     private var sizeSummary: String {
@@ -464,7 +488,7 @@ public struct ContentView: View {
     private func printPhoto() {
         if model.session.printer != nil {
             // Straight to the printer (lp), as calibrations made with the Python app were printed.
-            guard confirm("Print?", model.summary.joined(separator: "\n")) else { return }
+            guard confirm("Print?", (model.summary + model.printerOptionLines).joined(separator: "\n")) else { return }
             Task { await model.printDirect() }
             return
         }

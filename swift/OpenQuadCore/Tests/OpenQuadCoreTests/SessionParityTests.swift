@@ -142,8 +142,13 @@ struct SessionParity {
         settings.negativePaper = "A4"
         settings.chartSize = [8, 10]
         settings.proofProfile = "/Library/ColorSync/Profiles/Paper.icc"
+        settings.printerOptions = ["Canon_MG3600_series": ["CNIJMediaType": "28", "CNIJPrintQuality": "0"]]
+        settings.negativePrinterOptions = ["Epson_ET_2900": ["MediaType": "transparency"]]
         try settings.save(url)
         #expect(AppSettings.load(url) == settings)
+        try Data(#"{"printer_options": {"A": {"x": "1", "y": 2}, "B": 3}, "negative_printer_options": []}"#.utf8).write(to: url)
+        #expect(AppSettings.load(url).printerOptions == ["A": ["x": "1"]] && AppSettings.load(url).negativePrinterOptions.isEmpty)
+        try settings.save(url)
         let text = try String(contentsOf: url, encoding: .utf8)
         #expect(text.contains("\"scanner_host\"") && !text.contains("preset") && text.contains("\"mm\""))
     }

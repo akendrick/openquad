@@ -44,6 +44,9 @@ class PrintSession:
     calibration: Calibration | None = None
     calibration_path: Path | None = None
     printer: str | None = None
+    # Driver options for printing straight to the printer (lp -o), e.g. its media type and
+    # quality: {"CNIJMediaType": "28"}. The print panel has its own.
+    printer_options: dict[str, str] = field(default_factory=dict)
     paper: str = "Letter"
     fit: bool = True
     margin: float = DEFAULT_MARGIN
@@ -533,7 +536,7 @@ class PrintSession:
             title += f" (negative {self.layer + 1} of {self.negative_count})"
         return PrintJob(
             path=path, printer=self.printer, paper=self.paper, ppi=self.effective_ppi(),
-            title=title,
+            title=title, options=tuple(sorted(self.printer_options.items())),
         )  # fmt: skip
 
     def print(self, scratch: str | Path, runner: Runner = run_command) -> str:

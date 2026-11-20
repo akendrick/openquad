@@ -142,6 +142,10 @@ def test_print_sends_a_job(tmp_path: Path) -> None:
     assert "PageSize=Letter" in command
     assert command[command.index("-t") + 1] == "OpenQuad: photo.tif"
 
+    session.printer_options = {"CNIJPrintQuality": "0", "CNIJMediaType": "28"}
+    command = session.print_job(tmp_path / "x.tif").command()
+    assert command[-5:-1] == ["-o", "CNIJMediaType=28", "-o", "CNIJPrintQuality=0"]  # sorted
+
 
 def test_print_needs_a_printer_and_a_fitting_size(tmp_path: Path) -> None:
     session = opened(tmp_path)

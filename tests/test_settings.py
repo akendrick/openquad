@@ -63,3 +63,15 @@ def test_units_are_remembered(tmp_path: Path) -> None:
     loaded = Settings.load(path)
     assert (loaded.units, loaded.negative_printer, loaded.negative_paper) == ("mm", "Epson", "A4")
     assert loaded.chart_size == [8, 10]
+
+
+def test_printer_options_are_remembered_and_checked(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    Settings(printer_options={"Canon": {"CNIJMediaType": "28"}}).save(path)
+    assert Settings.load(path).printer_options == {"Canon": {"CNIJMediaType": "28"}}
+    assert Settings.load(path).negative_printer_options == {}
+    path.write_text(
+        '{"printer_options": {"A": {"x": "1", "y": 2}, "B": 3}, "negative_printer_options": []}'
+    )
+    loaded = Settings.load(path)
+    assert loaded.printer_options == {"A": {"x": "1"}} and loaded.negative_printer_options == {}

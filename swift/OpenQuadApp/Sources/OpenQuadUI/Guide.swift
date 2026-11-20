@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 23
+    public static let version = 24
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -44,7 +44,8 @@ public struct GuideView: View {
                         + "own shows the resolution saved in the photo (and the size it makes); left empty, that's "
                         + "the one used. Print size shows the result.",
                      "Print… (⌘P). With \"Choose in the print panel\" the macOS panel opens: pick the printer and the "
-                        + "same quality settings every time. Or pick a printer to print straight to it.",
+                        + "same Media & Quality settings every time. Or pick a printer to print straight to it: its own "
+                        + "Media type and Quality then appear under Printer and paper, remembered for that printer.",
                      "Save Print File… writes the finished 16-bit file to print from another app at 100%."]),
         Page(symbol: "slider.horizontal.3", title: "Calibrate your printer",
              text: "The Printer Calibration tab (or Calibrate This Printer… in Print). Calibration goes in rounds; each "

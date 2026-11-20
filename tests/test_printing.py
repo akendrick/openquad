@@ -102,3 +102,50 @@ def test_run_command_captures_output() -> None:
 def test_run_command_missing_tool() -> None:
     with pytest.raises(PrintError, match="not found"):
         run_command(["openquad-no-such-command"])
+
+
+# The printer's own options: media type and quality, read from its PPD.
+
+from openquad.printing import media_and_quality, parse_ppd, printer_options  # noqa: E402
+from tests.ppd_fixtures import AIRPRINT, CANON, OTHER  # noqa: E402
+
+
+def test_a_canon_ppd_gives_its_media_and_quality() -> None:
+    options = parse_ppd(CANON)
+    keywords = [o.keyword for o in options]
+    assert keywords == ["CNIJMediaType", "CNIJPrintQuality", "CNIJPQualitySlider"]
+    media, quality = media_and_quality(options)
+    assert media is not None and quality is not None
+    assert media.label == "Media Type" and media.default == "0"
+    assert media.choices == (("0", "Plain Paper"), ("51", "Photo Paper Pro Platinum"),
+                             ("28", "Matte Photo Paper"))  # fmt: skip
+    assert quality.keyword == "CNIJPrintQuality" and quality.default == "10"
+    assert [v for v, _ in quality.choices] == ["0", "10", "20"]  # its code spread over lines too
+    assert media.name_of("28") == "Matte Photo Paper" and media.name_of("99") == "99"
+
+
+def test_an_airprint_ppd_gets_names_for_its_media() -> None:
+    media, quality = media_and_quality(parse_ppd(AIRPRINT))
+    assert media is not None and quality is not None
+    assert media.label == "MediaType" and media.default == "any"
+    assert media.choices == (
+        ("stationery", "Plain paper"), ("photographic-matte", "Matte photo paper"),
+        ("sparkly", "sparkly"), ("any", "Any"),
+    )  # fmt: skip
+    assert quality.choices == (("Normal", "Normal"), ("High", "High"))
+
+
+def test_other_printers_are_matched_by_the_options_names() -> None:
+    media, quality = media_and_quality(parse_ppd(OTHER))
+    assert media is not None and media.keyword == "XYPaper"
+    assert quality is not None and quality.keyword == "XYMode" and quality.default is None
+    assert media_and_quality([]) == (None, None)
+
+
+def test_printer_options_reads_the_printers_ppd(tmp_path: Path) -> None:
+    (tmp_path / "Canon_MG3600_series.ppd").write_text(CANON)
+    assert len(printer_options("Canon_MG3600_series", tmp_path)) == 3
+    assert printer_options("No_Such_Printer", tmp_path) == []
+    for bad in ("", "My Printer", "../etc/passwd"):
+        with pytest.raises(ValueError, match="invalid printer name"):
+            printer_options(bad, tmp_path)
