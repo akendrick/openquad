@@ -46,7 +46,7 @@ opens on first launch (and later from **Help** or the **?** button).
   contact print (carbon, or another UV process).
 - **Contact sheets:** the Contact Sheet tab (⌘3) puts up to 16 photos on one sheet, to print or
   to make a negative of.
-- **Darkroom marks:** the guide line and registration marks (Darkroom marks, in the Print and
+- **Darkroom marks:** the guide line and registration marks (Registration, in the Print and
   Negative tabs and both calibration wizards). Can you see and line up a red or orange negative
   under your safelight?
 - **Tabs:** Print, Negative, Contact Sheet, Printer Calibration and Process Calibration each keep

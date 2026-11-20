@@ -961,15 +961,17 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         {"photo": "photo-grey16.tif", "fit": False, "ppi": 8.0, "placement": [1.0, 1.0]},
         {"photo": "photo-grey16.tif", "preset": "black-red", "calibration": True, "wedge": True},
         {"photo": "photo-grey.png", "fit": False, "ppi": 20.0, "guide": True, "wedge": True,
-         "wedge_side": "left", "wedge_gap": 0.3},
+         "wedge_side": "left", "wedge_gap": 0.3, "wedge_separate": True},
         {"photo": "photo-grey16.tif", "mode": "negative", "process": True, "mirror": True,
          "safe_edge": 0.1, "wedge": True, "wedge_side": "top", "units": "mm"},
         {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 20.0,
          "mirror": True, "outline": 0.15, "wedge": True, "wedge_side": "right", "wedge_gap": 0.0},
         {"photo": "photo-colour16.tif", "colour_print": True, "fit": False, "ppi": 20.0,
-         "wedge": True, "colour_wedge": True, "wedge_side": "right", "wedge_gap": 0.5},
+         "wedge": True, "colour_wedge": True, "wedge_side": "right", "wedge_gap": 0.5,
+         "wedge_separate": True},
         {"photo": "photo-colour.png", "colour_print": True, "colour_wedge": True,
-         "wedge_side": "top"},
+         "wedge_side": "top", "mirror": True},
+        {"photo": "photo-grey16.tif", "mirror": True, "guide": True, "wedge": True},
         {"photo": "photo-colour.png", "colour_wedge": True, "wedge": True, "paper": "4x6"},
         {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
          "placement": [1.0, 2.0], "wedge": True},
@@ -1002,6 +1004,7 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         session.colour_wedge = config.get("colour_wedge", False)
         session.set_wedge_side(config.get("wedge_side", "bottom"))
         session.set_wedge_gap(config.get("wedge_gap", 0.25))
+        session.wedge_separate = config.get("wedge_separate", False)
         session.set_placement(tuple(config["placement"]) if "placement" in config else None)
         rendered = session.render_print()
         sessions.append({**config, "ppi_used": session.effective_ppi(),

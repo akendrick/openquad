@@ -152,6 +152,7 @@ public final class AppModel {
             session.colourWedge = wedge.colour
             try? session.setWedgeSide(wedge.side)
             try? session.setWedgeGap(wedge.gap)
+            session.wedgeSeparate = wedge.separate
         }
         if let size = settings.maxSize, size.count == 2 { session.maxSize = (size[0], size[1]) }
         session.units = settings.units
@@ -343,9 +344,17 @@ public final class AppModel {
         refreshPreview()
     }
 
+    /// Joined to the print (the default; on a negative, inside its safe edge) or made separately, the gap away.
+    public func setWedgeSeparate(_ on: Bool) {
+        session.wedgeSeparate = on
+        rememberWedge()
+        refreshPreview()
+    }
+
     /// The wedges are remembered for each tab.
     func rememberWedge() {
-        let chosen = WedgeSettings(grey: session.wedge, colour: session.colourWedge, side: session.wedgeSide, gap: session.wedgeGap)
+        let chosen = WedgeSettings(grey: session.wedge, colour: session.colourWedge, side: session.wedgeSide, gap: session.wedgeGap,
+                                   separate: session.wedgeSeparate)
         let negative = role == .negative
         saveSettings { if negative { $0.negativeWedge = chosen } else { $0.printWedge = chosen } }
     }
@@ -583,7 +592,8 @@ public final class AppModel {
     public var positionDescription: String {
         guard session.placement != nil else { return "Centred" }
         guard session.placed, let (left, top) = try? session.pagePosition() else { return "Centred (no room to move it)" }
-        return "\(units.length(left)) from the left, \(units.length(top)) from the top"
+        let short = { (inches: Double) in self.units.length((inches * 100).rounded() / 100) }
+        return "\(short(left)) from the left, \(short(top)) from the top"
     }
 
     /// Show (and print) negative `layer` of the separation.
@@ -1045,6 +1055,12 @@ public final class AppModel {
 
     /// The photo's own resolution and the size it makes, e.g. "300 ppi (4 x 2.66 in)", or
     /// that it has none (and what's used instead). Nil with no photo open.
+    /// The resolution the print is made at: the fit's when fitting, else the one set or the photo's own.
+    public var resolution: Double? {
+        guard session.photo != nil else { return nil }
+        return try? session.effectivePPI()
+    }
+
     public var photoResolutionDescription: String? {
         guard let photo = session.photo else { return nil }
         guard let dpi = photo.dpi, dpi.0 > 0 else {

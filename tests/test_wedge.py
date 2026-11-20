@@ -69,6 +69,11 @@ def test_a_print_carries_its_wedge_toned_like_the_photo(tmp_path: Path) -> None:
     session.open(photo(tmp_path))
     plain = session.render_print()
     session.wedge = True
+    assert session.size_inches() == pytest.approx((7.5, 5.0 + 0.4))  # joined: no gap
+    joined = session.render_print()
+    assert joined.shape == (200 + round(0.4 * session.effective_ppi()), 300, 3)
+    assert "Step wedge: 31 steps, below the print, joined to it" in session.summary()
+    session.wedge_separate = True
     assert session.size_inches() == pytest.approx((7.5, 5.0 + 0.25 + 0.4))
     printed = session.render_print()
     ppi = session.effective_ppi()
@@ -90,6 +95,7 @@ def test_the_wedge_side_and_gap_are_checked(tmp_path: Path) -> None:
     session = PrintSession()
     session.open(photo(tmp_path))
     session.wedge = True
+    session.wedge_separate = True
     session.set_wedge_side("right")
     session.set_wedge_gap(0.5)
     width, height = session.size_inches()
@@ -114,6 +120,7 @@ def test_a_negative_carries_its_wedge_through_the_process(tmp_path: Path) -> Non
     session.outline, session.guide = 0.1, True
     bare = session.render_print()
     session.wedge = True
+    session.wedge_separate = True
     session.set_wedge_side("left")
     ppi = session.effective_ppi()
     negative = session.render_print()
@@ -140,6 +147,7 @@ def test_the_colour_wedge_is_only_for_colour_prints(tmp_path: Path) -> None:
     session = PrintSession()
     session.open(path)
     session.colour_wedge = True
+    session.wedge_separate = True
     assert session.wedge_kinds == []  # printed in grey
     session.set_colour_print(True)
     session.wedge = True
@@ -151,3 +159,34 @@ def test_the_colour_wedge_is_only_for_colour_prints(tmp_path: Path) -> None:
     summary = session.summary()
     assert "Colour wedge: 31 hues, below the print, 0.25 in away" in summary
     assert session.preview().shape[0] > 40
+
+
+def test_a_joined_wedge_sits_inside_the_negatives_safe_edge(tmp_path: Path) -> None:
+    session = PrintSession(mode="negative", fit=False, ppi=40.0)
+    session.open(photo(tmp_path))
+    session.outline = 0.1
+    bare = session.render_print()
+    session.wedge = True  # joined (the default): no clear film between
+    negative = session.render_print()
+    edge, band, across = round(0.25 * 40), round(0.1 * 40), round(0.4 * 40)
+    assert negative.shape == (bare.shape[0] + across + edge, bare.shape[1], 3)
+    assert np.array_equal(negative[: bare.shape[0]], bare)
+    safe = negative[0, 0]
+    wedge = negative[bare.shape[0] :]
+    assert (wedge[-edge:] == safe).all() and (wedge[:, :edge] == safe).all()
+    assert not (wedge[0, edge : edge + 2 * band + 300] == safe).all()  # the wedge itself
+    assert session.size_inches()[1] == pytest.approx(200 / 40 + 0.7 + 0.4 + 0.25)
+    assert any("joined to it" in line for line in session.summary())
+
+
+def test_a_print_can_be_mirrored(tmp_path: Path) -> None:
+    session = PrintSession()
+    session.open(photo(tmp_path))
+    session.wedge = True
+    plain = session.render_print()
+    session.mirror = True
+    mirrored = session.render_print()
+    assert np.array_equal(mirrored[:200], plain[:200, ::-1])  # the photo flips
+    assert np.array_equal(mirrored[200:], plain[200:])  # its wedge doesn't
+    assert session.preview()[0, 0, 0] > session.preview()[0, -1, 0]  # white now on the left
+    assert "Mirrored: yes" in session.summary()

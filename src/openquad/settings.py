@@ -96,4 +96,5 @@ def _wedge(value: object) -> dict[str, object] | None:
     if side not in ("top", "bottom", "left", "right") or not isinstance(gap, (int, float)):
         return None
     return {"grey": value.get("grey") is True, "colour": value.get("colour") is True,
-            "side": side, "gap": min(max(float(gap), 0.0), 2.0)}  # fmt: skip
+            "side": side, "gap": min(max(float(gap), 0.0), 2.0),
+            "separate": value.get("separate") is True}  # fmt: skip

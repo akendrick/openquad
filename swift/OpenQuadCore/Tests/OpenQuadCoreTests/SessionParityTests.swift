@@ -59,6 +59,7 @@ struct SessionParity {
             session.colourWedge = c["colour_wedge"] as? Bool ?? false
             try session.setWedgeSide(c["wedge_side"] as? String ?? "bottom")
             try session.setWedgeGap((c["wedge_gap"] as? NSNumber)?.doubleValue ?? 0.25)
+            session.wedgeSeparate = c["wedge_separate"] as? Bool ?? false
             try session.setPlacement((c["placement"] as? [NSNumber]).map { ($0[0].doubleValue, $0[1].doubleValue) })
 
             #expect(session.printsColour == c["prints_colour"] as? Bool)
