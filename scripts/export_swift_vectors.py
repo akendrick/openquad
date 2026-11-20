@@ -809,6 +809,23 @@ def devices_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         sent.append({"code": code, "stdout": out, "stderr": err, **outcome})
     printers = list_printers(lambda c: Done(0, "Canon_MG3600_series\nPDF\n\n"))  # type: ignore[arg-type,return-value]
 
+    sys.path.insert(0, str(ROOT))
+    from openquad.printing import media_and_quality, parse_ppd
+    from tests import ppd_fixtures
+
+    ppds = []
+    for name in ("CANON", "AIRPRINT", "OTHER"):
+        text = getattr(ppd_fixtures, name)
+        options = parse_ppd(text)
+        media, quality = media_and_quality(options)
+        ppds.append({
+            "name": name, "text": text,
+            "options": [{"keyword": o.keyword, "label": o.label, "default": o.default,
+                         "choices": [list(c) for c in o.choices]} for o in options],
+            "media": media.keyword if media else None,
+            "quality": quality.keyword if quality else None,
+        })  # fmt: skip
+
     rgb = rng.integers(0, 65536, (4, 6, 3)).astype(np.uint16)
     path = directory / "rgb16.tif"
     save_rgb(path, rgb, dpi=(200.0, 200.0))
@@ -821,6 +838,7 @@ def devices_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         "jobs": jobs,
         "send": sent,
         "printers": printers,
+        "ppds": ppds,
         "tiffs": tiffs,
         "rgb_tiff": rgb_file,
     }, written

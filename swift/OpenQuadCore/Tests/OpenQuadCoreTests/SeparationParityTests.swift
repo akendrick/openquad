@@ -116,6 +116,9 @@ struct SeparationParity {
         #expect(session.layerProcessPaths[2] != nil)
         session.printer = "Canon"
         #expect(try session.printJob(URL(fileURLWithPath: "/tmp/x.tif")).title?.hasSuffix("(negative 2 of 3)") == true)
+        session.printerOptions = ["CNIJPrintQuality": "0", "CNIJMediaType": "28"]
+        let command = try session.printJob(URL(fileURLWithPath: "/tmp/x.tif")).command()
+        #expect(Array(command.suffix(5).prefix(4)) == ["-o", "CNIJMediaType=28", "-o", "CNIJPrintQuality=0"])  // sorted
         let folder = try temporaryFolder()
         let written = try session.writeSeparations(folder)
         #expect(written.map(\.lastPathComponent) == ["photo-grey16-1of3.tif", "photo-grey16-2of3.tif", "photo-grey16-3of3.tif"])

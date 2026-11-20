@@ -22,6 +22,9 @@ public struct PrintSession: Sendable {
     public private(set) var calibration: Calibration?
     public private(set) var calibrationPath: URL?
     public var printer: String?
+    /// Driver options for printing straight to the printer (lp -o), e.g. its media type and
+    /// quality: ["CNIJMediaType": "28"]. The print panel has its own.
+    public var printerOptions: [String: String] = [:]
     public private(set) var paper = "Letter"
     public var fit = true
     public var margin = Paper.defaultMargin
@@ -528,7 +531,8 @@ public struct PrintSession: Sendable {
     public func printJob(_ path: URL) throws -> PrintJob {
         guard let printer, !printer.isEmpty else { throw SessionError(description: "choose a printer first") }
         guard try fitsOnPaper() else { throw SessionError(description: "the photo is larger than the paper at this size") }
-        return try PrintJob(path: path.path, printer: printer, paper: paper, ppi: try effectivePPI(), title: jobTitle)
+        return try PrintJob(path: path.path, printer: printer, paper: paper, ppi: try effectivePPI(), title: jobTitle,
+                            options: printerOptions.sorted { $0.key < $1.key }.map { ($0.key, $0.value) })
     }
 
     /// Render into `scratch` and send to the printer through lp; returns the CUPS job id.
@@ -562,8 +566,18 @@ public struct AppSettings: Sendable, Equatable {
     public var chartSize: [Double]?
     /// The ICC profile colour prints are soft-proofed with (nil: no soft-proof).
     public var proofProfile: String?
+    /// Driver options (media type, quality) chosen for each printer when printing straight to
+    /// it, for prints and for negatives: [printer: [option: value]].
+    public var printerOptions: [String: [String: String]] = [:]
+    public var negativePrinterOptions: [String: [String: String]] = [:]
 
     public init() {}
+
+    /// Printer options as saved, keeping only [printer: [option: value]] strings.
+    static func options(_ value: Any?) -> [String: [String: String]] {
+        guard let object = value as? [String: Any] else { return [:] }
+        return object.compactMapValues { chosen in (chosen as? [String: Any])?.compactMapValues { $0 as? String } }
+    }
 
     public static func defaultURL() -> URL {
         if let override = ProcessInfo.processInfo.environment["OPENQUAD_SETTINGS"], !override.isEmpty {
@@ -593,6 +607,8 @@ public struct AppSettings: Sendable, Equatable {
         settings.negativePaper = (object["negative_paper"] as? String).flatMap { Paper.sizes[$0] != nil ? $0 : nil }
         if let size = object["chart_size"] as? [NSNumber], size.count == 2 { settings.chartSize = size.map(\.doubleValue) }
         settings.proofProfile = object["proof_profile"] as? String
+        settings.printerOptions = options(object["printer_options"])
+        settings.negativePrinterOptions = options(object["negative_printer_options"])
         return settings
     }
 
@@ -605,6 +621,7 @@ public struct AppSettings: Sendable, Equatable {
             "units": units.rawValue,
             "negative_printer": negativePrinter ?? NSNull(), "negative_paper": negativePaper ?? NSNull(),
             "chart_size": chartSize ?? NSNull(), "proof_profile": proofProfile ?? NSNull(),
+            "printer_options": printerOptions, "negative_printer_options": negativePrinterOptions,
         ]
         var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         data.append(0x0a)

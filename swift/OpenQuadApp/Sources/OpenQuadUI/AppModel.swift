@@ -146,6 +146,7 @@ public final class AppModel {
             try? session.setNegativeColour(settings.negativeColour)
         }
         session.printer = role == .negative ? settings.negativePrinter ?? settings.printer : settings.printer
+        loadPrinterOptions()
         if let size = settings.maxSize, size.count == 2 { session.maxSize = (size[0], size[1]) }
         session.units = settings.units
     }
@@ -722,6 +723,7 @@ public final class AppModel {
                 && setup.guide == session.guide && setup.registration == session.registration
                 && curve == session.processPath?.resolvingSymlinksInPath()
                 && setup.printer == session.printer && setup.paper == session.paper
+                && (session.printer == nil || setup.printerOptions == session.printerOptions)
                 && matchesSeparation(setup)
         }
     }
@@ -757,6 +759,9 @@ public final class AppModel {
         setMode(.negative)
         setPaper(setup.paper)
         setPrinter(setup.printer)
+        if setup.printer != nil, !setup.printerOptions.isEmpty {
+            for (keyword, value) in setup.printerOptions { setPrinterOption(keyword, value) }
+        }
         if let curve = setupLibrary.processURL(setup) {
             setProcess(curve)
         } else {
@@ -808,7 +813,8 @@ public final class AppModel {
         attempt {
             let setup = NegativeSetup(name: name, colour: session.negativeColour, mirror: session.mirror,
                                       safeEdge: session.safeEdge, outline: session.outline, guide: session.guide,
-                                      registration: session.registration, printer: session.printer, paper: session.paper,
+                                      registration: session.registration, printer: session.printer,
+                                      printerOptions: session.printer == nil ? [:] : session.printerOptions, paper: session.paper,
                                       separation: currentSeparation)
             let separated = session.separated || separationKind == .colours
             try setupLibrary.save(setup, process: session.processPath,
@@ -851,7 +857,48 @@ public final class AppModel {
         session.printer = name
         let negative = role == .negative
         saveSettings { if negative { $0.negativePrinter = name } else { $0.printer = name } }
+        loadPrinterOptions()
         matchCalibration()
+    }
+
+    /// The chosen printer's media type and quality options (from its PPD), when printing
+    /// straight to it; nil for the print panel, which has its own, or a printer without them.
+    public private(set) var printerMedia: PrinterOption?
+    public private(set) var printerQuality: PrinterOption?
+    /// Reads a printer's options; replaced in tests.
+    @ObservationIgnored var readPrinterOptions: (String) -> [PrinterOption] = { (try? Printing.printerOptions($0)) ?? [] }
+
+    /// Look up the printer's options and use what was last chosen for it (for this tab).
+    func loadPrinterOptions() {
+        guard let printer = session.printer else {
+            (printerMedia, printerQuality, session.printerOptions) = (nil, nil, [:])
+            return
+        }
+        (printerMedia, printerQuality) = Printing.mediaAndQuality(readPrinterOptions(printer))
+        let saved = (role == .negative ? settings.negativePrinterOptions : settings.printerOptions)[printer] ?? [:]
+        let options = [printerMedia, printerQuality].compactMap { $0 }
+        session.printerOptions = saved.filter { keyword, value in  // only what this printer still offers
+            options.contains { $0.keyword == keyword && $0.choices.contains { $0.value == value } }
+        }
+    }
+
+    /// Choose a media type or quality for the printer (nil: the printer's own default). Remembered for the printer.
+    public func setPrinterOption(_ keyword: String, _ value: String?) {
+        guard let printer = session.printer else { return }
+        session.printerOptions[keyword] = value
+        let chosen = session.printerOptions, negative = role == .negative
+        saveSettings {
+            if negative { $0.negativePrinterOptions[printer] = chosen } else { $0.printerOptions[printer] = chosen }
+        }
+    }
+
+    /// "Media type: Matte Photo Paper", "Quality: High": what's chosen for printing straight to the printer.
+    public var printerOptionLines: [String] {
+        [("Media type", printerMedia), ("Quality", printerQuality)].compactMap { title, option in
+            guard let option else { return nil }
+            let value = session.printerOptions[option.keyword]
+            return "\(title): " + (value.map(option.name(of:)) ?? "printer default" + (option.defaultValue.map { " (\(option.name(of: $0)))" } ?? ""))
+        }
     }
 
     public func setFit(_ on: Bool) {

@@ -7,6 +7,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- A printer's own media type and quality. Printing straight to a printer, the app's Printer and
+  paper section offers that printer's Media type and Quality (Matte Photo Paper, Super Fine and so
+  on, or the printer's default), read from its CUPS driver (PPD); AirPrint media get plain names.
+  They are sent to `lp`, remembered for each printer in each tab, kept in negative setups, and
+  listed in the summary before printing. Core: `printer_options`, `parse_ppd` and
+  `media_and_quality` in Python and Swift alike (shared vectors), and `PrintSession.printer_options`.
+  With the print panel, its own Media & Quality is used as before.
 - Size and resolution shows the photo's own resolution as soon as it is open ("Photo's own: 300 ppi
   (4.00 x 2.66 in)"), or that it has none and 300 ppi is used, so an empty Resolution field is no
   longer a guess.
