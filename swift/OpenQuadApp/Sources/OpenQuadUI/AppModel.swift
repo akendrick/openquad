@@ -137,6 +137,7 @@ public final class AppModel {
 
     private func restore() {
         try? session.setPaper(role == .negative ? settings.negativePaper ?? settings.paper : settings.paper)
+        session.landscape = role == .negative ? settings.negativeLandscape : settings.landscape
         if let path = settings.calibration, FileManager.default.fileExists(atPath: path) {
             try? session.setCalibration(URL(fileURLWithPath: path))
         }
@@ -180,10 +181,12 @@ public final class AppModel {
         saveSettings { settings in
             if session.negative {
                 settings.negativePaper = session.paper
+                settings.negativeLandscape = session.landscape
                 settings.process = session.processPath?.path
                 settings.negativeColour = session.negativeColour
             } else {
                 settings.paper = session.paper
+                settings.landscape = session.landscape
                 settings.calibration = session.calibrationPath?.path
             }
             settings.lastFolder = session.source?.deletingLastPathComponent().path ?? settings.lastFolder
@@ -639,7 +642,7 @@ public final class AppModel {
     /// The page, the room inside its margins and the negative on it, all in inches.
     public var pageLayout: (paper: (Double, Double), margin: Double, negative: CGRect)? {
         guard let size = try? session.sizeInches(), let position = try? session.pagePosition() else { return nil }
-        return (Paper.sizes[session.paper]!, session.margin, CGRect(x: position.0, y: position.1, width: size.0, height: size.1))
+        return (session.page, session.margin, CGRect(x: position.0, y: position.1, width: size.0, height: size.1))
     }
 
     /// Where the negative is, for the Page section: "Centred" or its distance from two edges.
@@ -803,7 +806,7 @@ public final class AppModel {
     /// The printable room (width, height) in inches: the page inside its margins, less the
     /// safe edge and outline for a negative, and within a set size if one is on.
     public var printableRoom: (Double, Double) {
-        let (paperW, paperH) = Paper.sizes[session.paper] ?? (8.5, 11)
+        let (paperW, paperH) = session.page
         let border = session.negative ? session.safeEdge + session.outline : 0
         var width = paperW - 2 * session.margin - 2 * border, height = paperH - 2 * session.margin - 2 * border
         if session.fit, let box = session.maxSize {
@@ -963,6 +966,14 @@ public final class AppModel {
             remember()
         }
         matchCalibration()
+        refreshPreview()
+    }
+
+    /// The page turned on its side (landscape), or upright (portrait).
+    public func setLandscape(_ on: Bool) {
+        session.landscape = on
+        if session.placed { try? session.setPlacement(try session.pagePosition()) }  // kept inside the margins
+        remember()
         refreshPreview()
     }
 

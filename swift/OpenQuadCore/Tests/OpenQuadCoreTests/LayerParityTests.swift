@@ -130,6 +130,13 @@ struct PaperParity {
                                             paper: f["paper"] as! String, safeEdge: (f["edge"] as! NSNumber).doubleValue)
             #expect(abs(got - (f["ppi"] as! NSNumber).doubleValue) < 1e-12)
         }
+        for f in try #require(v["landscape"] as? [[String: Any]]) {
+            let w = f["width"] as! Int, h = f["height"] as! Int, paper = f["paper"] as! String
+            let edge = (f["edge"] as! NSNumber).doubleValue
+            let got = edge == 0 ? try Paper.fitPPI(width: w, height: h, paper: paper, landscape: true)
+                : try Paper.negativePPI(width: w, height: h, paper: paper, safeEdge: edge, landscape: true)
+            #expect(abs(got - (f["ppi"] as! NSNumber).doubleValue) < 1e-12)
+        }
         for f in try #require(v["box"] as? [[String: Any]]) {
             let box = doubles(f["box"]), edge = (f["edge"] as! NSNumber).doubleValue
             let w = f["width"] as! Int, h = f["height"] as! Int

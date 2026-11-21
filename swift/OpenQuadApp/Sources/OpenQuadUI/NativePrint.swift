@@ -32,11 +32,12 @@ public enum NativePrint {
     /// image at its real size in the middle of the page.
     @MainActor
     public static func operation(for image: RGBImage, widthInches: Double, heightInches: Double,
-                                 paper: String, title: String, iccProfile: Data? = nil) -> NSPrintOperation? {
+                                 paper: String, landscape: Bool = false, title: String,
+                                 iccProfile: Data? = nil) -> NSPrintOperation? {
         guard let cgImage = image.cgImage(iccProfile: iccProfile), let (paperWidth, paperHeight) = Paper.sizes[paper] else { return nil }
         let info = (NSPrintInfo.shared.copy() as? NSPrintInfo) ?? NSPrintInfo()
         info.paperSize = NSSize(width: paperWidth * 72, height: paperHeight * 72)
-        info.orientation = .portrait
+        info.orientation = landscape ? .landscape : .portrait  // landscape turns the paper size round
         info.topMargin = 0
         info.bottomMargin = 0
         info.leftMargin = 0

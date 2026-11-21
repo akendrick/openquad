@@ -202,14 +202,15 @@ def label_left(width: int, edge: int, cell: int, label: int) -> int | None:
 
 
 def negative_ppi(
-    width_px: int, height_px: int, paper: str, safe_edge: float, margin: float
-) -> float:
+    width_px: int, height_px: int, paper: str, safe_edge: float, margin: float,
+    landscape: bool = False,
+) -> float:  # fmt: skip
     """Resolution at which the photo plus its safe edge fit within the page's margins."""
-    from openquad.paper import PAPER_SIZES
+    from openquad.paper import PAPER_SIZES, page_size
 
     if paper not in PAPER_SIZES:
         raise ValueError(f"unknown paper {paper!r}")
-    paper_w, paper_h = PAPER_SIZES[paper]
+    paper_w, paper_h = page_size(paper, landscape)
     room_w, room_h = paper_w - 2 * margin - 2 * safe_edge, paper_h - 2 * margin - 2 * safe_edge
     if room_w <= 0 or room_h <= 0:
         raise ValueError(f"no room for the photo on {paper} with these margins and safe edge")

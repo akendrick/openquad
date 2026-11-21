@@ -73,6 +73,7 @@ struct DeviceParity {
         for j in try #require(try vectors("devices")["jobs"] as? [[String: Any]]) {
             let job = try PrintJob(path: "/tmp/openquad/neg.tif", printer: "Canon_MG3600_series",
                                    paper: j["paper"] as? String ?? "Letter", ppi: (j["ppi"] as? NSNumber)?.doubleValue ?? 300,
+                                   landscape: j["landscape"] as? Bool ?? false,
                                    copies: j["copies"] as? Int ?? 1, title: j["title"] as? String,
                                    options: (j["options"] as? [[String]] ?? []).map { ($0[0], $0[1]) })
             #expect(job.command() == j["command"] as? [String])

@@ -15,13 +15,22 @@ PAPER_SIZES: dict[str, tuple[float, float]] = {
 DEFAULT_MARGIN = 0.5  # inches on every side
 
 
-def fit_ppi(width_px: int, height_px: int, paper: str, margin: float = DEFAULT_MARGIN) -> float:
+def page_size(paper: str, landscape: bool = False) -> tuple[float, float]:
+    """The page (width, height) in inches as it lies: portrait, or turned on its side."""
+    width, height = PAPER_SIZES[paper]
+    return (height, width) if landscape else (width, height)
+
+
+def fit_ppi(
+    width_px: int, height_px: int, paper: str, margin: float = DEFAULT_MARGIN,
+    landscape: bool = False,
+) -> float:  # fmt: skip
     """The resolution that makes the image as large as fits within the page's margins."""
     if paper not in PAPER_SIZES:
         raise ValueError(f"unknown paper {paper!r}; choose from {', '.join(PAPER_SIZES)}")
     if width_px < 1 or height_px < 1:
         raise ValueError("image has no pixels")
-    paper_w, paper_h = PAPER_SIZES[paper]
+    paper_w, paper_h = page_size(paper, landscape)
     usable_w, usable_h = paper_w - 2 * margin, paper_h - 2 * margin
     if usable_w <= 0 or usable_h <= 0:
         raise ValueError(f"a {margin} in margin leaves no room on {paper}")

@@ -26,6 +26,11 @@ public struct PrintSession: Sendable {
     /// quality: ["CNIJMediaType": "28"]. The print panel has its own.
     public var printerOptions: [String: String] = [:]
     public private(set) var paper = "Letter"
+    /// The page turned on its side (wider than tall).
+    public var landscape = false
+    /// The page (width, height) in inches as it lies: portrait or landscape.
+    public var page: (Double, Double) { Paper.page(paper, landscape: landscape)! }
+    var paperName: String { landscape ? "\(paper), landscape" : paper }
     public var fit = true
     public var margin = Paper.defaultMargin
     /// Used when fit is off; nil = the photo's own resolution.
@@ -331,8 +336,9 @@ public struct PrintSession: Sendable {
             let (extraWidth, extraHeight) = wedgeExtra()
             var ppi = extraWidth != 0 || extraHeight != 0 ? try pagePPI(extraWidth, extraHeight)
                 : fitBorder != 0
-                ? try Paper.negativePPI(width: photo.width, height: photo.height, paper: paper, safeEdge: fitBorder, margin: margin)
-                : try Paper.fitPPI(width: photo.width, height: photo.height, paper: paper, margin: margin)
+                ? try Paper.negativePPI(width: photo.width, height: photo.height, paper: paper, safeEdge: fitBorder, margin: margin,
+                                               landscape: landscape)
+                : try Paper.fitPPI(width: photo.width, height: photo.height, paper: paper, margin: margin, landscape: landscape)
             if let maxSize {  // smaller of the page and the box (never past the page)
                 ppi = max(ppi, try Paper.boxPPI(width: photo.width, height: photo.height, box: maxSize, border: fitBorder))
             }
@@ -345,11 +351,11 @@ public struct PrintSession: Sendable {
     /// The resolution that fits the photo, its border and its wedges within the margins.
     func pagePPI(_ extraWidth: Double, _ extraHeight: Double) throws -> Double {
         let photo = try currentPhoto()
-        let (paperWidth, paperHeight) = Paper.sizes[paper]!
+        let (paperWidth, paperHeight) = page
         let roomWidth = paperWidth - 2 * margin - 2 * fitBorder - extraWidth
         let roomHeight = paperHeight - 2 * margin - 2 * fitBorder - extraHeight
         guard roomWidth > 0, roomHeight > 0 else {
-            throw SessionError(description: "no room for the photo and its wedge on \(paper)")
+            throw SessionError(description: "no room for the photo and its wedge on \(paperName)")
         }
         return max(Double(photo.width) / roomWidth, Double(photo.height) / roomHeight)
     }
@@ -364,7 +370,7 @@ public struct PrintSession: Sendable {
 
     public func fitsOnPaper() throws -> Bool {
         let (width, height) = try sizeInches()
-        let (paperWidth, paperHeight) = Paper.sizes[paper]!
+        let (paperWidth, paperHeight) = page
         return width <= paperWidth + 1e-6 && height <= paperHeight + 1e-6
     }
 
@@ -387,14 +393,14 @@ public struct PrintSession: Sendable {
 
     /// The page inside its margins, (width, height) in inches.
     public var room: (Double, Double) {
-        let (paperWidth, paperHeight) = Paper.sizes[paper]!
+        let (paperWidth, paperHeight) = page
         return (paperWidth - 2 * margin, paperHeight - 2 * margin)
     }
 
     /// Where the print's top-left corner lands: inches from the paper's left and top.
     public func pagePosition() throws -> (Double, Double) {
         let (width, height) = try sizeInches()
-        let (paperWidth, paperHeight) = Paper.sizes[paper]!
+        let (paperWidth, paperHeight) = page
         guard placed, let (left, top) = placement else { return ((paperWidth - width) / 2, (paperHeight - height) / 2) }
         return (min(max(left, margin), paperWidth - margin - width), min(max(top, margin), paperHeight - margin - height))
     }
@@ -656,7 +662,7 @@ public struct PrintSession: Sendable {
                 "Photo: \(photoName)",
                 "Output: digital negative",
                 "Printer: \(printer ?? "not chosen")",
-                "Paper: \(paper)",
+                "Paper: \(paperName)",
             ] + within + [
                 "Size: \(size) with a \(units.length(safeEdge)) safe edge"
                     + (outline != 0 ? " and a \(units.length(outline)) black outline" : ""),
@@ -671,7 +677,7 @@ public struct PrintSession: Sendable {
         return [
             "Photo: \(photoName)",
             "Printer: \(printer ?? "not chosen")",
-            "Paper: \(paper)",
+            "Paper: \(paperName)",
         ] + within + [
             "Size: \(size) at \(String(format: "%.0f", try effectivePPI())) ppi",
         ] + (try positionLine()) + tones + (mirror ? ["Mirrored: yes"] : []) + marksLine + wedgeLines
@@ -727,7 +733,7 @@ public struct PrintSession: Sendable {
     public func printJob(_ path: URL) throws -> PrintJob {
         guard let printer, !printer.isEmpty else { throw SessionError(description: "choose a printer first") }
         guard try fitsOnPaper() else { throw SessionError(description: "the photo is larger than the paper at this size") }
-        return try PrintJob(path: path.path, printer: printer, paper: paper, ppi: try effectivePPI(), title: jobTitle,
+        return try PrintJob(path: path.path, printer: printer, paper: paper, ppi: try effectivePPI(), landscape: landscape, title: jobTitle,
                             options: printerOptions.sorted { $0.key < $1.key }.map { ($0.key, $0.value) })
     }
 
@@ -757,6 +763,9 @@ public struct AppSettings: Sendable, Equatable {
     /// The Negative tab's own printer and paper (nil: the ones above).
     public var negativePrinter: String?
     public var negativePaper: String?
+    /// Each tab's page turned on its side (landscape).
+    public var landscape = false
+    public var negativeLandscape = false
     /// The test sheets' preferred size (the blocking test and process charts): fit within
     /// (width, height) inches; nil for their own size.
     public var chartSize: [Double]?
@@ -815,6 +824,8 @@ public struct AppSettings: Sendable, Equatable {
         settings.negativeWedge = WedgeSettings(object["negative_wedge"])
         settings.marksInFit = object["marks_in_fit"] as? Bool != false
         settings.negativeMarksInFit = object["negative_marks_in_fit"] as? Bool != false
+        settings.landscape = object["landscape"] as? Bool == true
+        settings.negativeLandscape = object["negative_landscape"] as? Bool == true
         return settings
     }
 
@@ -830,6 +841,7 @@ public struct AppSettings: Sendable, Equatable {
             "printer_options": printerOptions, "negative_printer_options": negativePrinterOptions,
             "print_wedge": printWedge?.json ?? NSNull(), "negative_wedge": negativeWedge?.json ?? NSNull(),
             "marks_in_fit": marksInFit, "negative_marks_in_fit": negativeMarksInFit,
+            "landscape": landscape, "negative_landscape": negativeLandscape,
         ]
         var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         data.append(0x0a)

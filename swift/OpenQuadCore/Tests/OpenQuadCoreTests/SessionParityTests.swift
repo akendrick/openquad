@@ -38,6 +38,7 @@ struct SessionParity {
             try session.setPreset(c["preset"] as? String ?? "neutral")
             if c["calibration"] as? Bool == true { try session.setCalibration(calibrationURL) }
             try session.setPaper(c["paper"] as? String ?? "Letter")
+            session.landscape = c["landscape"] as? Bool ?? false
             session.fit = c["fit"] as? Bool ?? true
             session.ppi = (c["ppi"] as? NSNumber)?.doubleValue
             session.setMode(OutputMode(rawValue: c["mode"] as? String ?? "print")!)
@@ -169,6 +170,7 @@ struct SessionParity {
         settings.printWedge = WedgeSettings(grey: true, colour: false, side: "left", gap: 0.5, separate: true, steps: 21,
                                             width: 0.6, style: "calibration", labels: true, background: "black")
         settings.negativeMarksInFit = false
+        settings.negativeLandscape = true
         try settings.save(url)
         #expect(AppSettings.load(url) == settings)
         try Data(#"{"printer_options": {"A": {"x": "1", "y": 2}, "B": 3}, "negative_printer_options": []}"#.utf8).write(to: url)

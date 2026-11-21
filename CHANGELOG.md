@@ -7,6 +7,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Orientation under Printer and size: Portrait or Landscape (the page turned on its side, for a
+  wide photo), remembered for each tab. Fitting, placing and the page preview use the turned
+  page; the print panel is set to match and a direct print is sent with `-o landscape`. Core:
+  `PrintSession.landscape`, `page_size` and `PrintJob.landscape` in Python and Swift alike
+  (shared vectors).
+
 - Background for the step wedges, under Step wedges (Print and Negative tabs, remembered for
   each): what fills the space between the photo and its wedges. Colour, the default, keeps it as
   before (on a negative its own opaque colour, or clear film if the wedge is made separately; on
@@ -177,6 +183,9 @@ versions follow [Semantic Versioning](https://semver.org/).
   strong as it prints, to check the bands and seams before printing film.
 
 ### Changed
+
+- Registration and Step wedges are one section, Registration and step wedges; the wedges fold
+  away inside it.
 
 - The sidebar is regrouped. Darkroom marks is now Registration, and holds Mirror, Safe edge and
   Outline in black (the Negative tab's Options section is gone). Printer and paper, Size and

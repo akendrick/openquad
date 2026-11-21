@@ -41,6 +41,9 @@ class Settings:
     # The Mac app's Negative tab keeps its own printer and paper (None: as above).
     negative_printer: str | None = None
     negative_paper: str | None = None
+    # Each tab's page turned on its side (landscape).
+    landscape: bool = False
+    negative_landscape: bool = False
     # The test sheets' preferred size (blocking test, process charts): fit within (width,
     # height) inches; None for their own size.
     chart_size: list[float] | None = None
@@ -75,6 +78,8 @@ class Settings:
             known[key] = _wedge(known.get(key))
         for key in ("marks_in_fit", "negative_marks_in_fit"):
             known[key] = known.get(key) is not False
+        for key in ("landscape", "negative_landscape"):
+            known[key] = known.get(key) is True
         return cls(**known)
 
     def save(self, path: Path | None = None) -> None:
