@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 28
+    public static let version = 29
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -43,7 +43,9 @@ public struct GuideView: View {
                      "Resolution, at the top under the photo, shows the ppi the print is made at, with the photo's own "
                         + "beside it. Fit to page (under Printer and size) sets it; turn Fit off to type one, and "
                         + "Photo's Own goes back to the photo's. Print size shows the result.",
-                     "Registration: Mirror flips the photo left to right (for transfers), and the darkroom marks.",
+                     "Registration: the darkroom marks. Fit within printable area fits them with the photo (the photo "
+                        + "shrinks a little); turn it off and the photo fits on its own, the marks outside it in the "
+                        + "margins. Mirror (under Printer and size) flips the photo left to right, for transfers.",
                      "Step wedges: a black and white wedge (toned and calibrated like the photo) and, for a colour "
                         + "print, a colour gamut wedge. Choose 11, 21, 31 or 51 steps, a plain strip or the "
                         + "calibration target's style (two rows in a black frame), its width, numbered steps, the "
@@ -76,8 +78,8 @@ public struct GuideView: View {
                         + "Once a process is calibrated, Save Setup… (in the ⋯ menu beside it) keeps it under a name, e.g. Cyanotype on Pictorico.",
                      "Ink colour and Process curve: both come from the Process Calibration tab (Calibrate a Process… is in the "
                         + "curve's Choose menu).",
-                     "Registration holds Mirror, Safe edge, Outline in black and the darkroom marks; Separations has "
-                        + "its own section. Lengths can be typed or stepped. Mirror if the film's printed side must face the tissue: the F cut into the safe "
+                     "Registration holds Safe edge, Outline in black, Fit within printable area and the darkroom "
+                        + "marks; Mirror is under Printer and size. Lengths can be typed or stepped. Mirror if the film's printed side must face the tissue: the F cut into the safe "
                         + "edge reads correctly in the print when the mirror setting was right. Outline in black adds a "
                         + "border of the width you set between the safe edge and the photo.",
                      "Darkroom marks (under Registration): a black guide line round the image and registration marks (targets on each "

@@ -62,6 +62,10 @@ class PrintSession:
     process: ProcessCurve | None = None
     process_path: Path | None = None
     mirror: bool = False
+    # Fit the darkroom marks' border (a print's white border, a negative's safe edge and
+    # outline) within the printable area with the photo; if not, the photo alone fits and
+    # the border lies outside it, into the margins.
+    marks_in_fit: bool = True
     safe_edge: float = 0.25
     outline: float = 0.0  # inches of black between the safe edge and the photo (0 = none)
     # Darkroom marks in black: in a negative's safe edge, or a white border round a print.
@@ -336,12 +340,12 @@ class PrintSession:
             extra_w, extra_h = self._wedge_extra()
             if extra_w or extra_h:
                 ppi = self._page_ppi(extra_w, extra_h)
-            elif self._border:
-                ppi = negative_ppi(*photo.size, self.paper, self._border, self.margin)
+            elif self._fit_border:
+                ppi = negative_ppi(*photo.size, self.paper, self._fit_border, self.margin)
             else:
                 ppi = fit_ppi(*photo.size, self.paper, self.margin)
             if self.max_size:  # smaller of the page and the box (never past the page)
-                ppi = max(ppi, box_ppi(*photo.size, self.max_size, self._border))
+                ppi = max(ppi, box_ppi(*photo.size, self.max_size, self._fit_border))
             return ppi
         if self.ppi:
             return self.ppi
@@ -351,8 +355,8 @@ class PrintSession:
         """The resolution that fits the photo, its border and its wedges within the margins."""
         width, height = self._photo().size
         paper_w, paper_h = PAPER_SIZES[self.paper]
-        room_w = paper_w - 2 * self.margin - 2 * self._border - extra_w
-        room_h = paper_h - 2 * self.margin - 2 * self._border - extra_h
+        room_w = paper_w - 2 * self.margin - 2 * self._fit_border - extra_w
+        room_h = paper_h - 2 * self.margin - 2 * self._fit_border - extra_h
         if room_w <= 0 or room_h <= 0:
             raise SessionError(f"no room for the photo and its wedge on {self.paper}")
         return max(width / room_w, height / room_h)
@@ -581,6 +585,11 @@ class PrintSession:
         return (shown >> 8).astype(np.uint8)
 
     @property
+    def _fit_border(self) -> float:
+        """The border the fit allows for: none when the marks lie outside the printable area."""
+        return self._border if self.marks_in_fit else 0.0
+
+    @property
     def _border(self) -> float:
         """Inches round the photo: in a negative the black outline plus the safe edge; in a
         print the white border carrying its darkroom marks (if any)."""
@@ -609,7 +618,12 @@ class PrintSession:
     def _marks_line(self) -> list[str]:
         named = ((self.guide, "guide line"), (self.registration, "registration marks"))
         marks = [name for on, name in named if on]
-        return [f"Darkroom marks: {' and '.join(marks)}"] if marks else []
+        outside = (
+            []
+            if self.marks_in_fit or not self._border
+            else ["Fit: the photo alone; its border lies outside the printable area"]
+        )
+        return ([f"Darkroom marks: {' and '.join(marks)}"] if marks else []) + outside
 
     def _position_line(self) -> list[str]:
         if self.placement is None:

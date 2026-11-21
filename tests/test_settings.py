@@ -100,3 +100,12 @@ def test_step_wedges_are_remembered_and_checked(tmp_path: Path) -> None:
         "style": "strip",
         "labels": False,
     }
+
+
+def test_marks_in_fit_is_remembered_for_each_tab(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    Settings(negative_marks_in_fit=False).save(path)
+    loaded = Settings.load(path)
+    assert loaded.marks_in_fit and not loaded.negative_marks_in_fit
+    path.write_text('{"marks_in_fit": "no"}')
+    assert Settings.load(path).marks_in_fit

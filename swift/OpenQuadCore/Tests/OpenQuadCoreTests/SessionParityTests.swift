@@ -64,6 +64,7 @@ struct SessionParity {
             try session.setWedgeWidth((c["wedge_width"] as? NSNumber)?.doubleValue ?? 0.4)
             try session.setWedgeStyle(c["wedge_style"] as? String ?? "strip")
             session.wedgeLabels = c["wedge_labels"] as? Bool ?? false
+            session.marksInFit = c["marks_in_fit"] as? Bool ?? true
             try session.setPlacement((c["placement"] as? [NSNumber]).map { ($0[0].doubleValue, $0[1].doubleValue) })
 
             #expect(session.printsColour == c["prints_colour"] as? Bool)
@@ -166,6 +167,7 @@ struct SessionParity {
         settings.negativePrinterOptions = ["Epson_ET_2900": ["MediaType": "transparency"]]
         settings.printWedge = WedgeSettings(grey: true, colour: false, side: "left", gap: 0.5, separate: true, steps: 21,
                                             width: 0.6, style: "calibration", labels: true)
+        settings.negativeMarksInFit = false
         try settings.save(url)
         #expect(AppSettings.load(url) == settings)
         try Data(#"{"printer_options": {"A": {"x": "1", "y": 2}, "B": 3}, "negative_printer_options": []}"#.utf8).write(to: url)
