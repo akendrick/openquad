@@ -22,6 +22,9 @@ public enum Wedge {
     public static let width = 0.4
     public static let minWidth = 0.2, maxWidth = 1.0
     public static let styles = ["strip", "calibration"]
+    /// What fills the space between the photo and its wedges: "colour" (on a negative its own
+    /// colour, opaque like the safe edge; on a print, white paper), "black" or "white".
+    public static let backgrounds = ["colour", "black", "white"]
     /// Inches: the calibration style's black frame, and the white inset inside it.
     public static let frame = 0.03
     /// Inches across the band of step numbers.
@@ -213,7 +216,8 @@ public enum Wedge {
 
     /// The image with its wedges on `side`, nearest first, `gap` pixels apart, each centred
     /// along the side, on white (clear film on a negative).
-    public static func attach(_ image: RGBImage, _ wedges: [RGBImage], side: String, gap: Int) -> RGBImage {
+    public static func attach(_ image: RGBImage, _ wedges: [RGBImage], side: String, gap: Int,
+                              fill: UInt16 = UInt16(maxValue)) -> RGBImage {
         if wedges.isEmpty { return image }
         precondition(sides.contains(side), "unknown side \(side)")
         let horizontal = side == "top" || side == "bottom"
@@ -225,7 +229,7 @@ public enum Wedge {
         let along = parts.reduce(0) { $0 + ($1.map(alongOf) ?? gap) }
         let across = parts.compactMap { $0 }.map(acrossOf).max()!
         let (width, height) = horizontal ? (across, along) : (along, across)
-        var canvas = [UInt16](repeating: UInt16(maxValue), count: width * height * 3)
+        var canvas = [UInt16](repeating: fill, count: width * height * 3)
         var at = 0
         for part in parts {
             guard let part else {

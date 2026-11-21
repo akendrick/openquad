@@ -108,7 +108,9 @@ def _wedge(value: object) -> dict[str, object] | None:
             "steps": steps if steps in (11, 21, 31, 51) and not isinstance(steps, bool) else 31,
             "width": min(max(float(width), 0.2), 1.0) if _number(width) else 0.4,  # type: ignore[arg-type]
             "style": style if style in ("strip", "calibration") else "strip",
-            "labels": value.get("labels") is True}  # fmt: skip
+            "labels": value.get("labels") is True,
+            "background": value.get("background")
+            if value.get("background") in ("colour", "black", "white") else "colour"}  # fmt: skip
 
 
 def _number(value: object) -> bool:

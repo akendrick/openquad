@@ -258,3 +258,26 @@ def test_marks_can_lie_outside_the_printable_area(tmp_path: Path) -> None:
     negative.open(photo(tmp_path))
     negative.marks_in_fit = False
     assert negative.effective_ppi() == plain
+
+
+def test_the_space_round_a_wedge_can_be_black_or_white(tmp_path: Path) -> None:
+    session = PrintSession(mode="negative", fit=False, ppi=40.0)
+    session.open(photo(tmp_path))
+    bare = session.render_print()
+    session.wedge = True
+    session.set_wedge_gap(0.5)
+    coloured = session.render_print()
+    assert (coloured[bare.shape[0] : bare.shape[0] + 20] == bare[0, 0]).all()  # the ink colour
+    session.set_wedge_background("white")
+    clear = session.render_print()
+    assert clear.shape == coloured.shape
+    assert (clear[bare.shape[0] : bare.shape[0] + 20] == MAX_VALUE).all()  # clear film
+    session.set_wedge_background("black")
+    black = session.render_print()
+    assert (black[bare.shape[0] : bare.shape[0] + 20] == 0).all()
+    assert any(line.endswith("0.5 in away, on black") for line in session.summary())
+    session.set_mode("print")
+    printed = session.render_print()
+    assert (printed[200 : 200 + round(0.5 * session.effective_ppi())] == 0).all()
+    with pytest.raises(SessionError, match="unknown background"):
+        session.set_wedge_background("grey")

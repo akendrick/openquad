@@ -65,6 +65,7 @@ struct SessionParity {
             try session.setWedgeStyle(c["wedge_style"] as? String ?? "strip")
             session.wedgeLabels = c["wedge_labels"] as? Bool ?? false
             session.marksInFit = c["marks_in_fit"] as? Bool ?? true
+            try session.setWedgeBackground(c["wedge_background"] as? String ?? "colour")
             try session.setPlacement((c["placement"] as? [NSNumber]).map { ($0[0].doubleValue, $0[1].doubleValue) })
 
             #expect(session.printsColour == c["prints_colour"] as? Bool)
@@ -166,7 +167,7 @@ struct SessionParity {
         settings.printerOptions = ["Canon_MG3600_series": ["CNIJMediaType": "28", "CNIJPrintQuality": "0"]]
         settings.negativePrinterOptions = ["Epson_ET_2900": ["MediaType": "transparency"]]
         settings.printWedge = WedgeSettings(grey: true, colour: false, side: "left", gap: 0.5, separate: true, steps: 21,
-                                            width: 0.6, style: "calibration", labels: true)
+                                            width: 0.6, style: "calibration", labels: true, background: "black")
         settings.negativeMarksInFit = false
         try settings.save(url)
         #expect(AppSettings.load(url) == settings)

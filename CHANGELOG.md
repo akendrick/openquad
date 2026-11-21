@@ -7,6 +7,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Background for the step wedges, under Step wedges (Print and Negative tabs, remembered for
+  each): what fills the space between the photo and its wedges. Colour, the default, keeps it as
+  before (on a negative its own opaque colour, or clear film if the wedge is made separately; on
+  a print, white paper); Black or White set it outright. Core: `PrintSession.wedge_background`
+  in Python and Swift alike (shared vectors).
+
 - Fit within printable area, under Registration (Print and Negative tabs, remembered for each).
   On, as before, the photo shrinks so its marks' border (a print's white border, a negative's
   safe edge and outline) fits within the margins too; off, the photo fits on its own and the

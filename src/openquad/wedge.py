@@ -29,6 +29,9 @@ STEP_CHOICES = (11, 21, 31, 51)
 WEDGE_WIDTH = 0.4  # inches across the grey wedge
 MIN_WIDTH, MAX_WIDTH = 0.2, 1.0
 STYLES = ("strip", "calibration")
+#: What fills the space between the photo and its wedges: "colour" (on a negative its own
+#: colour, opaque like the safe edge; on a print, white paper), "black" or "white".
+BACKGROUNDS = ("colour", "black", "white")
 FRAME = 0.03  # inches: the calibration style's black frame, and the white inset inside it
 LABEL_BAND = 0.15  # inches across the band of step numbers
 COLOUR_ROW = 0.2  # inches across each of the colour wedge's three rows
@@ -194,10 +197,11 @@ def extra(
 
 
 def attach(
-    image: NDArray[np.uint16], wedges: Sequence[NDArray[np.uint16]], side: str, gap: int
-) -> NDArray[np.uint16]:
+    image: NDArray[np.uint16], wedges: Sequence[NDArray[np.uint16]], side: str, gap: int,
+    fill: int = MAX_VALUE,
+) -> NDArray[np.uint16]:  # fmt: skip
     """The image with its wedges on `side`, nearest first, `gap` pixels apart, each centred
-    along the side, on white (clear film on a negative)."""
+    along the side, on `fill`: white (clear film on a negative) unless set."""
     if not wedges:
         return image
     if side not in SIDES:
@@ -212,7 +216,7 @@ def attach(
     along = sum(p if isinstance(p, int) else p.shape[axis] for p in parts)
     across = max(p.shape[1 - axis] for p in parts if not isinstance(p, int))
     shape = (along, across, 3) if horizontal else (across, along, 3)
-    canvas = np.full(shape, MAX_VALUE, dtype=np.uint16)
+    canvas = np.full(shape, fill, dtype=np.uint16)
     at = 0
     for part in parts:
         if isinstance(part, int):
