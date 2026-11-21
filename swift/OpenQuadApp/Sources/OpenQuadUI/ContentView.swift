@@ -205,14 +205,21 @@ public struct ContentView: View {
             .pickerStyle(.segmented)
             LengthStepper(title: "Space from the photo", inches: model.session.wedgeGap, range: 0...Wedge.maxGap,
                           inchStep: 0.05, mmStep: 1, units: model.units) { model.setWedgeGap($0) }
+            Picker("Background", selection: Binding(get: { model.session.wedgeBackground },
+                                                    set: { model.setWedgeBackground($0) })) {
+                Text(negative ? "Colour (the negative's own)" : "Colour (the paper)").tag("colour")
+                Text("Black").tag("black")
+                Text("White").tag("white")
+            }
             if negative {
                 Toggle("Create wedge separately", isOn: Binding(get: { model.session.wedgeSeparate },
                                                                 set: { model.setWedgeSeparate($0) }))
             }
         }
         Text(negative
-             ? "Paper white to full black, made into a negative with the same process curve. The space is opaque like the "
-                + "safe edge; made separately, the wedge has its own safe edge and the space is clear film."
+             ? "Paper white to full black, made into a negative with the same process curve. With a colour background the "
+                + "space is opaque like the safe edge (clear film if made separately, when the wedge has its own safe edge); "
+                + "or make it black or white."
              : "Paper white to full black, toned and calibrated like the photo, to check every tone"
                 + (model.session.printsColour ? "; the colour wedge is 31 hues as a tint, the full colour and a shade." : "."))
             .font(.caption)

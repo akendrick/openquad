@@ -86,6 +86,7 @@ class PrintSession:
     wedge_width: float = wedges.WEDGE_WIDTH
     wedge_style: str = "strip"
     wedge_labels: bool = False
+    wedge_background: str = "colour"
     units: str = "in"  # how the summary shows lengths: "in" or "mm"
     # Separations: the photo split into several negatives by tone, printed one after another
     # in register on one sheet. None for a single negative. `layer` is the negative shown and
@@ -160,6 +161,16 @@ class PrintSession:
         if not np.isfinite(width) or not low <= width <= high:
             raise SessionError(f"the wedge's width must be {low:g} to {high:g} in, got {width}")
         self.wedge_width = width
+
+    def set_wedge_background(self, background: str) -> None:
+        if background not in wedges.BACKGROUNDS:
+            choices = ", ".join(wedges.BACKGROUNDS)
+            raise SessionError(f"unknown background {background!r}; choose from {choices}")
+        self.wedge_background = background
+
+    def _wedge_fill(self) -> int:
+        """What fills the space round the wedges: black, or white (paper; clear film)."""
+        return 0 if self.wedge_background == "black" else MAX_VALUE
 
     def set_wedge_style(self, style: str) -> None:
         if style not in wedges.STYLES:
@@ -465,7 +476,9 @@ class PrintSession:
             else:
                 row = max(1, round(wedges.COLOUR_ROW * dpi))
                 made.append(wedges.colour_wedge(length, row, horizontal))
-        return wedges.attach(image, made, self.wedge_side, round(self.wedge_gap * dpi))
+        return wedges.attach(
+            image, made, self.wedge_side, round(self.wedge_gap * dpi), self._wedge_fill()
+        )
 
     def render_print(self) -> NDArray[np.uint16]:
         """The full-resolution print: in colour, or rendered from the greyscale photo."""
@@ -515,10 +528,14 @@ class PrintSession:
                        label=0, clear_targets=False)  # fmt: skip
         wedge = self._negative_layer(ramp, layer, dpi, bare)
         gap, edge = round(self.wedge_gap * dpi), round(settings.safe_edge * dpi)
-        if self.wedge_separate or edge == 0:
-            return wedges.attach(image, [wedge], side, gap)
-        # Joined: the wedge's inner safe edge becomes the gap, opaque like the safe edge.
         height, width = wedge.shape[:2]
+        if self.wedge_separate or edge == 0:
+            return wedges.attach(image, [wedge], side, gap, self._wedge_fill())
+        if self.wedge_background != "colour":  # joined, the space black or clear
+            wedge = {"top": wedge[: height - edge], "bottom": wedge[edge:],
+                     "left": wedge[:, : width - edge], "right": wedge[:, edge:]}[side]  # fmt: skip
+            return wedges.attach(image, [wedge], side, gap, self._wedge_fill())
+        # Joined: the wedge's inner safe edge becomes the gap, opaque like the safe edge.
         if side == "bottom":
             wedge = np.concatenate([np.repeat(wedge[:1], gap, 0), wedge[edge:]], 0)
         elif side == "top":
@@ -613,6 +630,8 @@ class PrintSession:
         away = f"{self._length(self.wedge_gap)} away" if self.wedge_gap else "joined to it"
         if self.negative and self.wedge_separate:
             away += ", made separately"
+        if self.wedge_background != "colour":
+            away += f", on {self.wedge_background}"
         return [f"{names[kind]}, {where} the {thing}, {away}" for kind in self.wedge_kinds]
 
     def _marks_line(self) -> list[str]:

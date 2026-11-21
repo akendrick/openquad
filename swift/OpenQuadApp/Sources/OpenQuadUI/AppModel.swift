@@ -157,6 +157,7 @@ public final class AppModel {
             try? session.setWedgeWidth(wedge.width)
             try? session.setWedgeStyle(wedge.style)
             session.wedgeLabels = wedge.labels
+            try? session.setWedgeBackground(wedge.background)
         }
         session.marksInFit = role == .negative ? settings.negativeMarksInFit : settings.marksInFit
         if let size = settings.maxSize, size.count == 2 { session.maxSize = (size[0], size[1]) }
@@ -386,6 +387,14 @@ public final class AppModel {
         refreshPreview()
     }
 
+    /// What fills the space between the photo and its wedges: colour (the negative's own; white
+    /// paper on a print), black or white.
+    public func setWedgeBackground(_ background: String) {
+        attempt { try session.setWedgeBackground(background) }
+        rememberWedge()
+        refreshPreview()
+    }
+
     /// The step numbers in a band beside the wedge.
     public func setWedgeLabels(_ on: Bool) {
         session.wedgeLabels = on
@@ -397,7 +406,8 @@ public final class AppModel {
     func rememberWedge() {
         let chosen = WedgeSettings(grey: session.wedge, colour: session.colourWedge, side: session.wedgeSide, gap: session.wedgeGap,
                                    separate: session.wedgeSeparate, steps: session.wedgeSteps, width: session.wedgeWidth,
-                                   style: session.wedgeStyle, labels: session.wedgeLabels)
+                                   style: session.wedgeStyle, labels: session.wedgeLabels,
+                                   background: session.wedgeBackground)
         let negative = role == .negative
         saveSettings { if negative { $0.negativeWedge = chosen } else { $0.printWedge = chosen } }
     }

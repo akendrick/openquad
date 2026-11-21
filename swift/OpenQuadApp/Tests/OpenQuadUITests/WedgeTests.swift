@@ -44,12 +44,14 @@ struct WedgeTests {
         m.setWedgeWidth(3)  // clamped to 1 in
         m.setWedgeStyle("calibration")
         m.setWedgeLabels(true)
+        m.setWedgeBackground("black")
+        m.setWedgeBackground("grey")  // not a choice: kept as it was
         #expect(m.session.wedgeWidth == Wedge.maxWidth && m.wedgeDescription == "21 steps, on the right")
 
         let again = try model()  // a new launch: the wedge and its options come back
         #expect(again.session.wedge && again.session.wedgeSide == "right" && again.session.wedgeGap == Wedge.maxGap)
         #expect(again.session.wedgeSteps == 21 && again.session.wedgeWidth == 1 && again.session.wedgeStyle == "calibration")
-        #expect(again.session.wedgeLabels)
+        #expect(again.session.wedgeLabels && again.session.wedgeBackground == "black")
 
         let negative = try model(.negative)  // the Negative tab keeps its own
         #expect(!negative.session.wedge && negative.wedgeDescription == "none")

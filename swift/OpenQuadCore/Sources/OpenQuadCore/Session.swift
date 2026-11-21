@@ -62,6 +62,7 @@ public struct PrintSession: Sendable {
     public private(set) var wedgeWidth = Wedge.width
     public private(set) var wedgeStyle = "strip"
     public var wedgeLabels = false
+    public private(set) var wedgeBackground = "colour"
     /// How the summary shows lengths.
     public var units = LengthUnit.inches
     /// Separations: the photo split into several negatives by tone, printed one after another
@@ -206,6 +207,16 @@ public struct PrintSession: Sendable {
         }
         wedgeWidth = width
     }
+
+    public mutating func setWedgeBackground(_ background: String) throws {
+        guard Wedge.backgrounds.contains(background) else {
+            throw SessionError(description: "unknown background \(pyRepr(background)); choose from \(Wedge.backgrounds.joined(separator: ", "))")
+        }
+        wedgeBackground = background
+    }
+
+    /// What fills the space round the wedges: black, or white (paper; clear film).
+    var wedgeFill: UInt16 { wedgeBackground == "black" ? 0 : UInt16(maxValue) }
 
     public mutating func setWedgeStyle(_ style: String) throws {
         guard Wedge.styles.contains(style) else {
@@ -434,7 +445,7 @@ public struct PrintSession: Sendable {
             let rgb = Composite.composite(ramp, layers: Composite.presets[preset]!)
             return RGBImage(width: w, height: h, pixels: calibrated ? calibration?.apply(rgb) ?? rgb : rgb)
         }
-        return Wedge.attach(image, made, side: wedgeSide, gap: pyRound(wedgeGap * dpi))
+        return Wedge.attach(image, made, side: wedgeSide, gap: pyRound(wedgeGap * dpi), fill: wedgeFill)
     }
 
     /// Negative `layer` of the separation (any layer is the whole negative without one).
@@ -457,7 +468,10 @@ public struct PrintSession: Sendable {
         let bare = NegativeSettings(colour: settings.colour, mirror: settings.mirror, safeEdge: settings.safeEdge, mark: false)
         let made = try negativeLayer(ramp, width: w, height: h, layer: layer, dpi: dpi, colour: colour, settings: bare)
         let gap = pyRound(wedgeGap * dpi), edge = pyRound(settings.safeEdge * dpi)
-        if wedgeSeparate || edge == 0 { return Wedge.attach(image, [made], side: side, gap: gap) }
+        if wedgeSeparate || edge == 0 { return Wedge.attach(image, [made], side: side, gap: gap, fill: wedgeFill) }
+        if wedgeBackground != "colour" {  // joined, the space black or clear
+            return Wedge.attach(image, [made.innerEdge(side: side, edge: edge, gap: 0)], side: side, gap: gap, fill: wedgeFill)
+        }
         // Joined: the wedge's inner safe edge becomes the gap, opaque like the safe edge.
         return Wedge.attach(image, [made.innerEdge(side: side, edge: edge, gap: gap)], side: side, gap: 0)
     }
@@ -669,6 +683,7 @@ public struct PrintSession: Sendable {
         let details = (wedgeStyle == "calibration" ? ["calibration style"] : []) + (wedgeLabels ? ["numbered"] : [])
         var away = wedgeGap != 0 ? "\(units.length(wedgeGap)) away" : "joined to it"
         if negative && wedgeSeparate { away += ", made separately" }
+        if wedgeBackground != "colour" { away += ", on \(wedgeBackground)" }
         return wedgeKinds.map { kind in
             let name = kind == .grey
                 ? "Step wedge: \(wedgeSteps) steps, \(units.length(wedgeWidth)) wide"
@@ -834,9 +849,10 @@ public struct WedgeSettings: Sendable, Equatable {
     public var width: Double
     public var style: String
     public var labels: Bool
+    public var background: String
 
     public init(grey: Bool, colour: Bool, side: String, gap: Double, separate: Bool = false, steps: Int = Wedge.steps,
-                width: Double = Wedge.width, style: String = "strip", labels: Bool = false) {
+                width: Double = Wedge.width, style: String = "strip", labels: Bool = false, background: String = "colour") {
         self.grey = grey
         self.colour = colour
         self.side = side
@@ -846,6 +862,7 @@ public struct WedgeSettings: Sendable, Equatable {
         self.width = width
         self.style = style
         self.labels = labels
+        self.background = background
     }
 
     /// As saved, or nil if it isn't readable (as the Python app reads it).
@@ -861,11 +878,12 @@ public struct WedgeSettings: Sendable, Equatable {
         let width = number(object["width"]).map { min(max($0.doubleValue, Wedge.minWidth), Wedge.maxWidth) } ?? Wedge.width
         let style = (object["style"] as? String).flatMap { Wedge.styles.contains($0) ? $0 : nil } ?? "strip"
         self.init(grey: isTrue("grey"), colour: isTrue("colour"), side: side, gap: min(max(gap.doubleValue, 0), Wedge.maxGap),
-                  separate: isTrue("separate"), steps: steps, width: width, style: style, labels: isTrue("labels"))
+                  separate: isTrue("separate"), steps: steps, width: width, style: style, labels: isTrue("labels"),
+                  background: (object["background"] as? String).flatMap { Wedge.backgrounds.contains($0) ? $0 : nil } ?? "colour")
     }
 
     var json: [String: Any] {
         ["grey": grey, "colour": colour, "side": side, "gap": gap, "separate": separate, "steps": steps, "width": width,
-         "style": style, "labels": labels]
+         "style": style, "labels": labels, "background": background]
     }
 }

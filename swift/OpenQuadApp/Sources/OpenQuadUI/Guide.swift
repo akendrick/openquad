@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 29
+    public static let version = 30
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -89,7 +89,7 @@ public struct GuideView: View {
                      "Step wedges: a step wedge beside the negative made with the same process curve, so the contact "
                         + "print shows how the process holds every tone, with the same choices as in Print. The space "
                         + "from the photo is opaque like the safe edge; Create wedge separately gives the wedge its own "
-                        + "safe edge, with clear film between.",
+                        + "safe edge, with clear film between. Background sets that space to black or white instead.",
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
                      "Tissue smaller than the page? Under Printer and size, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",
