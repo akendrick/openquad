@@ -221,6 +221,10 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- With Fit within printable area off, a print or negative moved on the page kept its marks'
+  border inside the margins, pushing the photo in from the margin. Now the photo goes to the
+  margin and the border lies in it, as when centred.
+
 - A 16-bit colour JPEG 2000 read through Pillow came out 8-bit with its brightest values (65408
   and up) turned black; JPEG 2000 is now decoded straight through OpenJPEG instead.
 - The app no longer crashes when a blocking colour is chosen while a process run in other

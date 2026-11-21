@@ -419,9 +419,17 @@ class PrintSession:
         width, height = self.size_inches()
         return width <= room_w + 1e-6 and height <= room_h + 1e-6
 
+    @property
+    def _edge(self) -> float:
+        """How near the paper's edge the print may be put: the margin, less the marks' border
+        when it lies outside the printable area (Fit within printable area off)."""
+        return max(self.margin - (self._border - self._fit_border), 0.0)
+
     def _room(self) -> tuple[float, float]:
+        """Where the print may be put: the page inside its margins, widened by the marks'
+        border when that lies outside the printable area."""
         paper_w, paper_h = self._page()
-        return paper_w - 2 * self.margin, paper_h - 2 * self.margin
+        return paper_w - 2 * self._edge, paper_h - 2 * self._edge
 
     def page_position(self) -> tuple[float, float]:
         """Where the print's top-left corner lands: inches from the paper's left and top."""
@@ -430,9 +438,10 @@ class PrintSession:
         if not self.placed or self.placement is None:
             return (paper_w - width) / 2, (paper_h - height) / 2
         left, top = self.placement
+        edge = self._edge
         return (
-            min(max(left, self.margin), paper_w - self.margin - width),
-            min(max(top, self.margin), paper_h - self.margin - height),
+            min(max(left, edge), paper_w - edge - width),
+            min(max(top, edge), paper_h - edge - height),
         )
 
     def _on_page(self, image: NDArray[np.uint16], ppi: float) -> NDArray[np.uint16]:
@@ -442,8 +451,8 @@ class PrintSession:
         height, width = image.shape[:2]
         page_w, page_h = max(round(room_w * ppi), width), max(round(room_h * ppi), height)
         left, top = self.page_position()
-        x = min(max(round((left - self.margin) * ppi), 0), page_w - width)
-        y = min(max(round((top - self.margin) * ppi), 0), page_h - height)
+        x = min(max(round((left - self._edge) * ppi), 0), page_w - width)
+        y = min(max(round((top - self._edge) * ppi), 0), page_h - height)
         page = np.full((page_h, page_w, image.shape[2]), MAX_VALUE, dtype=np.uint16)
         page[y : y + height, x : x + width] = image
         return page

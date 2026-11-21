@@ -391,10 +391,15 @@ public struct PrintSession: Sendable {
         return width <= roomWidth + 1e-6 && height <= roomHeight + 1e-6
     }
 
-    /// The page inside its margins, (width, height) in inches.
+    /// How near the paper's edge the print may be put: the margin, less the marks' border when
+    /// it lies outside the printable area (Fit within printable area off).
+    var edge: Double { max(margin - (border - fitBorder), 0) }
+
+    /// Where the print may be put, (width, height) in inches: the page inside its margins,
+    /// widened by the marks' border when that lies outside the printable area.
     public var room: (Double, Double) {
         let (paperWidth, paperHeight) = page
-        return (paperWidth - 2 * margin, paperHeight - 2 * margin)
+        return (paperWidth - 2 * edge, paperHeight - 2 * edge)
     }
 
     /// Where the print's top-left corner lands: inches from the paper's left and top.
@@ -402,7 +407,7 @@ public struct PrintSession: Sendable {
         let (width, height) = try sizeInches()
         let (paperWidth, paperHeight) = page
         guard placed, let (left, top) = placement else { return ((paperWidth - width) / 2, (paperHeight - height) / 2) }
-        return (min(max(left, margin), paperWidth - margin - width), min(max(top, margin), paperHeight - margin - height))
+        return (min(max(left, edge), paperWidth - edge - width), min(max(top, edge), paperHeight - edge - height))
     }
 
     /// The image on clear film filling the page inside its margins, at its position. That
@@ -411,8 +416,8 @@ public struct PrintSession: Sendable {
         let (roomWidth, roomHeight) = room
         let pageWidth = max(pyRound(roomWidth * ppi), image.width), pageHeight = max(pyRound(roomHeight * ppi), image.height)
         let (left, top) = try pagePosition()
-        let x = min(max(pyRound((left - margin) * ppi), 0), pageWidth - image.width)
-        let y = min(max(pyRound((top - margin) * ppi), 0), pageHeight - image.height)
+        let x = min(max(pyRound((left - edge) * ppi), 0), pageWidth - image.width)
+        let y = min(max(pyRound((top - edge) * ppi), 0), pageHeight - image.height)
         var page = [UInt16](repeating: UInt16(maxValue), count: pageWidth * pageHeight * 3)
         let row = image.width * 3
         for r in 0..<image.height {
