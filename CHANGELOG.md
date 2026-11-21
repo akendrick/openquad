@@ -7,6 +7,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Step wedge options: 11, 21, 31 or 51 steps; a plain strip or the printer calibration target's
+  style (two rows, white to black and back, in a thin black frame); a width of 0.2 to 1 in; and
+  the steps numbered in a band beside the wedge. The space from the photo can always be set (0 to
+  2 in, none by default): on a negative it is opaque like the safe edge, unless the wedge is made
+  separately, when it is clear film. Each tab remembers its choices. Core: `wedge_steps`,
+  `wedge_width`, `wedge_style` and `wedge_labels` in Python and Swift alike (shared vectors).
+- A print can be placed on its page too: Position on the page, under Printer and size in the
+  Print tab, previews the whole sheet and the print can be dragged anywhere inside the margins.
+
 - Mirror in the Print tab too (for transfers): the photo flips left to right; its marks and
   wedges stay where they were put. The summary says so. Core: in Python and Swift alike.
 - Create wedge separately. A step wedge now joins the print by default: on a negative it sits at

@@ -85,12 +85,10 @@ public struct ContentView: View {
                                open: $openPage) {
                     printerAndPaper
                     sizeControls
-                    if model.session.negative {
-                        DisclosureGroup(isExpanded: $openPosition) {
-                            placementControls
-                        } label: {
-                            Text("Position on the page")
-                        }
+                    DisclosureGroup(isExpanded: $openPosition) {
+                        placementControls
+                    } label: {
+                        Text("Position on the page")
                     }
                 }
             }
@@ -182,8 +180,21 @@ public struct ContentView: View {
     /// or through the process curve), and for a colour print the colour gamut wedge.
     @ViewBuilder private var wedgeControls: some View {
         let negative = model.session.negative
-        Toggle(negative ? "31-step wedge" : "Black and white wedge (31 steps)",
+        Toggle(negative ? "Step wedge" : "Black and white step wedge",
                isOn: Binding(get: { model.session.wedge }, set: { model.setWedge($0) }))
+        if model.session.wedge {
+            Picker("Steps", selection: Binding(get: { model.session.wedgeSteps }, set: { model.setWedgeSteps($0) })) {
+                ForEach(Wedge.stepChoices, id: \.self) { Text("\($0)").tag($0) }
+            }
+            .pickerStyle(.segmented)
+            Picker("Style", selection: Binding(get: { model.session.wedgeStyle }, set: { model.setWedgeStyle($0) })) {
+                Text("Strip").tag("strip")
+                Text("Calibration target").tag("calibration")
+            }
+            LengthStepper(title: "Width", inches: model.session.wedgeWidth, range: Wedge.minWidth...Wedge.maxWidth,
+                          inchStep: 0.05, mmStep: 1, units: model.units) { model.setWedgeWidth($0) }
+            Toggle("Number the steps", isOn: Binding(get: { model.session.wedgeLabels }, set: { model.setWedgeLabels($0) }))
+        }
         if !negative && model.session.printsColour {
             Toggle("Colour gamut wedge", isOn: Binding(get: { model.session.colourWedge }, set: { model.setColourWedge($0) }))
         }
@@ -192,16 +203,17 @@ public struct ContentView: View {
                 ForEach(Wedge.sides, id: \.self) { Text($0.capitalized).tag($0) }
             }
             .pickerStyle(.segmented)
-            Toggle("Create wedge separately", isOn: Binding(get: { model.session.wedgeSeparate }, set: { model.setWedgeSeparate($0) }))
-            if model.session.wedgeSeparate {
-                LengthStepper(title: "Gap", inches: model.session.wedgeGap, range: 0...Wedge.maxGap, inchStep: 0.05, mmStep: 1,
-                              units: model.units) { model.setWedgeGap($0) }
+            LengthStepper(title: "Space from the photo", inches: model.session.wedgeGap, range: 0...Wedge.maxGap,
+                          inchStep: 0.05, mmStep: 1, units: model.units) { model.setWedgeGap($0) }
+            if negative {
+                Toggle("Create wedge separately", isOn: Binding(get: { model.session.wedgeSeparate },
+                                                                set: { model.setWedgeSeparate($0) }))
             }
         }
         Text(negative
-             ? "Paper white to full black in 31 steps, made into a negative with the same process curve. It sits at the "
-                + "edge of the safe edge, with no clear film between, unless made separately with a gap."
-             : "Paper white to full black in 31 steps, toned and calibrated like the photo, to check every tone"
+             ? "Paper white to full black, made into a negative with the same process curve. The space is opaque like the "
+                + "safe edge; made separately, the wedge has its own safe edge and the space is clear film."
+             : "Paper white to full black, toned and calibrated like the photo, to check every tone"
                 + (model.session.printsColour ? "; the colour wedge is 31 hues as a tint, the full colour and a shade." : "."))
             .font(.caption)
             .foregroundStyle(.secondary)
@@ -272,7 +284,7 @@ public struct ContentView: View {
                 LengthStepper(title: "From the top", inches: negative.minY, range: layout.margin...max(layout.margin, maxTop),
                               inchStep: 0.125, mmStep: 1, units: model.units) { model.setPlacement((Double(negative.minX), Double($0))) }
             } else {
-                Text("The negative fills the page inside its margins, so it prints centred.")
+                Text("It fills the page inside its margins, so it prints centred.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

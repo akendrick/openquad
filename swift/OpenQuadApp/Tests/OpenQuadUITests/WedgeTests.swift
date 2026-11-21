@@ -40,16 +40,25 @@ struct WedgeTests {
         let (wider, same) = try m.session.sizeInches()
         #expect(wider > width && abs(same - height) < 1e-9 || wider / same > width / height)
 
-        #expect(!m.session.wedgeSeparate)  // joined to the print: the gap isn't used
-        let (joined, _) = try m.session.sizeInches()
-        m.setWedgeSeparate(true)
-        #expect(try m.session.sizeInches().0 > joined)
+        m.setWedgeSteps(21)
+        m.setWedgeWidth(3)  // clamped to 1 in
+        m.setWedgeStyle("calibration")
+        m.setWedgeLabels(true)
+        #expect(m.session.wedgeWidth == Wedge.maxWidth && m.wedgeDescription == "21 steps, on the right")
 
-        let again = try model()  // a new launch: the wedge comes back
+        let again = try model()  // a new launch: the wedge and its options come back
         #expect(again.session.wedge && again.session.wedgeSide == "right" && again.session.wedgeGap == Wedge.maxGap)
-        #expect(again.session.wedgeSeparate)
+        #expect(again.session.wedgeSteps == 21 && again.session.wedgeWidth == 1 && again.session.wedgeStyle == "calibration")
+        #expect(again.session.wedgeLabels)
+
         let negative = try model(.negative)  // the Negative tab keeps its own
         #expect(!negative.session.wedge && negative.wedgeDescription == "none")
+        let film = try model(.negative)  // made separately, a negative's wedge has its own safe edge
+        film.setWedge(true)
+        let (_, joined) = try film.session.sizeInches()
+        film.setWedgeSeparate(true)
+        #expect(try film.session.sizeInches().1 != joined || film.session.fit)
+        #expect(try model(.negative).session.wedgeSeparate)
     }
 
     @Test func theColourWedgeIsOnlyForAColourPrint() throws {

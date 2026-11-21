@@ -142,6 +142,10 @@ enum Snapshot {
         }
         if arguments.contains("--colour-print") { model.setColourPrint(true) }
         if arguments.contains("--colour-wedge") { model.setColourWedge(true) }
+        if let steps = value("--wedge-steps").flatMap(Int.init) { model.setWedgeSteps(steps) }
+        if let style = value("--wedge-style") { model.setWedgeStyle(style) }
+        if let gap = value("--wedge-gap").flatMap(Double.init) { model.setWedgeGap(gap) }
+        if arguments.contains("--wedge-labels") { model.setWedgeLabels(true) }
         if arguments.contains("--on-page") { model.setShowOnPage(true) }
         if let place = value("--place")?.split(separator: ",").compactMap({ Double($0) }), place.count == 2 {
             model.setPlacement((place[0], place[1]))

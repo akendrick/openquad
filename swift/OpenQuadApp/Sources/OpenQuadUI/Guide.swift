@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 27
+    public static let version = 28
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -44,9 +44,12 @@ public struct GuideView: View {
                         + "beside it. Fit to page (under Printer and size) sets it; turn Fit off to type one, and "
                         + "Photo's Own goes back to the photo's. Print size shows the result.",
                      "Registration: Mirror flips the photo left to right (for transfers), and the darkroom marks.",
-                     "Step wedges: a black and white wedge (31 steps, toned and calibrated like the photo) and, for a "
-                        + "colour print, a colour gamut wedge, on the side you choose, joined to the print. Create "
-                        + "wedge separately puts a gap between them. They're remembered.",
+                     "Step wedges: a black and white wedge (toned and calibrated like the photo) and, for a colour "
+                        + "print, a colour gamut wedge. Choose 11, 21, 31 or 51 steps, a plain strip or the "
+                        + "calibration target's style (two rows in a black frame), its width, numbered steps, the "
+                        + "side and the space from the photo. They're remembered.",
+                     "Position on the page (under Printer and size): Preview on the page shows the whole sheet; drag "
+                        + "the print to put it anywhere inside the margins.",
                      "Print… (⌘P). With \"Choose in the print panel\" the macOS panel opens: pick the printer and the "
                         + "same Media & Quality settings every time. Or pick a printer to print straight to it: its own "
                         + "Media type and Quality then appear under Printer and size, remembered for that printer.",
@@ -81,10 +84,10 @@ public struct GuideView: View {
                         + "side, crop marks at the corners), in the safe edge. Red and orange negatives all but vanish "
                         + "under a red safelight; black shows. The marks block UV like the safe edge, so they don't print. "
                         + "The Print tab offers them too, in a thin white border round the print.",
-                     "Step wedges: a 31-step wedge beside the negative (top, bottom, left or right) made with the "
-                        + "same process curve, so the contact print shows how the process holds every tone. It sits "
-                        + "at the edge of the safe edge with no clear film between; Create wedge separately makes it "
-                        + "a piece of its own, the gap you set away.",
+                     "Step wedges: a step wedge beside the negative made with the same process curve, so the contact "
+                        + "print shows how the process holds every tone, with the same choices as in Print. The space "
+                        + "from the photo is opaque like the safe edge; Create wedge separately gives the wedge its own "
+                        + "safe edge, with clear film between.",
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
                      "Tissue smaller than the page? Under Printer and size, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",

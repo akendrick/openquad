@@ -153,6 +153,10 @@ public final class AppModel {
             try? session.setWedgeSide(wedge.side)
             try? session.setWedgeGap(wedge.gap)
             session.wedgeSeparate = wedge.separate
+            try? session.setWedgeSteps(wedge.steps)
+            try? session.setWedgeWidth(wedge.width)
+            try? session.setWedgeStyle(wedge.style)
+            session.wedgeLabels = wedge.labels
         }
         if let size = settings.maxSize, size.count == 2 { session.maxSize = (size[0], size[1]) }
         session.units = settings.units
@@ -351,19 +355,49 @@ public final class AppModel {
         refreshPreview()
     }
 
+    /// 11, 21, 31 or 51 steps.
+    public func setWedgeSteps(_ steps: Int) {
+        attempt { try session.setWedgeSteps(steps) }
+        rememberWedge()
+        refreshPreview()
+    }
+
+    /// Inches across the grey wedge (0.2 to 1).
+    public func setWedgeWidth(_ width: Double) {
+        attempt { try session.setWedgeWidth(min(max(width, Wedge.minWidth), Wedge.maxWidth)) }
+        rememberWedge()
+        refreshPreview()
+    }
+
+    /// A plain strip, or the calibration target's style (two rows in a black frame).
+    public func setWedgeStyle(_ style: String) {
+        attempt { try session.setWedgeStyle(style) }
+        rememberWedge()
+        refreshPreview()
+    }
+
+    /// The step numbers in a band beside the wedge.
+    public func setWedgeLabels(_ on: Bool) {
+        session.wedgeLabels = on
+        rememberWedge()
+        refreshPreview()
+    }
+
     /// The wedges are remembered for each tab.
     func rememberWedge() {
         let chosen = WedgeSettings(grey: session.wedge, colour: session.colourWedge, side: session.wedgeSide, gap: session.wedgeGap,
-                                   separate: session.wedgeSeparate)
+                                   separate: session.wedgeSeparate, steps: session.wedgeSteps, width: session.wedgeWidth,
+                                   style: session.wedgeStyle, labels: session.wedgeLabels)
         let negative = role == .negative
         saveSettings { if negative { $0.negativeWedge = chosen } else { $0.printWedge = chosen } }
     }
 
-    /// "31 steps, below", "31 steps and colour, right", or "none".
+    /// "31 steps, below", "21 steps and colour, on the right", or "none".
     public var wedgeDescription: String {
         let kinds = session.wedgeKinds
         guard !kinds.isEmpty else { return "none" }
-        let what = kinds == [.colour] ? "colour" : kinds.count == 2 ? "31 steps and colour" : "31 steps"
+        let steps = "\(session.wedgeSteps) steps"
+        let what = kinds == [.colour] ? "colour" : kinds.count == 2 ? "\(steps) and colour" : steps
         let whereTo = ["top": "above", "bottom": "below", "left": "on the left", "right": "on the right"][session.wedgeSide] ?? ""
         return "\(what), \(whereTo)"
     }
@@ -568,7 +602,7 @@ public final class AppModel {
     }
 
     /// The preview is the whole page with the negative on it.
-    public var showingPage: Bool { showOnPage && session.negative && session.photo != nil && !showingCoats }
+    public var showingPage: Bool { showOnPage && session.photo != nil && !showingCoats }
 
     /// Move the negative's top-left corner to (left, top) inches on the page, kept inside the
     /// margins; nil centres it. Every negative of a separation prints in the same place.
@@ -584,7 +618,7 @@ public final class AppModel {
 
     /// The page, the room inside its margins and the negative on it, all in inches.
     public var pageLayout: (paper: (Double, Double), margin: Double, negative: CGRect)? {
-        guard session.negative, let size = try? session.sizeInches(), let position = try? session.pagePosition() else { return nil }
+        guard let size = try? session.sizeInches(), let position = try? session.pagePosition() else { return nil }
         return (Paper.sizes[session.paper]!, session.margin, CGRect(x: position.0, y: position.1, width: size.0, height: size.1))
     }
 

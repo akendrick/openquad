@@ -40,7 +40,7 @@ struct PagePreview: View {
                             }
                             .onEnded { _ in dragStart = nil })
                         .onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }
-                        .accessibilityLabel("The negative, \(model.positionDescription)")
+                        .accessibilityLabel("The \(model.session.negative ? "negative" : "print"), \(model.positionDescription)")
                 }
                 .frame(width: paperWidth * scale, height: paperHeight * scale, alignment: .topLeading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
