@@ -101,3 +101,25 @@ def test_the_print_file_is_the_whole_page(tmp_path: Path) -> None:
     path = session.write_print_file(tmp_path / "page.tif")
     assert tifffile.imread(path).shape == (1000, 750, 3)
     assert session.print_job(path).ppi == 100.0
+
+
+def test_marks_outside_the_printable_area_can_go_into_the_margins(tmp_path: Path) -> None:
+    """With Fit within printable area off, a moved print's photo reaches the margins and its
+    marks' border lies in them, as when centred: the border doesn't push the photo in."""
+    session = PrintSession(fit=False, ppi=100.0, registration=True)
+    session.open(photo_file(tmp_path))  # 3 x 4 in, 3.5 x 4.5 in in its 0.25 in border
+    session.set_placement((0.0, 0.0))
+    assert session.page_position() == (0.5, 0.5)  # in the printable area, border and all
+    session.marks_in_fit = False
+    assert session.page_position() == (0.25, 0.25)  # the photo at the margin, the border in it
+    page = session.render_print()
+    assert page.shape == (1050, 800, 3)  # the page less 0.25 in round: room for the border
+    alone = PrintSession(fit=False, ppi=100.0, registration=True, marks_in_fit=False)
+    alone.open(photo_file(tmp_path))
+    assert np.array_equal(page[:450, :350], alone.render_print())  # in the corner, unchanged
+    session.set_placement((99.0, 99.0))
+    assert session.page_position() == (8.5 - 0.25 - 3.5, 11 - 0.25 - 4.5)
+    session.set_mode("negative")
+    session.safe_edge = 0.75  # wider than the margin: the edge goes no nearer than the paper's
+    session.set_placement((-5.0, -5.0))
+    assert session.page_position() == (0.0, 0.0)
