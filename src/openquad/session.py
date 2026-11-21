@@ -7,6 +7,7 @@ session uses the neutral preset until the user picks another.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -43,6 +44,13 @@ FALLBACK_PPI = 300.0
 
 class SessionError(ValueError):
     """The session can't do that yet (e.g. no photo or no printer chosen)."""
+
+
+def _one_of(value: str, choices: Sequence[str], what: str) -> str:
+    """`value` if it is one of `choices`, else a SessionError naming them."""
+    if value not in choices:
+        raise SessionError(f"unknown {what} {value!r}; choose from {', '.join(choices)}")
+    return value
 
 
 @dataclass
@@ -150,9 +158,7 @@ class PrintSession:
         self.units = check(units)
 
     def set_wedge_side(self, side: str) -> None:
-        if side not in wedges.SIDES:
-            raise SessionError(f"unknown side {side!r}; choose from {', '.join(wedges.SIDES)}")
-        self.wedge_side = side
+        self.wedge_side = _one_of(side, wedges.SIDES, "side")
 
     def set_wedge_gap(self, gap: float) -> None:
         if not np.isfinite(gap) or not 0 <= gap <= wedges.MAX_GAP:
@@ -172,21 +178,14 @@ class PrintSession:
         self.wedge_width = width
 
     def set_wedge_background(self, background: str) -> None:
-        if background not in wedges.BACKGROUNDS:
-            choices = ", ".join(wedges.BACKGROUNDS)
-            raise SessionError(f"unknown background {background!r}; choose from {choices}")
-        self.wedge_background = background
+        self.wedge_background = _one_of(background, wedges.BACKGROUNDS, "background")
 
     def _wedge_fill(self) -> int:
         """What fills the space round the wedges: black, or white (paper; clear film)."""
         return 0 if self.wedge_background == "black" else MAX_VALUE
 
     def set_wedge_style(self, style: str) -> None:
-        if style not in wedges.STYLES:
-            raise SessionError(
-                f"unknown wedge style {style!r}; choose from {', '.join(wedges.STYLES)}"
-            )
-        self.wedge_style = style
+        self.wedge_style = _one_of(style, wedges.STYLES, "wedge style")
 
     @property
     def wedge_kinds(self) -> list[str]:

@@ -9,6 +9,14 @@ public struct SessionError: Error, Equatable, CustomStringConvertible {
     public let description: String
 }
 
+/// `value` if it is one of `choices`, else a SessionError naming them (as the Python app words it).
+func oneOf(_ value: String, _ choices: [String], _ what: String) throws -> String {
+    guard choices.contains(value) else {
+        throw SessionError(description: "unknown \(what) \(pyRepr(value)); choose from \(choices.joined(separator: ", "))")
+    }
+    return value
+}
+
 public enum OutputMode: String, Sendable, CaseIterable {
     case print, negative
 }
@@ -186,48 +194,41 @@ public struct PrintSession: Sendable {
     }
 
     public mutating func setWedgeSide(_ side: String) throws {
-        guard Wedge.sides.contains(side) else {
-            throw SessionError(description: "unknown side \(pyRepr(side)); choose from \(Wedge.sides.joined(separator: ", "))")
-        }
-        wedgeSide = side
+        wedgeSide = try oneOf(side, Wedge.sides, "side")
     }
 
     public mutating func setWedgeGap(_ gap: Double) throws {
         guard gap.isFinite, (0...Wedge.maxGap).contains(gap) else {
-            throw SessionError(description: "the gap must be 0 to 2 in, got \(gap)")
+            throw SessionError(description: "the gap must be 0 to \(String(format: "%g", Wedge.maxGap)) in, got \(gap)")
         }
         wedgeGap = gap
     }
 
     public mutating func setWedgeSteps(_ steps: Int) throws {
         guard Wedge.stepChoices.contains(steps) else {
-            throw SessionError(description: "a step wedge has 11, 21, 31, 51 steps, not \(steps)")
+            let choices = Wedge.stepChoices.map(String.init).joined(separator: ", ")
+            throw SessionError(description: "a step wedge has \(choices) steps, not \(steps)")
         }
         wedgeSteps = steps
     }
 
     public mutating func setWedgeWidth(_ width: Double) throws {
         guard width.isFinite, (Wedge.minWidth...Wedge.maxWidth).contains(width) else {
-            throw SessionError(description: "the wedge's width must be 0.2 to 1 in, got \(width)")
+            let (low, high) = (String(format: "%g", Wedge.minWidth), String(format: "%g", Wedge.maxWidth))
+            throw SessionError(description: "the wedge's width must be \(low) to \(high) in, got \(width)")
         }
         wedgeWidth = width
     }
 
     public mutating func setWedgeBackground(_ background: String) throws {
-        guard Wedge.backgrounds.contains(background) else {
-            throw SessionError(description: "unknown background \(pyRepr(background)); choose from \(Wedge.backgrounds.joined(separator: ", "))")
-        }
-        wedgeBackground = background
+        wedgeBackground = try oneOf(background, Wedge.backgrounds, "background")
     }
 
     /// What fills the space round the wedges: black, or white (paper; clear film).
     var wedgeFill: UInt16 { wedgeBackground == "black" ? 0 : UInt16(maxValue) }
 
     public mutating func setWedgeStyle(_ style: String) throws {
-        guard Wedge.styles.contains(style) else {
-            throw SessionError(description: "unknown wedge style \(pyRepr(style)); choose from \(Wedge.styles.joined(separator: ", "))")
-        }
-        wedgeStyle = style
+        wedgeStyle = try oneOf(style, Wedge.styles, "wedge style")
     }
 
     /// The wedges printed, nearest the print first: grey, and colour on a colour print.

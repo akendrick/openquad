@@ -12,6 +12,8 @@ import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from openquad import wedge as wedges
+
 
 def default_path() -> Path:
     override = os.environ.get("OPENQUAD_SETTINGS")
@@ -104,18 +106,32 @@ def _wedge(value: object) -> dict[str, object] | None:
     if not isinstance(value, dict):
         return None
     side, gap = value.get("side"), value.get("gap")
-    if side not in ("top", "bottom", "left", "right") or not _number(gap):
+    if side not in wedges.SIDES or not _number(gap):
         return None
-    steps, width, style = value.get("steps"), value.get("width"), value.get("style")
-    return {"grey": value.get("grey") is True, "colour": value.get("colour") is True,
-            "side": side, "gap": min(max(float(gap), 0.0), 2.0),  # type: ignore[arg-type]
-            "separate": value.get("separate") is True,
-            "steps": steps if steps in (11, 21, 31, 51) and not isinstance(steps, bool) else 31,
-            "width": min(max(float(width), 0.2), 1.0) if _number(width) else 0.4,  # type: ignore[arg-type]
-            "style": style if style in ("strip", "calibration") else "strip",
-            "labels": value.get("labels") is True,
-            "background": value.get("background")
-            if value.get("background") in ("colour", "black", "white") else "colour"}  # fmt: skip
+    steps, width = value.get("steps"), value.get("width")
+    return {
+        "grey": value.get("grey") is True,
+        "colour": value.get("colour") is True,
+        "side": side,
+        "gap": _clamp(gap, 0.0, wedges.MAX_GAP),
+        "separate": value.get("separate") is True,
+        "steps": steps if _number(steps) and steps in wedges.STEP_CHOICES else wedges.WEDGE_STEPS,
+        "width": _clamp(width, wedges.MIN_WIDTH, wedges.MAX_WIDTH)
+        if _number(width)
+        else wedges.WEDGE_WIDTH,
+        "style": _choice(value.get("style"), wedges.STYLES),
+        "labels": value.get("labels") is True,
+        "background": _choice(value.get("background"), wedges.BACKGROUNDS),
+    }
+
+
+def _choice(value: object, choices: tuple[str, ...]) -> str:
+    """`value` if it is one of `choices`, else the first (the default)."""
+    return value if isinstance(value, str) and value in choices else choices[0]
+
+
+def _clamp(value: object, low: float, high: float) -> float:
+    return min(max(float(value), low), high)  # type: ignore[arg-type]  # checked by _number
 
 
 def _number(value: object) -> bool:

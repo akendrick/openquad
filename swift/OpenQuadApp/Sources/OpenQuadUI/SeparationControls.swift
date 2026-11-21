@@ -99,7 +99,7 @@ struct SeparationControls: View {
     }
 
     private var layerPicker: some View {
-        Picker("Show and print", selection: Binding(get: { model.session.layer }, set: { model.setLayer($0) })) {
+        Picker("Show and print", selection: model.binding(\.layer, model.setLayer)) {
             ForEach(0..<count, id: \.self) { Text("\($0 + 1)").tag($0) }
         }
         .pickerStyle(.segmented)
