@@ -23,7 +23,15 @@ from openquad.greybalance import Calibration, load_calibration
 from openquad.imageio import save_rgb, srgb_profile
 from openquad.marks import PRINT_BORDER, add_print_marks
 from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, make_negative, negative_ppi
-from openquad.paper import DEFAULT_MARGIN, PAPER_SIZES, box_ppi, fit_ppi, oriented, print_size
+from openquad.paper import (
+    DEFAULT_MARGIN,
+    PAPER_SIZES,
+    box_ppi,
+    fit_ppi,
+    oriented,
+    page_size,
+    print_size,
+)
 from openquad.photo import Photo, load_photo
 from openquad.printing import PrintJob, Runner, run_command, send
 from openquad.quadfile import MAX_VALUE
@@ -49,6 +57,7 @@ class PrintSession:
     # quality: {"CNIJMediaType": "28"}. The print panel has its own.
     printer_options: dict[str, str] = field(default_factory=dict)
     paper: str = "Letter"
+    landscape: bool = False  # the page turned on its side (wider than tall)
     fit: bool = True
     margin: float = DEFAULT_MARGIN
     ppi: float | None = None  # used when fit is off; None = the photo's own DPI
@@ -338,6 +347,13 @@ class PrintSession:
             raise SessionError(f"unknown paper {paper!r}")
         self.paper = paper
 
+    def _page(self) -> tuple[float, float]:
+        """The page (width, height) in inches as it lies: portrait or landscape."""
+        return page_size(self.paper, self.landscape)
+
+    def _paper_name(self) -> str:
+        return f"{self.paper}, landscape" if self.landscape else self.paper
+
     # --- size -----------------------------------------------------------------------
 
     def _photo(self) -> Photo:
@@ -352,9 +368,11 @@ class PrintSession:
             if extra_w or extra_h:
                 ppi = self._page_ppi(extra_w, extra_h)
             elif self._fit_border:
-                ppi = negative_ppi(*photo.size, self.paper, self._fit_border, self.margin)
+                ppi = negative_ppi(
+                    *photo.size, self.paper, self._fit_border, self.margin, self.landscape
+                )
             else:
-                ppi = fit_ppi(*photo.size, self.paper, self.margin)
+                ppi = fit_ppi(*photo.size, self.paper, self.margin, self.landscape)
             if self.max_size:  # smaller of the page and the box (never past the page)
                 ppi = max(ppi, box_ppi(*photo.size, self.max_size, self._fit_border))
             return ppi
@@ -365,11 +383,11 @@ class PrintSession:
     def _page_ppi(self, extra_w: float, extra_h: float) -> float:
         """The resolution that fits the photo, its border and its wedges within the margins."""
         width, height = self._photo().size
-        paper_w, paper_h = PAPER_SIZES[self.paper]
+        paper_w, paper_h = self._page()
         room_w = paper_w - 2 * self.margin - 2 * self._fit_border - extra_w
         room_h = paper_h - 2 * self.margin - 2 * self._fit_border - extra_h
         if room_w <= 0 or room_h <= 0:
-            raise SessionError(f"no room for the photo and its wedge on {self.paper}")
+            raise SessionError(f"no room for the photo and its wedge on {self._paper_name()}")
         return max(width / room_w, height / room_h)
 
     def size_inches(self) -> tuple[float, float]:
@@ -381,7 +399,7 @@ class PrintSession:
 
     def fits_on_paper(self) -> bool:
         width, height = self.size_inches()
-        paper_w, paper_h = PAPER_SIZES[self.paper]
+        paper_w, paper_h = self._page()
         return width <= paper_w + 1e-6 and height <= paper_h + 1e-6
 
     # --- placing a negative on the page ---------------------------------------------
@@ -402,13 +420,13 @@ class PrintSession:
         return width <= room_w + 1e-6 and height <= room_h + 1e-6
 
     def _room(self) -> tuple[float, float]:
-        paper_w, paper_h = PAPER_SIZES[self.paper]
+        paper_w, paper_h = self._page()
         return paper_w - 2 * self.margin, paper_h - 2 * self.margin
 
     def page_position(self) -> tuple[float, float]:
         """Where the print's top-left corner lands: inches from the paper's left and top."""
         width, height = self.size_inches()
-        paper_w, paper_h = PAPER_SIZES[self.paper]
+        paper_w, paper_h = self._page()
         if not self.placed or self.placement is None:
             return (paper_w - width) / 2, (paper_h - height) / 2
         left, top = self.placement
@@ -695,7 +713,7 @@ class PrintSession:
                 f"Photo: {self.source.name if self.source else 'untitled'}",
                 "Output: digital negative",
                 f"Printer: {self.printer or 'not chosen'}",
-                f"Paper: {self.paper}",
+                f"Paper: {self._paper_name()}",
                 *self._within(),
                 f"Size: {size(width, height, self.units)} with a {self._length(self.safe_edge)} "
                 f"safe edge{outline}",
@@ -714,7 +732,7 @@ class PrintSession:
         return [
             f"Photo: {self.source.name if self.source else 'untitled'}",
             f"Printer: {self.printer or 'not chosen'}",
-            f"Paper: {self.paper}",
+            f"Paper: {self._paper_name()}",
             *self._within(),
             f"Size: {size(width, height, self.units)} at {self.effective_ppi():.0f} ppi",
             *self._position_line(),
@@ -757,7 +775,8 @@ class PrintSession:
             title += f" (negative {self.layer + 1} of {self.negative_count})"
         return PrintJob(
             path=path, printer=self.printer, paper=self.paper, ppi=self.effective_ppi(),
-            title=title, options=tuple(sorted(self.printer_options.items())),
+            landscape=self.landscape, title=title,
+            options=tuple(sorted(self.printer_options.items())),
         )  # fmt: skip
 
     def print(self, scratch: str | Path, runner: Runner = run_command) -> str:

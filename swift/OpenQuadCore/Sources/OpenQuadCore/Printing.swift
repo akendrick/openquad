@@ -42,12 +42,14 @@ public struct PrintJob: Sendable {
     public let paper: String
     /// Makes the image print at its real size (pixels / ppi inches).
     public let ppi: Double
+    /// The page turned on its side: the image prints rotated onto it.
+    public let landscape: Bool
     public let copies: Int
     public let title: String?
     /// Extra `lp -o name=value` driver options.
     public let options: [(String, String)]
 
-    public init(path: String, printer: String, paper: String = "Letter", ppi: Double = 300, copies: Int = 1,
+    public init(path: String, printer: String, paper: String = "Letter", ppi: Double = 300, landscape: Bool = false, copies: Int = 1,
                 title: String? = nil, options: [(String, String)] = []) throws {
         guard !printer.isEmpty, !printer.contains(where: \.isWhitespace) else {
             throw PrintError(description: "invalid printer name: \(pyRepr(printer))")
@@ -58,6 +60,7 @@ public struct PrintJob: Sendable {
         self.printer = printer
         self.paper = paper
         self.ppi = ppi
+        self.landscape = landscape
         self.copies = copies
         self.title = title
         self.options = options
@@ -67,6 +70,7 @@ public struct PrintJob: Sendable {
     public func command() -> [String] {
         var command = ["lp", "-d", printer, "-n", String(copies), "-o", "PageSize=\(paper)",
                        "-o", "ppi=\(pyRound(ppi))", "-t", title ?? (path as NSString).lastPathComponent]
+        if landscape { command += ["-o", "landscape"] }
         for (name, value) in options { command += ["-o", "\(name)=\(value)"] }
         command.append(path)
         return command

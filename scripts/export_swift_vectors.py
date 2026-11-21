@@ -249,6 +249,20 @@ def paper_vectors() -> dict[str, Any]:
             for w, h in sizes
             for paper in ("Letter", "A4", "4x6")
         ],
+        "landscape": [
+            {
+                "width": w,
+                "height": h,
+                "paper": paper,
+                "edge": edge,
+                "ppi": negative_ppi(w, h, paper, edge, 0.5, landscape=True)
+                if edge
+                else fit_ppi(w, h, paper, landscape=True),
+            }
+            for w, h in sizes
+            for paper in ("Letter", "4x6")
+            for edge in (0.0, 0.25)
+        ],
         "negative": [
             {
                 "width": w,
@@ -770,6 +784,7 @@ def devices_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         {},
         {"ppi": 341.5, "copies": 2, "paper": "4x6"},
         {"ppi": 342.5, "title": "Negative: green"},
+        {"paper": "A4", "landscape": True},
         {"options": (("MediaType", "photographic-glossy"), ("print-quality", "5"))},
     ):
         job = PrintJob(Path("/tmp/openquad/neg.tif"), "Canon_MG3600_series", **kwargs)
@@ -959,6 +974,11 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 3.0,
          "placement": [1.0, 1.0]},
         {"photo": "photo-grey16.tif", "fit": False, "ppi": 8.0, "placement": [1.0, 1.0]},
+        {"photo": "photo-grey16.tif", "landscape": True, "paper": "4x6"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
+         "placement": [1.0, 0.5], "landscape": True, "paper": "5x7"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "landscape": True, "wedge": True,
+         "paper": "4x6"},
         {"photo": "photo-grey16.tif", "preset": "black-red", "calibration": True, "wedge": True},
         {"photo": "photo-grey.png", "fit": False, "ppi": 20.0, "guide": True, "wedge": True,
          "wedge_side": "left", "wedge_gap": 0.3, "wedge_separate": True},
@@ -1010,6 +1030,7 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         if config.get("calibration"):
             session.set_calibration(calibration)
         session.set_paper(config.get("paper", "Letter"))
+        session.landscape = config.get("landscape", False)
         session.fit = config.get("fit", True)
         session.ppi = config.get("ppi")
         session.set_mode(config.get("mode", "print"))

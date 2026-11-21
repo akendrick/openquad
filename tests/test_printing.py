@@ -36,6 +36,12 @@ def test_command_sets_page_size_and_real_size(tmp_path: Path) -> None:
     assert command[-1] == str(tmp_path / "sheet.tif")
 
 
+def test_landscape_turns_the_page(tmp_path: Path) -> None:
+    assert "landscape" not in job(tmp_path).command()
+    command = job(tmp_path, landscape=True).command()
+    assert command[command.index("landscape") - 1] == "-o" and "PageSize=Letter" in command
+
+
 def test_extra_options_and_title(tmp_path: Path) -> None:
     command = job(tmp_path, title="Test", options=(("CNIJMediaType", "0"),)).command()
     assert command[command.index("-t") + 1] == "Test"

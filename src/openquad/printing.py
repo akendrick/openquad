@@ -154,6 +154,7 @@ class PrintJob:
     printer: str
     paper: str = "Letter"
     ppi: float = 300.0
+    landscape: bool = False  # the page turned on its side: the image prints rotated onto it
     copies: int = 1
     title: str | None = None
     options: tuple[tuple[str, str], ...] = ()
@@ -181,6 +182,8 @@ class PrintJob:
             "-t",
             self.title or self.path.name,
         ]
+        if self.landscape:
+            command += ["-o", "landscape"]
         for name, value in self.options:
             command += ["-o", f"{name}={value}"]
         command.append(str(self.path))

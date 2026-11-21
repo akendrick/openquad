@@ -18,18 +18,26 @@ public enum Paper {
         public let description: String
     }
 
+    /// The page (width, height) in inches as it lies: portrait, or turned on its side.
+    public static func page(_ paper: String, landscape: Bool = false) -> (Double, Double)? {
+        guard let (width, height) = sizes[paper] else { return nil }
+        return landscape ? (height, width) : (width, height)
+    }
+
     /// The resolution that makes the image as large as fits within the page's margins.
-    public static func fitPPI(width: Int, height: Int, paper: String, margin: Double = defaultMargin) throws -> Double {
-        try ppi(width: width, height: height, paper: paper, margin: margin, safeEdge: 0)
+    public static func fitPPI(width: Int, height: Int, paper: String, margin: Double = defaultMargin,
+                              landscape: Bool = false) throws -> Double {
+        try ppi(width: width, height: height, paper: paper, margin: margin, safeEdge: 0, landscape: landscape)
     }
 
     /// The resolution at which a photo plus its safe edge fit within the margins.
-    public static func negativePPI(width: Int, height: Int, paper: String, safeEdge: Double, margin: Double = defaultMargin) throws -> Double {
-        try ppi(width: width, height: height, paper: paper, margin: margin, safeEdge: safeEdge)
+    public static func negativePPI(width: Int, height: Int, paper: String, safeEdge: Double, margin: Double = defaultMargin,
+                                   landscape: Bool = false) throws -> Double {
+        try ppi(width: width, height: height, paper: paper, margin: margin, safeEdge: safeEdge, landscape: landscape)
     }
 
-    static func ppi(width: Int, height: Int, paper: String, margin: Double, safeEdge: Double) throws -> Double {
-        guard let (paperWidth, paperHeight) = sizes[paper] else { throw FitError(description: "unknown paper \(paper)") }
+    static func ppi(width: Int, height: Int, paper: String, margin: Double, safeEdge: Double, landscape: Bool) throws -> Double {
+        guard let (paperWidth, paperHeight) = page(paper, landscape: landscape) else { throw FitError(description: "unknown paper \(paper)") }
         guard width >= 1, height >= 1 else { throw FitError(description: "image has no pixels") }
         let roomW = paperWidth - 2 * margin - 2 * safeEdge
         let roomH = paperHeight - 2 * margin - 2 * safeEdge

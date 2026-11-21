@@ -74,13 +74,17 @@ public struct ContentView: View {
                 } else {
                     FoldingSection(title: "Toning and calibration", summary: toningSummary, open: $openToning) { printControls }
                 }
-                FoldingSection(title: "Registration", summary: registrationSummary, open: $openMarks) {
+                FoldingSection(title: "Registration and step wedges", summary: registrationSummary, open: $openMarks) {
                     registrationOptions
                     DarkroomMarks(guide: model.session.guide, registration: model.session.registration,
                                   negative: model.session.negative, units: model.units,
                                   setGuide: model.setGuide, setRegistration: model.setRegistration)
+                    DisclosureGroup(isExpanded: $openWedges) {
+                        wedgeControls
+                    } label: {
+                        LabeledContent("Step wedges") { Text(model.wedgeDescription).foregroundStyle(.secondary) }
+                    }
                 }
-                FoldingSection(title: "Step wedges", summary: model.wedgeDescription, open: $openWedges) { wedgeControls }
                 FoldingSection(title: "Printer and size", summary: [pageSummary, sizeSummary].joined(separator: ", "),
                                open: $openPage) {
                     printerAndPaper
@@ -238,6 +242,11 @@ public struct ContentView: View {
         Picker("Paper", selection: Binding(get: { model.session.paper }, set: { model.setPaper($0) })) {
             ForEach(paperOrder, id: \.self) { Text($0).tag($0) }
         }
+        Picker("Orientation", selection: Binding(get: { model.session.landscape }, set: { model.setLandscape($0) })) {
+            Label("Portrait", systemImage: "rectangle.portrait").tag(false)
+            Label("Landscape", systemImage: "rectangle").tag(true)
+        }
+        .pickerStyle(.segmented)
         if model.session.printer == nil {
             Text("Media type and quality are set in the print panel (Media & Quality). Choose the same every time.")
                 .font(.caption)
@@ -499,6 +508,7 @@ public struct ContentView: View {
         if model.session.guide { set.append("guide line") }
         if model.session.registration { set.append("marks") }
         if !model.session.marksInFit { set.append("outside") }
+        if model.wedgeDescription != "none" { set.append("wedge \(model.wedgeDescription)") }
         return set.isEmpty ? "none" : set.joined(separator: ", ")
     }
 
@@ -516,7 +526,7 @@ public struct ContentView: View {
 
     private var pageSummary: String {
         let media = model.printerMedia.flatMap { option in model.session.printerOptions[option.keyword].map(option.name(of:)) }
-        return [model.session.paper, model.session.printer?.replacingOccurrences(of: "_", with: " "), media,
+        return [model.session.paper + (model.session.landscape ? " landscape" : ""), model.session.printer?.replacingOccurrences(of: "_", with: " "), media,
                 model.session.mirror ? "mirrored" : nil]
             .compactMap { $0 }.joined(separator: ", ")
     }
@@ -583,7 +593,7 @@ public struct ContentView: View {
         Task {
             guard let (image, width, height, paper, title) = await model.printRequest(),
                   let operation = NativePrint.operation(for: image, widthInches: width, heightInches: height,
-                                                        paper: paper, title: title,
+                                                        paper: paper, landscape: model.session.landscape, title: title,
                                                         iccProfile: model.session.printProfile()) else { return }
             if let window = NSApp.keyWindow {
                 operation.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
