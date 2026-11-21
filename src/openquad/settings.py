@@ -54,6 +54,10 @@ class Settings:
     # "side": "top" | "bottom" | "left" | "right", "gap": inches}; None for none chosen yet.
     print_wedge: dict[str, object] | None = None
     negative_wedge: dict[str, object] | None = None
+    # Whether each tab fits the darkroom marks' border within the printable area with the
+    # photo (False: the photo alone fits; the border lies outside it).
+    marks_in_fit: bool = True
+    negative_marks_in_fit: bool = True
 
     @classmethod
     def load(cls, path: Path | None = None) -> Settings:
@@ -69,6 +73,8 @@ class Settings:
             known[key] = _options(known.get(key))
         for key in ("print_wedge", "negative_wedge"):
             known[key] = _wedge(known.get(key))
+        for key in ("marks_in_fit", "negative_marks_in_fit"):
+            known[key] = known.get(key) is not False
         return cls(**known)
 
     def save(self, path: Path | None = None) -> None:

@@ -158,6 +158,7 @@ public final class AppModel {
             try? session.setWedgeStyle(wedge.style)
             session.wedgeLabels = wedge.labels
         }
+        session.marksInFit = role == .negative ? settings.negativeMarksInFit : settings.marksInFit
         if let size = settings.maxSize, size.count == 2 { session.maxSize = (size[0], size[1]) }
         session.units = settings.units
     }
@@ -299,6 +300,15 @@ public final class AppModel {
 
     public func setMirror(_ on: Bool) {
         session.mirror = on
+        refreshPreview()
+    }
+
+    /// Fit the marks' border (safe edge, outline, a print's white border) within the printable
+    /// area with the photo, or fit the photo alone and let the border lie outside it. Remembered.
+    public func setMarksInFit(_ on: Bool) {
+        session.marksInFit = on
+        let negative = role == .negative
+        saveSettings { if negative { $0.negativeMarksInFit = on } else { $0.marksInFit = on } }
         refreshPreview()
     }
 

@@ -243,3 +243,18 @@ def test_wedge_options_are_checked_and_summarised(tmp_path: Path) -> None:
                       (session.set_wedge_style, "zigzag")):  # fmt: skip
         with pytest.raises(SessionError):
             call(bad)  # type: ignore[operator]
+
+
+def test_marks_can_lie_outside_the_printable_area(tmp_path: Path) -> None:
+    session = PrintSession()
+    session.open(photo(tmp_path))
+    plain = session.effective_ppi()
+    session.guide = True
+    assert session.effective_ppi() > plain  # the photo shrinks to fit its border
+    session.marks_in_fit = False
+    assert session.effective_ppi() == plain  # the photo is unaffected; the border lies outside
+    assert any(line.startswith("Fit: the photo alone") for line in session.summary())
+    negative = PrintSession(mode="negative")
+    negative.open(photo(tmp_path))
+    negative.marks_in_fit = False
+    assert negative.effective_ppi() == plain

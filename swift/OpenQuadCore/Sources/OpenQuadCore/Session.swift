@@ -39,6 +39,10 @@ public struct PrintSession: Sendable {
     public private(set) var process: ProcessCurve?
     public private(set) var processPath: URL?
     public var mirror = false
+    /// Fit the darkroom marks' border (a print's white border, a negative's safe edge and
+    /// outline) within the printable area with the photo; if not, the photo alone fits and the
+    /// border lies outside it, into the margins.
+    public var marksInFit = true
     public var safeEdge = 0.25
     /// Inches of black between the safe edge and the photo (0 = none).
     public var outline = 0.0
@@ -285,6 +289,9 @@ public struct PrintSession: Sendable {
 
     /// Inches round the photo: in a negative the black outline plus the safe edge; in a
     /// print the white border carrying its darkroom marks (if any).
+    /// The border the fit allows for: none when the marks lie outside the printable area.
+    var fitBorder: Double { marksInFit ? border : 0.0 }
+
     var border: Double {
         if negative { return outline + safeEdge }
         return guide || registration ? Marks.printBorder : 0
@@ -312,11 +319,11 @@ public struct PrintSession: Sendable {
         if fit {
             let (extraWidth, extraHeight) = wedgeExtra()
             var ppi = extraWidth != 0 || extraHeight != 0 ? try pagePPI(extraWidth, extraHeight)
-                : border != 0
-                ? try Paper.negativePPI(width: photo.width, height: photo.height, paper: paper, safeEdge: border, margin: margin)
+                : fitBorder != 0
+                ? try Paper.negativePPI(width: photo.width, height: photo.height, paper: paper, safeEdge: fitBorder, margin: margin)
                 : try Paper.fitPPI(width: photo.width, height: photo.height, paper: paper, margin: margin)
             if let maxSize {  // smaller of the page and the box (never past the page)
-                ppi = max(ppi, try Paper.boxPPI(width: photo.width, height: photo.height, box: maxSize, border: border))
+                ppi = max(ppi, try Paper.boxPPI(width: photo.width, height: photo.height, box: maxSize, border: fitBorder))
             }
             return ppi
         }
@@ -328,8 +335,8 @@ public struct PrintSession: Sendable {
     func pagePPI(_ extraWidth: Double, _ extraHeight: Double) throws -> Double {
         let photo = try currentPhoto()
         let (paperWidth, paperHeight) = Paper.sizes[paper]!
-        let roomWidth = paperWidth - 2 * margin - 2 * border - extraWidth
-        let roomHeight = paperHeight - 2 * margin - 2 * border - extraHeight
+        let roomWidth = paperWidth - 2 * margin - 2 * fitBorder - extraWidth
+        let roomHeight = paperHeight - 2 * margin - 2 * fitBorder - extraHeight
         guard roomWidth > 0, roomHeight > 0 else {
             throw SessionError(description: "no room for the photo and its wedge on \(paper)")
         }
@@ -584,7 +591,8 @@ public struct PrintSession: Sendable {
 
     var marksLine: [String] {
         let marks = [(guide, "guide line"), (registration, "registration marks")].filter(\.0).map(\.1)
-        return marks.isEmpty ? [] : ["Darkroom marks: \(marks.joined(separator: " and "))"]
+        let outside = marksInFit || border == 0 ? [] : ["Fit: the photo alone; its border lies outside the printable area"]
+        return (marks.isEmpty ? [] : ["Darkroom marks: \(marks.joined(separator: " and "))"]) + outside
     }
 
     var separationLines: [String] {
@@ -746,6 +754,9 @@ public struct AppSettings: Sendable, Equatable {
     /// The step wedges each tab prints beside the photo; nil for none chosen yet.
     public var printWedge: WedgeSettings?
     public var negativeWedge: WedgeSettings?
+    /// Whether each tab fits the marks' border within the printable area with the photo.
+    public var marksInFit = true
+    public var negativeMarksInFit = true
 
     public init() {}
 
@@ -787,6 +798,8 @@ public struct AppSettings: Sendable, Equatable {
         settings.negativePrinterOptions = options(object["negative_printer_options"])
         settings.printWedge = WedgeSettings(object["print_wedge"])
         settings.negativeWedge = WedgeSettings(object["negative_wedge"])
+        settings.marksInFit = object["marks_in_fit"] as? Bool != false
+        settings.negativeMarksInFit = object["negative_marks_in_fit"] as? Bool != false
         return settings
     }
 
@@ -801,6 +814,7 @@ public struct AppSettings: Sendable, Equatable {
             "chart_size": chartSize ?? NSNull(), "proof_profile": proofProfile ?? NSNull(),
             "printer_options": printerOptions, "negative_printer_options": negativePrinterOptions,
             "print_wedge": printWedge?.json ?? NSNull(), "negative_wedge": negativeWedge?.json ?? NSNull(),
+            "marks_in_fit": marksInFit, "negative_marks_in_fit": negativeMarksInFit,
         ]
         var data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])
         data.append(0x0a)

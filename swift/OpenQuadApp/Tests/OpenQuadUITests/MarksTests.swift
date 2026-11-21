@@ -25,6 +25,17 @@ struct MarksTests {
                  setupsFolder: folder.appendingPathComponent("setups"), role: role)
     }
 
+    @Test func marksCanLieOutsideThePrintableArea() throws {
+        let app = model()
+        app.openPhoto(photo)
+        let plain = try app.session.effectivePPI()
+        app.setGuide(true)
+        #expect(try app.session.effectivePPI() > plain)  // fitted with its border, the photo shrinks
+        app.setMarksInFit(false)
+        #expect(try app.session.effectivePPI() == plain)  // the photo is unaffected
+        #expect(!model().session.marksInFit && model(.negative).session.marksInFit)  // remembered for each tab
+    }
+
     @Test func printMarksAddAWhiteBorder() throws {
         let app = model()
         app.openPhoto(photo)

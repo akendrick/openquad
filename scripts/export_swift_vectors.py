@@ -987,6 +987,11 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         {"photo": "photo-colour.png", "colour_print": True, "fit": False, "ppi": 100.0,
          "wedge": True, "colour_wedge": True, "wedge_side": "top", "wedge_labels": True,
          "wedge_steps": 51},
+        {"photo": "photo-grey16.tif", "guide": True, "registration": True, "marks_in_fit": False},
+        {"photo": "photo-grey16.tif", "mode": "negative", "outline": 0.1, "marks_in_fit": False,
+         "max_size": [5.0, 7.0]},
+        {"photo": "photo-grey16.tif", "mode": "negative", "marks_in_fit": False, "wedge": True,
+         "wedge_gap": 0.2, "paper": "4x6"},
     ]  # fmt: skip
     sessions = []
     for config in configurations:
@@ -1021,6 +1026,7 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         session.set_wedge_width(config.get("wedge_width", 0.4))
         session.set_wedge_style(config.get("wedge_style", "strip"))
         session.wedge_labels = config.get("wedge_labels", False)
+        session.marks_in_fit = config.get("marks_in_fit", True)
         session.set_placement(tuple(config["placement"]) if "placement" in config else None)
         rendered = session.render_print()
         sessions.append({**config, "ppi_used": session.effective_ppi(),

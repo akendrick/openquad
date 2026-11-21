@@ -7,6 +7,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Fit within printable area, under Registration (Print and Negative tabs, remembered for each).
+  On, as before, the photo shrinks so its marks' border (a print's white border, a negative's
+  safe edge and outline) fits within the margins too; off, the photo fits on its own and the
+  border lies outside it, in the margins. Core: `PrintSession.marks_in_fit` in Python and Swift
+  alike (shared vectors). Mirror moves to Printer and size.
+
 - Step wedge options: 11, 21, 31 or 51 steps; a plain strip or the printer calibration target's
   style (two rows, white to black and back, in a thin black frame); a width of 0.2 to 1 in; and
   the steps numbered in a band beside the wedge. The space from the photo can always be set (0 to

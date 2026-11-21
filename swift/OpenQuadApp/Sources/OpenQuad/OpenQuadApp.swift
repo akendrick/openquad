@@ -125,6 +125,7 @@ enum Snapshot {
             model.setOutline(true)
         }
         if arguments.contains("--guide") { model.setGuide(true) }
+        if arguments.contains("--marks-outside") { model.setMarksInFit(false) }
         if arguments.contains("--registration") { model.setRegistration(true) }
         if let count = value("--separations").flatMap(Int.init) { model.setNegativeCount(count) }
         if let overlap = value("--overlap").flatMap(Double.init) { model.setSeparationOverlap(overlap) }

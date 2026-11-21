@@ -220,6 +220,7 @@ public struct ContentView: View {
     }
 
     @ViewBuilder private var printerAndPaper: some View {
+        Toggle("Mirror (flip left to right)", isOn: Binding(get: { model.session.mirror }, set: { model.setMirror($0) }))
         Picker("Printer", selection: Binding(get: { model.session.printer }, set: { model.setPrinter($0) })) {
             Text("Choose in the print panel").tag(String?.none)
             ForEach(model.printers, id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ")).tag(String?.some($0)) }
@@ -447,10 +448,18 @@ public struct ContentView: View {
         }
     }
 
-    /// Mirror (both tabs), then a negative's safe edge and outline: set once per process, then left alone.
+    /// A negative's safe edge and outline, and whether the marks' border fits within the
+    /// printable area with the photo: set once per process, then left alone.
     @ViewBuilder private var registrationOptions: some View {
-        Toggle("Mirror (flip left to right)", isOn: Binding(get: { model.session.mirror }, set: { model.setMirror($0) }))
         if model.session.negative { negativeEdges }
+        Toggle("Fit within printable area", isOn: Binding(get: { model.session.marksInFit }, set: { model.setMarksInFit($0) }))
+        if !model.session.marksInFit {
+            Text(model.session.negative
+                 ? "The photo fits the page on its own; the safe edge, outline and marks lie outside it, in the margins."
+                 : "The photo fits the page on its own; the guide line and registration marks lie outside it, in the margins.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     @ViewBuilder private var negativeEdges: some View {
@@ -476,13 +485,13 @@ public struct ContentView: View {
     /// Mirror, safe edge and outline (on a negative), then the darkroom marks.
     private var registrationSummary: String {
         var set = [String]()
-        if model.session.mirror { set.append("mirrored") }
         if model.session.negative {
             set.append("\(model.units.length(model.session.safeEdge)) edge")
             if model.session.outline > 0 { set.append("outlined") }
         }
         if model.session.guide { set.append("guide line") }
         if model.session.registration { set.append("marks") }
+        if !model.session.marksInFit { set.append("outside") }
         return set.isEmpty ? "none" : set.joined(separator: ", ")
     }
 
@@ -500,7 +509,8 @@ public struct ContentView: View {
 
     private var pageSummary: String {
         let media = model.printerMedia.flatMap { option in model.session.printerOptions[option.keyword].map(option.name(of:)) }
-        return [model.session.paper, model.session.printer?.replacingOccurrences(of: "_", with: " "), media]
+        return [model.session.paper, model.session.printer?.replacingOccurrences(of: "_", with: " "), media,
+                model.session.mirror ? "mirrored" : nil]
             .compactMap { $0 }.joined(separator: ", ")
     }
 
