@@ -58,6 +58,19 @@ def test_fit_to_letter_by_default(tmp_path: Path) -> None:
     assert session.fits_on_paper()
 
 
+def test_landscape_turns_the_page(tmp_path: Path) -> None:
+    session = opened(tmp_path)
+    session.landscape = True  # 11 x 8.5 in: 7.5 in high inside the margins
+    _, height = session.size_inches()
+    assert height == pytest.approx(7.5)
+    width, _ = session.size_inches()
+    assert session.page_position() == pytest.approx(((11 - width) / 2, 0.5))
+    assert "Paper: Letter, landscape" in session.summary()
+    session.printer = "Canon_MG3600_series"
+    job = session.print_job(tmp_path / "x.tif")
+    assert job.landscape and job.paper == "Letter"
+
+
 def test_own_dpi_when_fit_is_off(tmp_path: Path) -> None:
     session = opened(tmp_path)
     session.fit = False
@@ -141,6 +154,10 @@ def test_print_sends_a_job(tmp_path: Path) -> None:
     command = runner.commands[0]
     assert "PageSize=Letter" in command
     assert command[command.index("-t") + 1] == "OpenQuad: photo.tif"
+
+    session.printer_options = {"CNIJPrintQuality": "0", "CNIJMediaType": "28"}
+    command = session.print_job(tmp_path / "x.tif").command()
+    assert command[-5:-1] == ["-o", "CNIJMediaType=28", "-o", "CNIJPrintQuality=0"]  # sorted
 
 
 def test_print_needs_a_printer_and_a_fitting_size(tmp_path: Path) -> None:

@@ -63,3 +63,51 @@ def test_units_are_remembered(tmp_path: Path) -> None:
     loaded = Settings.load(path)
     assert (loaded.units, loaded.negative_printer, loaded.negative_paper) == ("mm", "Epson", "A4")
     assert loaded.chart_size == [8, 10]
+
+
+def test_printer_options_are_remembered_and_checked(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    Settings(printer_options={"Canon": {"CNIJMediaType": "28"}}).save(path)
+    assert Settings.load(path).printer_options == {"Canon": {"CNIJMediaType": "28"}}
+    assert Settings.load(path).negative_printer_options == {}
+    path.write_text(
+        '{"printer_options": {"A": {"x": "1", "y": 2}, "B": 3}, "negative_printer_options": []}'
+    )
+    loaded = Settings.load(path)
+    assert loaded.printer_options == {"A": {"x": "1"}} and loaded.negative_printer_options == {}
+
+
+def test_step_wedges_are_remembered_and_checked(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    wedge = {"grey": True, "colour": False, "side": "left", "gap": 0.5, "separate": True,
+             "steps": 21, "width": 0.6, "style": "calibration", "labels": True,
+             "background": "black"}  # fmt: skip
+    Settings(print_wedge=wedge).save(path)
+    assert Settings.load(path).print_wedge == wedge and Settings.load(path).negative_wedge is None
+    path.write_text(
+        '{"print_wedge": {"side": "middle", "gap": 1}, '
+        '"negative_wedge": {"grey": 1, "side": "top", "gap": 9}}'
+    )
+    loaded = Settings.load(path)
+    assert loaded.print_wedge is None
+    assert loaded.negative_wedge == {
+        "grey": False,
+        "colour": False,
+        "side": "top",
+        "gap": 2.0,
+        "separate": False,
+        "steps": 31,
+        "width": 0.4,
+        "style": "strip",
+        "labels": False,
+        "background": "colour",
+    }
+
+
+def test_marks_in_fit_is_remembered_for_each_tab(tmp_path: Path) -> None:
+    path = tmp_path / "settings.json"
+    Settings(negative_marks_in_fit=False).save(path)
+    loaded = Settings.load(path)
+    assert loaded.marks_in_fit and not loaded.negative_marks_in_fit
+    path.write_text('{"marks_in_fit": "no"}')
+    assert Settings.load(path).marks_in_fit

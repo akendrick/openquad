@@ -5,7 +5,7 @@ import SwiftUI
 
 public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
-    public static let version = 20
+    public static let version = 31
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
 
     struct Page {
@@ -27,19 +27,36 @@ public struct GuideView: View {
                      "This is a beta. Please report anything that goes wrong, or reads unclearly, at "
                         + "github.com/akendrick/openquad/issues."]),
         Page(symbol: "printer", title: "Print a photo",
-             text: "The Print tab: everything is on the left; the preview on the right shows how the print should look.",
-             steps: ["Open Photo… (⌘O): greyscale or colour, any size. Colour photos are converted to grey, "
-                        + "unless you turn on Print in colour.",
+             text: "The Print tab: everything is on the left, in sections you can fold away (click a title; a folded section "
+                + "shows what's set in it); the preview on the right shows how the print should look.",
+             steps: ["Open… (⌘O): greyscale or colour, any size. Colour photos are converted to grey, "
+                        + "unless you turn on Print in colour. TIFF, PNG, JPEG and JPEG 2000 (read at full 16-bit "
+                        + "depth) open directly; a GIMP .xcf opens through GIMP 3, if it is installed, which takes a "
+                        + "few seconds.",
                      "Print in colour (colour-managed printer), for a colour photo: it keeps its colours and colour "
                         + "profile, skips toning and calibration, and macOS matches it to the printer: choose the "
                         + "paper type or profile in the print panel. Soft-proof with a paper's profile to see it in "
                         + "the preview.",
                      "Toning stays Neutral unless you choose a duotone; it's never remembered.",
                      "Calibration: pick one of your saved calibrations (Import… adds a file). Choosing a printer "
-                        + "under Page picks its newest calibration for that paper.",
-                     "Page: paper, Fit to page, or turn Fit off and give a resolution. Print size shows the result.",
+                        + "under Printer and size picks its newest calibration for that paper.",
+                     "Resolution, at the top under the photo, shows the ppi the print is made at, with the photo's own "
+                        + "beside it. Fit to page (under Printer and size) sets it; turn Fit off to type one, and "
+                        + "Photo's Own goes back to the photo's. Print size shows the result.",
+                     "Registration and step wedges: the darkroom marks, then the step wedges. Fit within printable area fits them with the photo (the photo "
+                        + "shrinks a little); turn it off and the photo fits on its own, the marks outside it in the "
+                        + "margins. Mirror (under Printer and size) flips the photo left to right, for transfers.",
+                     "Step wedges (under Registration and step wedges): a black and white wedge (toned and calibrated like the photo) and, for a colour "
+                        + "print, a colour gamut wedge. Choose 11, 21, 31 or 51 steps, a plain strip or the "
+                        + "calibration target's style (two rows in a black frame), its width, numbered steps, the "
+                        + "side and the space from the photo. They're remembered.",
+                     "Orientation (under Printer and size): Portrait, or Landscape to turn the page on its side "
+                        + "for a wide photo. The print is sent turned to match; each tab remembers its own.",
+                     "Position on the page (under Printer and size): Preview on the page shows the whole sheet; drag "
+                        + "the print to put it anywhere inside the margins.",
                      "Print… (⌘P). With \"Choose in the print panel\" the macOS panel opens: pick the printer and the "
-                        + "same quality settings every time. Or pick a printer to print straight to it.",
+                        + "same Media & Quality settings every time. Or pick a printer to print straight to it: its own "
+                        + "Media type and Quality then appear under Printer and size, remembered for that printer.",
                      "Save Print File… writes the finished 16-bit file to print from another app at 100%."]),
         Page(symbol: "slider.horizontal.3", title: "Calibrate your printer",
              text: "The Printer Calibration tab (or Calibrate This Printer… in Print). Calibration goes in rounds; each "
@@ -60,23 +77,31 @@ public struct GuideView: View {
                 + "blocks UV. It has its own photo, printer and paper.",
              steps: ["Setup: switch between saved setups (curve, colour, mirror, edges, printer, paper and any separation) "
                         + "in one step. "
-                        + "Once a process is calibrated, Save Setup… keeps it under a name, e.g. Cyanotype on Pictorico.",
-                     "Ink colour and Process curve: both come from the Process Calibration tab.",
-                     "Options (collapsed until you need it) holds Mirror, Safe edge, Outline in black and "
-                        + "Separations. Mirror if the film's printed side must face the tissue: the F cut into the safe "
+                        + "Once a process is calibrated, Save Setup… (in the ⋯ menu beside it) keeps it under a name, e.g. Cyanotype on Pictorico.",
+                     "Ink colour and Process curve: both come from the Process Calibration tab (Calibrate a Process… is in the "
+                        + "curve's Choose menu).",
+                     "Registration and step wedges holds Safe edge, Outline in black, Fit within printable area and the darkroom "
+                        + "marks; Mirror is under Printer and size. Lengths can be typed or stepped. Mirror if the film's printed side must face the tissue: the F cut into the safe "
                         + "edge reads correctly in the print when the mirror setting was right. Outline in black adds a "
                         + "border of the width you set between the safe edge and the photo.",
-                     "Darkroom marks: a black guide line round the image and registration marks (targets on each "
+                     "Darkroom marks (under Registration and step wedges): a black guide line round the image and registration marks (targets on each "
                         + "side, crop marks at the corners), in the safe edge. Red and orange negatives all but vanish "
                         + "under a red safelight; black shows. The marks block UV like the safe edge, so they don't print. "
                         + "The Print tab offers them too, in a thin white border round the print.",
+                     "Step wedges (under Registration and step wedges): a step wedge beside the negative made with the same process curve, so the contact "
+                        + "print shows how the process holds every tone, with the same choices as in Print. The space "
+                        + "from the photo is opaque like the safe edge; Create wedge separately gives the wedge its own "
+                        + "safe edge, with clear film between. Background sets that space to black or white instead.",
                      "Prefer millimetres? OpenQuad > Settings… (⌘,) switches every length in the app to mm.",
-                     "Tissue smaller than the page? Under Page, set Fit within to A set size (e.g. 8 × 10 in): "
+                     "Tissue smaller than the page? Under Printer and size, set Fit within to A set size (e.g. 8 × 10 in): "
                         + "that becomes the negative's outer edge, safe edge included, and the photo shrinks to fit.",
+                     "Preview on the page (Position on the page, under Printer and size) shows the whole sheet with its margins dashed. Drag the "
+                        + "negative to put it anywhere inside the margins, or step it with From the left and From the "
+                        + "top; Centre puts it back. Every negative of a separation prints in the same place.",
                      "Print on transparency film at 100% with your usual film settings."]),
         Page(symbol: "square.stack.3d.up", title: "Multi-coat separations",
              text: "For processes that build their tones up in several coats (gum, multi-coat cyanotype): the photo "
-                + "split by tone into 2-6 negatives, printed one over another. In the Negative tab, under Options.",
+                + "split by tone into 2-6 negatives, printed one over another. In the Negative tab, under Separations.",
              steps: ["Negatives: how many. Set where the bands meet on the step scale, and an overlap so the seams "
                         + "don't show. Each negative prints nothing lighter than its band and full strength darker, "
                         + "so the coats add up.",
@@ -94,7 +119,7 @@ public struct GuideView: View {
                         + "a second print to check."]),
         Page(symbol: "paintpalette", title: "Colour separations",
              text: "For colour from coloured coats (tricolour gum, cyanotype under gum): a colour photo split by "
-                + "colour into 2-4 negatives, one per pigment. In the Negative tab, under Options ▸ Separations, "
+                + "colour into 2-4 negatives, one per pigment. In the Negative tab, under Separations, "
                 + "choose Split by: Colours.",
              steps: ["Set each coat's colour, in the order you print them: pick a pigment (Cyanotype blue, "
                         + "Quinacridone magenta, Hansa yellow, ...) or match your own coat's colour with the colour "

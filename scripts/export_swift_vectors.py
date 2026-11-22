@@ -249,6 +249,20 @@ def paper_vectors() -> dict[str, Any]:
             for w, h in sizes
             for paper in ("Letter", "A4", "4x6")
         ],
+        "landscape": [
+            {
+                "width": w,
+                "height": h,
+                "paper": paper,
+                "edge": edge,
+                "ppi": negative_ppi(w, h, paper, edge, 0.5, landscape=True)
+                if edge
+                else fit_ppi(w, h, paper, landscape=True),
+            }
+            for w, h in sizes
+            for paper in ("Letter", "4x6")
+            for edge in (0.0, 0.25)
+        ],
         "negative": [
             {
                 "width": w,
@@ -770,6 +784,7 @@ def devices_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         {},
         {"ppi": 341.5, "copies": 2, "paper": "4x6"},
         {"ppi": 342.5, "title": "Negative: green"},
+        {"paper": "A4", "landscape": True},
         {"options": (("MediaType", "photographic-glossy"), ("print-quality", "5"))},
     ):
         job = PrintJob(Path("/tmp/openquad/neg.tif"), "Canon_MG3600_series", **kwargs)
@@ -809,6 +824,23 @@ def devices_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         sent.append({"code": code, "stdout": out, "stderr": err, **outcome})
     printers = list_printers(lambda c: Done(0, "Canon_MG3600_series\nPDF\n\n"))  # type: ignore[arg-type,return-value]
 
+    sys.path.insert(0, str(ROOT))
+    from openquad.printing import media_and_quality, parse_ppd
+    from tests import ppd_fixtures
+
+    ppds = []
+    for name in ("CANON", "AIRPRINT", "OTHER"):
+        text = getattr(ppd_fixtures, name)
+        options = parse_ppd(text)
+        media, quality = media_and_quality(options)
+        ppds.append({
+            "name": name, "text": text,
+            "options": [{"keyword": o.keyword, "label": o.label, "default": o.default,
+                         "choices": [list(c) for c in o.choices]} for o in options],
+            "media": media.keyword if media else None,
+            "quality": quality.keyword if quality else None,
+        })  # fmt: skip
+
     rgb = rng.integers(0, 65536, (4, 6, 3)).astype(np.uint16)
     path = directory / "rgb16.tif"
     save_rgb(path, rgb, dpi=(200.0, 200.0))
@@ -821,6 +853,7 @@ def devices_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         "jobs": jobs,
         "send": sent,
         "printers": printers,
+        "ppds": ppds,
         "tiffs": tiffs,
         "rgb_tiff": rgb_file,
     }, written
@@ -934,6 +967,64 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
          "guide": True, "registration": True},
         {"photo": "photo-colour-icc.png", "colour_print": True, "mode": "negative",
          "fit": False, "ppi": 40.0},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
+         "placement": [1.0, 2.0]},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
+         "placement": [-3.0, 50.0], "paper": "5x7", "safe_edge": 0.3, "units": "mm"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 3.0,
+         "placement": [1.0, 1.0]},
+        {"photo": "photo-grey16.tif", "fit": False, "ppi": 8.0, "placement": [1.0, 1.0]},
+        {"photo": "photo-grey16.tif", "landscape": True, "paper": "4x6"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
+         "placement": [1.0, 0.5], "landscape": True, "paper": "5x7"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "landscape": True, "wedge": True,
+         "paper": "4x6"},
+        {"photo": "photo-grey16.tif", "preset": "black-red", "calibration": True, "wedge": True},
+        {"photo": "photo-grey.png", "fit": False, "ppi": 20.0, "guide": True, "wedge": True,
+         "wedge_side": "left", "wedge_gap": 0.3, "wedge_separate": True},
+        {"photo": "photo-grey16.tif", "mode": "negative", "process": True, "mirror": True,
+         "safe_edge": 0.1, "wedge": True, "wedge_side": "top", "units": "mm"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 20.0,
+         "mirror": True, "outline": 0.15, "wedge": True, "wedge_side": "right", "wedge_gap": 0.0},
+        {"photo": "photo-colour16.tif", "colour_print": True, "fit": False, "ppi": 20.0,
+         "wedge": True, "colour_wedge": True, "wedge_side": "right", "wedge_gap": 0.5,
+         "wedge_separate": True},
+        {"photo": "photo-colour.png", "colour_print": True, "colour_wedge": True,
+         "wedge_side": "top", "mirror": True},
+        {"photo": "photo-grey16.tif", "mirror": True, "guide": True, "wedge": True},
+        {"photo": "photo-colour.png", "colour_wedge": True, "wedge": True, "paper": "4x6"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
+         "placement": [1.0, 2.0], "wedge": True},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 100.0,
+         "outline": 0.02, "wedge": True, "wedge_gap": 0.03, "wedge_steps": 21,
+         "wedge_width": 0.6, "wedge_style": "calibration", "wedge_labels": True},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 100.0,
+         "mirror": True, "wedge": True, "wedge_side": "left", "wedge_gap": 0.05,
+         "wedge_steps": 11, "wedge_labels": True},
+        {"photo": "photo-grey.png", "fit": False, "ppi": 300.0, "wedge": True,
+         "wedge_side": "right", "wedge_gap": 0.02, "wedge_steps": 11, "wedge_width": 0.2,
+         "wedge_style": "calibration", "wedge_labels": True},
+        {"photo": "photo-colour.png", "colour_print": True, "fit": False, "ppi": 100.0,
+         "wedge": True, "colour_wedge": True, "wedge_side": "top", "wedge_labels": True,
+         "wedge_steps": 51},
+        {"photo": "photo-grey16.tif", "guide": True, "registration": True, "marks_in_fit": False},
+        {"photo": "photo-grey16.tif", "fit": False, "ppi": 8.0, "registration": True,
+         "marks_in_fit": False, "placement": [0.0, 0.0]},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 8.0,
+         "marks_in_fit": False, "safe_edge": 0.75, "placement": [9.0, -1.0]},
+        {"photo": "photo-grey16.tif", "mode": "negative", "outline": 0.1, "marks_in_fit": False,
+         "max_size": [5.0, 7.0]},
+        {"photo": "photo-grey16.tif", "mode": "negative", "marks_in_fit": False, "wedge": True,
+         "wedge_gap": 0.2, "paper": "4x6"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 20.0, "wedge": True,
+         "wedge_gap": 0.3, "wedge_side": "left", "wedge_background": "black"},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 20.0, "wedge": True,
+         "wedge_gap": 0.3, "wedge_side": "top", "wedge_background": "white", "mirror": True},
+        {"photo": "photo-grey16.tif", "mode": "negative", "fit": False, "ppi": 20.0, "wedge": True,
+         "wedge_gap": 0.3, "wedge_separate": True, "wedge_background": "black"},
+        {"photo": "photo-colour.png", "colour_print": True, "fit": False, "ppi": 20.0,
+         "guide": True, "wedge": True, "colour_wedge": True, "wedge_gap": 0.2,
+         "wedge_background": "black"},
     ]  # fmt: skip
     sessions = []
     for config in configurations:
@@ -943,6 +1034,7 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         if config.get("calibration"):
             session.set_calibration(calibration)
         session.set_paper(config.get("paper", "Letter"))
+        session.landscape = config.get("landscape", False)
         session.fit = config.get("fit", True)
         session.ppi = config.get("ppi")
         session.set_mode(config.get("mode", "print"))
@@ -959,14 +1051,43 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
         session.set_units(config.get("units", "in"))
         session.printer = "Canon_MG3600_series"
         session.set_colour_print(config.get("colour_print", False))
+        session.wedge = config.get("wedge", False)
+        session.colour_wedge = config.get("colour_wedge", False)
+        session.set_wedge_side(config.get("wedge_side", "bottom"))
+        session.set_wedge_gap(config.get("wedge_gap", 0.25))
+        session.wedge_separate = config.get("wedge_separate", False)
+        session.set_wedge_steps(config.get("wedge_steps", 31))
+        session.set_wedge_width(config.get("wedge_width", 0.4))
+        session.set_wedge_style(config.get("wedge_style", "strip"))
+        session.wedge_labels = config.get("wedge_labels", False)
+        session.marks_in_fit = config.get("marks_in_fit", True)
+        session.set_wedge_background(config.get("wedge_background", "colour"))
+        session.set_placement(tuple(config["placement"]) if "placement" in config else None)
         rendered = session.render_print()
         sessions.append({**config, "ppi_used": session.effective_ppi(),
                          "prints_colour": session.prints_colour,
                          "size": list(session.size_inches()), "fits": session.fits_on_paper(),
                          "summary": session.summary(), "notes": session.notes,
+                         "placed": session.placed, "position": list(session.page_position()),
                          "rendered_shape": list(rendered.shape),
                          "rendered": _ints(rendered)})  # fmt: skip
-    return {"photos": photos, "calibration": calibration.read_text(), "sessions": sessions}, written
+    # Grey wedges on their own, with numbers every step, every 2nd and 5th.
+    from openquad.wedge import grey_wedge
+
+    grey_wedges = []
+    for length, thickness, horizontal, steps, calibration_style, frame, band, first in (
+        (330, 24, True, 11, False, 0, 36, False), (200, 30, False, 21, True, 3, 48, True),
+        (120, 40, True, 31, True, 2, 24, True), (510, 12, False, 51, False, 0, 60, False),
+        (60, 5, True, 11, True, 4, 0, False),
+    ):  # fmt: skip
+        made = grey_wedge(length, thickness, horizontal, steps, calibration_style, frame, band,
+                          first)  # fmt: skip
+        grey_wedges.append({"length": length, "thickness": thickness, "horizontal": horizontal,
+                            "steps": steps, "calibration": calibration_style, "frame": frame,
+                            "band": band, "band_first": first, "shape": list(made.shape),
+                            "sha256": _digest(made)["sha256"]})  # fmt: skip
+    return {"photos": photos, "calibration": calibration.read_text(), "sessions": sessions,
+            "grey_wedges": grey_wedges}, written  # fmt: skip
 
 
 def _rgb_profile() -> bytes:
@@ -977,6 +1098,100 @@ def _rgb_profile() -> bytes:
     data[24:36] = bytes(12)  # no creation date
     data[84:100] = bytes(16)  # no profile ID (an MD5 that would cover the date)
     return bytes(data)
+
+
+def _jp2_with(
+    data: bytes, dpi: tuple[float, float] | None = None, icc: bytes | None = None
+) -> bytes:
+    """A JP2 from Pillow with a capture resolution ('resc') and an ICC profile (a 'colr' box,
+    method 2) put into its header, neither of which Pillow writes."""
+    import struct
+
+    from openquad.jpeg2000 import _boxes
+
+    def box(kind: bytes, content: bytes) -> bytes:
+        return struct.pack(">I4s", 8 + len(content), kind) + content
+
+    out = b""
+    for kind, start, end in _boxes(data, 0, len(data)):
+        content = data[start:end]
+        if kind == b"jp2h":
+            parts = b""
+            for sub, s, e in _boxes(data, start, end):
+                if sub == b"colr" and icc is not None:
+                    parts += box(b"colr", bytes([2, 0, 0]) + icc)
+                else:
+                    parts += box(sub, data[s:e])
+            if dpi is not None:
+                # dots per metre, as numerator / denominator x 10^exponent with 1 and 0
+                per_metre = [round(d * 10000 / 254) for d in dpi]
+                resc = struct.pack(">HHHHbb", per_metre[1], 1, per_metre[0], 1, 0, 0)
+                parts += box(b"res ", box(b"resc", resc))
+            content = parts
+        out += box(kind, content)
+    return out
+
+
+def formats_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
+    """JPEG 2000 photos of every kind, read straight through OpenJPEG and as photos, and how
+    an XCF is handed to GIMP."""
+    import shutil
+
+    from PIL import Image
+
+    from openquad import xcf
+    from openquad.jpeg2000 import read_jpeg2000
+    from openquad.photo import load_photo
+
+    rng = np.random.default_rng(29)
+    written = []
+
+    def save(
+        name: str, image: Any, dpi: Any = None, icc: bytes | None = None, **kwargs: Any
+    ) -> None:
+        path = directory / name
+        image.save(path, **kwargs)
+        if dpi is not None or icc is not None:
+            path.write_bytes(_jp2_with(path.read_bytes(), dpi, icc))
+        written.append(path)
+
+    ramp = np.tile(np.linspace(0, 255, 40), (32, 1)).astype(np.uint8)
+    save("jp2-grey8.jp2", Image.fromarray(ramp, "L"), dpi=(300, 300))
+    ramp16 = np.tile(np.linspace(0, 65535, 40), (32, 1)).astype(np.uint16)
+    save("jp2-grey16.j2k", Image.fromarray(ramp16))
+    colour = rng.integers(0, 256, (32, 40, 3)).astype(np.uint8)
+    save("jp2-rgb8-icc.jp2", Image.fromarray(colour, "RGB"), dpi=(240, 180), icc=_rgb_profile())
+    rgba = np.dstack([colour, np.full((32, 40), 255, np.uint8)])
+    rgba[:, :3, 3] = 0  # a transparent band, cropped off
+    rgba[9:13, 5:9, 3] = 100  # partly transparent: onto paper white
+    save("jp2-rgba8.jp2", Image.fromarray(rgba, "RGBA"))
+    la = np.dstack([ramp, np.where(ramp > 128, 255, 60).astype(np.uint8)])
+    save("jp2-la8.jp2", Image.fromarray(la, "LA"))
+    layers = directory / "layers.xcf"  # a two-layer XCF, for the tests that run a real GIMP
+    shutil.copyfile(ROOT / "fixtures" / "layers.xcf", layers)
+    for fixture in sorted((ROOT / "fixtures" / "jpeg2000").glob("*.j*")):
+        path = directory / f"jp2-{fixture.name}"
+        shutil.copyfile(fixture, path)
+        written.append(path)
+
+    files = []
+    for path in written:
+        raw, dpi, profile = read_jpeg2000(path)
+        photo = load_photo(path)
+        files.append({
+            "file": path.name, "lossy": "lossy" in path.name,
+            "shape": list(raw.shape), "bits": 16 if raw.dtype == np.uint16 else 8,
+            "raw": _ints(raw), "dpi": list(dpi) if dpi else None,
+            "profile_length": len(profile) if profile else 0,
+            "photo": {"shape": list(photo.pixels.shape), "pixels": _ints(photo.pixels),
+                      "converted": photo.converted, "cropped": photo.cropped,
+                      "colour": None if photo.colour is None else _ints(photo.colour),
+                      "has_profile": photo.icc_profile is not None},
+        })  # fmt: skip
+    gimp = {"script": xcf.SCRIPT, "console_names": list(xcf.CONSOLE_NAMES),
+            "arguments": xcf.command(Path("gimp-console"))[1:], "needs_gimp": xcf.NEEDS_GIMP,
+            "signature": xcf.SIGNATURE.decode()}  # fmt: skip
+    return {"jpeg2000": files, "xcf": gimp}, [*written, layers]
 
 
 def _digest(pixels: Any) -> dict[str, Any]:
@@ -1201,11 +1416,14 @@ def separations_vectors(directory: Path) -> dict[str, Any]:
     session.set_coats_curve(directory / "session-process.oqproc")
     coated = [_digest(session.render_layer(session._photo().pixels, k)) for k in range(3)]
     coated_summary = session.summary()
+    session.wedge = True  # each negative's wedge goes through its own band and curve
+    wedged = [_digest(session.render_layer(session._photo().pixels, k)) for k in range(3)]
     return {
         "plans": plans, "even": even, "labels": labels,
         "targets": targets, "photo": {"height": 12, "width": 30, "pixels": _ints(photo)},
         "negatives": negatives, "session": {"rendered": rendered, "summaries": summaries,
-                                           "coated": coated, "coated_summary": coated_summary},
+                                           "coated": coated, "coated_summary": coated_summary,
+                                           "wedged": wedged},
         "step_tests": [{"steps": n, "dpi": d, **_digest(step_test(n, d))} for n, d in
                        [(30, 300.0), (21, 100.0), (101, 20.0), (2, 72.0), (101, 300.0)]],
     }  # fmt: skip
@@ -1255,11 +1473,14 @@ def colour_separations_vectors(directory: Path) -> dict[str, Any]:
     for k in range(3):
         session.set_layer(k)
         summaries.append(session.summary())
+    session.wedge, session.mirror = True, True
+    session.set_wedge_side("left")
+    wedged = [_digest(session.render_layer(session._source(), k)) for k in range(3)]
     return {
         "grid": GRID, "pigments": {n: list(c) for n, c in PIGMENTS.items()},
         "default": list(DEFAULT_COATS), "photo": {"height": colour.shape[0],
                                                   "width": colour.shape[1]},
-        "separations": separations, "session": {"summaries": summaries},
+        "separations": separations, "session": {"summaries": summaries, "wedged": wedged},
     }  # fmt: skip
 
 
@@ -1302,13 +1523,16 @@ def export(directory: Path) -> list[Path]:
         json.dumps(colour_separations_vectors(directory), separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
+    formats, formats_files = formats_vectors(directory)
+    formats_path = directory / "formats.json"
+    formats_path.write_text(json.dumps(formats, separators=(",", ":")) + "\n", encoding="utf-8")
     wizards_path = directory / "wizards.json"
     wizards_path.write_text(
         json.dumps(wizards_vectors(directory), separators=(",", ":")) + "\n", encoding="utf-8"
     )
     return [*written, path, reading_path, devices_path, session_path, separations_path,
-            colour_path, wizards_path, *images,
-            *prints, *files, *photos]  # fmt: skip
+            colour_path, formats_path, wizards_path, *images,
+            *prints, *files, *photos, *formats_files]  # fmt: skip
 
 
 def main(argv: list[str]) -> None:

@@ -26,10 +26,10 @@ public enum TabRole: Sendable {
 @Observable
 public final class AppModel {
     public let role: TabRole
-    public private(set) var session = PrintSession()
+    public internal(set) var session = PrintSession()
     public private(set) var settings: AppSettings
     public private(set) var preview: CGImage?
-    public private(set) var busy = false
+    public internal(set) var busy = false
     public var error: String?
     /// The last thing that happened (e.g. a print job sent), for the status line.
     public var status: String?
@@ -44,7 +44,7 @@ public final class AppModel {
     public let library: CalibrationLibrary
     /// Saved negative setups (process curve, colour, mirror, edges, printer, paper).
     public let setupLibrary: SetupLibrary
-    public private(set) var setups: [NegativeSetup] = []
+    public internal(set) var setups: [NegativeSetup] = []
     let settingsURL: URL
     private var previewToken = 0
 
@@ -64,7 +64,7 @@ public final class AppModel {
     }
 
     /// Change the settings file: re-read it first, as the other tab may have changed it.
-    private func saveSettings(_ change: (inout AppSettings) -> Void) {
+    func saveSettings(_ change: (inout AppSettings) -> Void) {
         settings = AppSettings.load(settingsURL)
         change(&settings)
         try? settings.save(settingsURL)
@@ -135,8 +135,9 @@ public final class AppModel {
         }
     }
 
-    private func restore() {
+    func restore() {
         try? session.setPaper(role == .negative ? settings.negativePaper ?? settings.paper : settings.paper)
+        session.landscape = role == .negative ? settings.negativeLandscape : settings.landscape
         if let path = settings.calibration, FileManager.default.fileExists(atPath: path) {
             try? session.setCalibration(URL(fileURLWithPath: path))
         }
@@ -146,6 +147,20 @@ public final class AppModel {
             try? session.setNegativeColour(settings.negativeColour)
         }
         session.printer = role == .negative ? settings.negativePrinter ?? settings.printer : settings.printer
+        loadPrinterOptions()
+        if let wedge = role == .negative ? settings.negativeWedge : settings.printWedge {
+            session.wedge = wedge.grey
+            session.colourWedge = wedge.colour
+            try? session.setWedgeSide(wedge.side)
+            try? session.setWedgeGap(wedge.gap)
+            session.wedgeSeparate = wedge.separate
+            try? session.setWedgeSteps(wedge.steps)
+            try? session.setWedgeWidth(wedge.width)
+            try? session.setWedgeStyle(wedge.style)
+            session.wedgeLabels = wedge.labels
+            try? session.setWedgeBackground(wedge.background)
+        }
+        session.marksInFit = role == .negative ? settings.negativeMarksInFit : settings.marksInFit
         if let size = settings.maxSize, size.count == 2 { session.maxSize = (size[0], size[1]) }
         session.units = settings.units
     }
@@ -161,22 +176,24 @@ public final class AppModel {
     /// Take up the unit the other tab chose.
     public func followUnits() { session.units = AppSettings.load(settingsURL).units }
 
-    private func remember() {
+    func remember() {
         let session = session
         saveSettings { settings in
             if session.negative {
                 settings.negativePaper = session.paper
+                settings.negativeLandscape = session.landscape
                 settings.process = session.processPath?.path
                 settings.negativeColour = session.negativeColour
             } else {
                 settings.paper = session.paper
+                settings.landscape = session.landscape
                 settings.calibration = session.calibrationPath?.path
             }
             settings.lastFolder = session.source?.deletingLastPathComponent().path ?? settings.lastFolder
         }
     }
 
-    private func attempt(_ work: () throws -> Void) {
+    func attempt(_ work: () throws -> Void) {
         do {
             try work()
             error = nil
@@ -185,15 +202,79 @@ public final class AppModel {
         }
     }
 
+    // State the feature extensions keep (stored properties must be declared here).
+
+    /// The separation as shown: split points and overlap counted on a step scale.
+    public internal(set) var separationSteps = SeparationPlan.defaultSteps
+
+    public internal(set) var separationSplits: [Int] = []
+
+    public internal(set) var separationOverlap = 0.0
+
+    /// Split the negative by tone (bands of the greyscale) or by colour (one negative per pigment).
+    public internal(set) var separationKind = SeparationKind.tones
+
+    /// The colour separation as shown: each coat's pigment colour, in print order, and the saturation.
+    public internal(set) var colourCoats: [ColourSeparation.RGB8] = ColourSeparation.defaultCoats.map { ColourSeparation.pigment($0)! }
+
+    public internal(set) var colourSaturation = 1.0
+
+    /// The colour separation is being worked out (off the main thread).
+    public internal(set) var separatingColours = false
+
+    var colourToken = 0
+
+    /// The negative to show once the colour separation is worked out.
+    var pendingLayer: Int?
+
+    /// Show every coat of the separation together on the photo, each in its own colour,
+    /// instead of the negative that prints.
+    public internal(set) var showCoats = false
+
+    /// Show the negative on its page, where it will print, to move it about.
+    public internal(set) var showOnPage = false
+
+    @ObservationIgnored var knownCurvesCache = Cached<[KnownCurve]>()
+
+    /// The chosen printer's media type and quality options (from its PPD), when printing
+    /// straight to it; nil for the print panel, which has its own, or a printer without them.
+    public internal(set) var printerMedia: PrinterOption?
+
+    public internal(set) var printerQuality: PrinterOption?
+
+    /// Reads a printer's options; replaced in tests.
+    @ObservationIgnored var readPrinterOptions: (String) -> [PrinterOption] = { (try? Printing.printerOptions($0)) ?? [] }
+
     // MARK: choosing things
 
     public func openPhoto(_ url: URL) {
-        attempt {
-            try session.open(url)
-            remember()
+        guard Xcf.isXcf(url) else {
+            attempt {
+                try session.open(url)
+                remember()
+            }
+            refreshPreview()
+            return
         }
-        refreshPreview()
+        // GIMP takes a few seconds to merge an XCF: do it off the main thread.
+        let token = UUID()
+        openingToken = token
+        openingInGIMP = url.lastPathComponent
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { Result { try Photos.load(url) } }.value
+            guard openingToken == token else { return }
+            openingInGIMP = nil
+            attempt {
+                session.open(url, photo: try result.get())
+                remember()
+            }
+            refreshPreview()
+        }
     }
+
+    /// The XCF being opened through GIMP, if any (its file name).
+    public private(set) var openingInGIMP: String?
+    private var openingToken: UUID?
 
     public func setPreset(_ name: String) {
         attempt { try session.setPreset(name) }
@@ -227,6 +308,10 @@ public final class AppModel {
 
     /// What the preview shows, when it isn't simply the print: a colour print, soft-proofed or not.
     public var previewCaption: String? {
+        if showingPage {
+            if session.placement != nil && !session.placed { return "On the page: too big to move inside the margins" }
+            return "On the page: drag the negative to move it (it stays inside the margins)"
+        }
         if showingCoats {
             if session.colourSeparation != nil {
                 return "All \(session.negativeCount) coats together, in their pigments' colours (prints one negative at a time)"
@@ -265,6 +350,15 @@ public final class AppModel {
         refreshPreview()
     }
 
+    /// Fit the marks' border (safe edge, outline, a print's white border) within the printable
+    /// area with the photo, or fit the photo alone and let the border lie outside it. Remembered.
+    public func setMarksInFit(_ on: Bool) {
+        session.marksInFit = on
+        let negative = role == .negative
+        saveSettings { if negative { $0.negativeMarksInFit = on } else { $0.marksInFit = on } }
+        refreshPreview()
+    }
+
     public func setSafeEdge(_ inches: Double) {
         session.safeEdge = min(max(inches, 0), 2)
         refreshPreview()
@@ -284,7 +378,7 @@ public final class AppModel {
     }
 
     /// The black outline's width, kept while it is turned off so turning it back on restores it.
-    public private(set) var outlineSize = 0.1
+    public internal(set) var outlineSize = 0.1
 
     /// Turn the black outline (between the safe edge and the photo) on or off.
     public func setOutline(_ on: Bool) {
@@ -298,582 +392,6 @@ public final class AppModel {
         refreshPreview()
     }
 
-    // MARK: separations
-
-    /// The separation as shown: split points and overlap counted on a step scale.
-    public private(set) var separationSteps = SeparationPlan.defaultSteps
-    public private(set) var separationSplits: [Int] = []
-    public private(set) var separationOverlap = 0.0
-
-    /// Split the negative into `count` negatives with even bands (1: no separation).
-    public func setNegativeCount(_ count: Int) {
-        let count = min(max(count, 1), SeparationPlan.maxNegatives)
-        separationSplits = (1..<count).map { Int((Double($0 * separationSteps) / Double(count)).rounded()) }
-        applySeparation()
-    }
-
-    /// Count the split points on a scale of `steps` steps, keeping them where they were.
-    public func setSeparationSteps(_ steps: Int) {
-        let steps = min(max(steps, separationSplits.count + 1, 2), 101)
-        let scale = Double(steps) / Double(separationSteps)
-        separationSplits = Self.spread(separationSplits.map { Int((Double($0) * scale).rounded()) }, steps: steps)
-        separationOverlap = (separationOverlap * scale * 2).rounded() / 2
-        separationSteps = steps
-        applySeparation()
-    }
-
-    /// Move split point `index` (0 = between the first two negatives), within its neighbours.
-    public func setSplit(_ index: Int, step: Int) {
-        guard separationSplits.indices.contains(index) else { return }
-        let low = index == 0 ? 1 : separationSplits[index - 1] + 1
-        let high = index == separationSplits.count - 1 ? separationSteps - 1 : separationSplits[index + 1] - 1
-        separationSplits[index] = min(max(step, low), high)
-        applySeparation()
-    }
-
-    /// How many steps neighbouring bands blend over (up to the narrowest band).
-    public func setSeparationOverlap(_ steps: Double) {
-        separationOverlap = min(max(steps, 0), Double(narrowestBand))
-        applySeparation()
-    }
-
-    /// The narrowest band, in steps.
-    public var narrowestBand: Int {
-        let edges = [0] + separationSplits + [separationSteps]
-        return zip(edges, edges.dropFirst()).map { $1 - $0 }.min() ?? separationSteps
-    }
-
-    /// Split points made distinct and in order within 1..<steps (after rescaling).
-    static func spread(_ splits: [Int], steps: Int) -> [Int] {
-        var result: [Int] = []
-        for (k, split) in splits.enumerated() {
-            let low = (result.last ?? 0) + 1, high = steps - (splits.count - k)
-            result.append(min(max(split, low), high))
-        }
-        return result
-    }
-
-    private func applySeparation() {
-        separationOverlap = min(separationOverlap, Double(narrowestBand))
-        guard separationKind == .tones else { return applyColourSeparation() }
-        attempt {
-            let plan = separationSplits.isEmpty ? nil
-                : try SeparationPlan.fromSteps(separationSplits.map(Double.init), steps: separationSteps,
-                                               overlap: separationOverlap)
-            session.setColourSeparation(nil)
-            session.setSeparation(plan)
-        }
-        refreshPreview()
-    }
-
-    // MARK: colour separations
-
-    public enum SeparationKind: String, CaseIterable, Sendable {
-        case tones = "Tones", colours = "Colours"
-    }
-
-    /// Split the negative by tone (bands of the greyscale) or by colour (one negative per pigment).
-    public private(set) var separationKind = SeparationKind.tones
-    /// The colour separation as shown: each coat's pigment colour, in print order, and the saturation.
-    public private(set) var colourCoats: [ColourSeparation.RGB8] = ColourSeparation.defaultCoats.map { ColourSeparation.pigment($0)! }
-    public private(set) var colourSaturation = 1.0
-    /// The colour separation is being worked out (off the main thread).
-    public private(set) var separatingColours = false
-    private var colourToken = 0
-    /// The negative to show once the colour separation is worked out.
-    private var pendingLayer: Int?
-
-    public func setSeparationKind(_ kind: SeparationKind) {
-        separationKind = kind
-        applySeparation()
-    }
-
-    /// Change coat `index`'s pigment colour.
-    public func setCoat(_ index: Int, _ colour: ColourSeparation.RGB8) {
-        guard colourCoats.indices.contains(index) else { return }
-        colourCoats[index] = colour
-        applyColourSeparation()
-    }
-
-    /// Add a coat (up to four), of a pigment not used yet.
-    public func addCoat() {
-        guard colourCoats.count < ColourSeparation.maxCoats else { return }
-        let unused = ColourSeparation.pigments.first { !colourCoats.contains($0.colour) }
-        colourCoats.append(unused?.colour ?? ColourSeparation.pigment("Lamp black")!)
-        applyColourSeparation()
-    }
-
-    /// Remove coat `index` (keeping at least two).
-    public func removeCoat(_ index: Int) {
-        guard colourCoats.count > ColourSeparation.minCoats, colourCoats.indices.contains(index) else { return }
-        colourCoats.remove(at: index)
-        attempt { try session.setLayer(min(session.layer, colourCoats.count - 1)) }
-        // The negatives' own curves move with their coats.
-        let curves = session.layerProcessPaths
-        attempt {
-            for k in index..<colourCoats.count { try session.setLayerProcess(k, curves[k + 1]) }
-        }
-        applyColourSeparation()
-    }
-
-    /// How much the photo's colour is strengthened (above 1) or muted before it is split, 0-2.
-    public func setColourSaturation(_ saturation: Double) {
-        colourSaturation = min(max((saturation * 20).rounded() / 20, 0), ColourSeparation.maxSaturation)
-        applyColourSeparation()
-    }
-
-    /// The pigment a colour is, by name, if it is one of the presets.
-    public func pigmentName(_ colour: ColourSeparation.RGB8) -> String? {
-        ColourSeparation.pigments.first { $0.colour == colour }?.name
-    }
-
-    /// Work the colour separation out off the main thread (it takes a moment), then use it.
-    private func applyColourSeparation() {
-        let coats = colourCoats, saturation = colourSaturation
-        do {
-            try ColourSeparation.validate(coats: coats, saturation: saturation)
-        } catch {
-            self.error = String(describing: error)
-            return
-        }
-        error = nil
-        if let current = session.colourSeparation, current.coats == coats, current.saturation == saturation {
-            return refreshPreview()
-        }
-        colourToken += 1
-        let token = colourToken
-        separatingColours = true
-        Task.detached(priority: .userInitiated) {
-            // Wait a moment: while a colour or the saturation is being dragged, only the last counts.
-            try? await Task.sleep(for: .milliseconds(120))
-            guard await MainActor.run(body: { token == self.colourToken }) else { return }
-            let separation = try? ColourSeparation(coats: coats, saturation: saturation)
-            await MainActor.run {
-                guard token == self.colourToken else { return }  // a newer change wins
-                self.separatingColours = false
-                guard self.separationKind == .colours, let separation else { return }
-                self.session.setColourSeparation(separation)
-                if let layer = self.pendingLayer, layer < separation.count { try? self.session.setLayer(layer) }
-                self.pendingLayer = nil
-                self.refreshPreview()
-            }
-        }
-    }
-
-    /// Show every coat of the separation together on the photo, each in its own colour,
-    /// instead of the negative that prints.
-    public private(set) var showCoats = false
-
-    public func setShowCoats(_ on: Bool) {
-        showCoats = on
-        refreshPreview()
-    }
-
-    /// The preview is the coats map rather than a negative.
-    public var showingCoats: Bool { showCoats && session.negative && session.separated }
-
-    /// Show (and print) negative `layer` of the separation.
-    public func setLayer(_ layer: Int) {
-        if separationKind == .colours, separatingColours, colourCoats.indices.contains(layer) {
-            pendingLayer = layer  // its coat's negative is still being worked out
-            return
-        }
-        attempt { try session.setLayer(layer) }
-        refreshPreview()
-    }
-
-    /// Give negative `layer` its own process curve (nil: the shared one).
-    public func setLayerProcess(_ layer: Int, _ url: URL?) {
-        attempt { try session.setLayerProcess(layer, url) }
-        refreshPreview()
-    }
-
-    /// Use the step test as the photo: the step scale's numbered steps over a continuous
-    /// gradient, to print through the separation and see where each coat's band falls. It is
-    /// kept in the app's separations folder; the last photo folder is left as it was.
-    public func openStepTest() {
-        attempt {
-            try FileManager.default.createDirectory(at: separationFolder, withIntermediateDirectories: true)
-            let url = separationFolder.appendingPathComponent("step-test-\(separationSteps).tif")
-            try ImageFiles.saveGrey(url, try SeparationPlan.stepTest(steps: separationSteps))
-            try session.open(url)
-        }
-        refreshPreview()
-    }
-
-    // MARK: curves already in OpenQuad
-
-    /// A process curve OpenQuad already has, to choose from a menu instead of a file panel.
-    public struct KnownCurve: Hashable, Sendable {
-        /// Where it came from: "Setups", "Process calibrations" or "Coats curves".
-        public let group: String
-        public let label: String
-        public let url: URL
-    }
-
-    /// Where the Process Calibration tab keeps its runs.
-    var processFolder: URL { settingsURL.deletingLastPathComponent().appendingPathComponent("processes") }
-
-    @ObservationIgnored private var knownCurvesCache = Cached<[KnownCurve]>()
-
-    /// Every saved setup's curve, each process calibration's latest curve per colour (newest
-    /// run first) and the coats curves, e.g. "Cyanotype, blue: round 2". Read again every few
-    /// seconds, not on every redraw.
-    public var knownCurves: [KnownCurve] { knownCurvesCache.get(readKnownCurves) }
-
-    /// Read the curves again next time (after saving one).
-    func forgetKnownCurves() { knownCurvesCache.clear() }
-
-    private func readKnownCurves() -> [KnownCurve] {
-        let fm = FileManager.default
-        var curves = setups.compactMap { setup in
-            setupLibrary.processURL(setup).map { KnownCurve(group: "Setups", label: setup.name, url: $0) }
-        }
-        let folders = (try? fm.contentsOfDirectory(at: processFolder, includingPropertiesForKeys: [.contentModificationDateKey])) ?? []
-        let runs = folders.compactMap { url -> (ProcessRun, Date)? in
-            guard let run = try? ProcessRun.resume(url) else { return nil }
-            let modified = (try? url.appendingPathComponent("run.json").resourceValues(
-                forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-            return (run, modified)
-        }
-        for (run, _) in runs.sorted(by: { $0.1 > $1.1 }) {
-            for colour in run.colours where run.current.curves[colour] != nil {
-                let url = run.curvePath(colour)
-                guard fm.fileExists(atPath: url.path) else { continue }
-                curves.append(KnownCurve(group: "Process calibrations",
-                                         label: "\(run.name), \(colour): round \(run.current.version)", url: url))
-            }
-        }
-        let coats = ((try? fm.contentsOfDirectory(at: separationFolder, includingPropertiesForKeys: nil)) ?? [])
-            .filter { $0.pathExtension == "oqproc" }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-        curves += coats.map { KnownCurve(group: "Coats curves", label: $0.deletingPathExtension().lastPathComponent, url: $0) }
-        return curves
-    }
-
-    // MARK: calibrating the coats together
-
-    /// Where the step test, the coats chart and the coats curves are kept.
-    var separationFolder: URL { settingsURL.deletingLastPathComponent().appendingPathComponent("separations") }
-
-    /// Use the process chart as the photo, to print through every negative of the separation
-    /// onto one sheet; a scan of that print calibrates the coats together (`readCoatsScan`).
-    public func openCoatsChart() {
-        attempt {
-            try FileManager.default.createDirectory(at: separationFolder, withIntermediateDirectories: true)
-            let url = separationFolder.appendingPathComponent("coats-chart.tif")
-            let chart = Chart.photo()
-            try ImageFiles.saveGrey(url, GreyImage(width: chart.width, height: chart.height, pixels: chart.pixels,
-                                                   dpi: (300, 300)))
-            try session.open(url)
-        }
-        refreshPreview()
-    }
-
-    /// Calibrate the stacked coats with this curve (nil: none).
-    public func setCoatsCurve(_ url: URL?) {
-        attempt { try session.setCoatsCurve(url) }
-        refreshPreview()
-    }
-
-    /// Read a scan of the coats chart printed through every negative: build the next coats
-    /// curve from it (through the current one), save it beside the chart and use it.
-    public func readCoatsScan(_ scan: URL) async {
-        busy = true
-        defer { busy = false }
-        let previous = session.coatsCurve, folder = separationFolder
-        do {
-            let (curve, reading) = try await Task.detached(priority: .userInitiated) {
-                let reading = try Chart.read(try Scan.load(scan))
-                return (try ProcessCurve.build(reading, previous: previous), reading)
-            }.value
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-            let round = (1...).first { !FileManager.default.fileExists(atPath: folder.appendingPathComponent("coats-\($0).oqproc").path) }!
-            let url = folder.appendingPathComponent("coats-\(round).oqproc")
-            try curve.encode().write(to: url)
-            forgetKnownCurves()
-            try session.setCoatsCurve(url)
-            let errors = reading.toneErrors().map(abs)
-            let (highlights, shadows) = Clipping.lost(reading)
-            status = String(format: "Read the chart: %.1f L* off on average, %.1f at worst. ", errors.reduce(0, +) / Double(errors.count),
-                            errors.max() ?? 0)
-                + "Saved \(url.lastPathComponent) and using it; print the chart again to check."
-                + (Clipping.advice(highlights: highlights, shadows: shadows).map { " " + $0 } ?? "")
-            error = nil
-        } catch {
-            self.error = String(describing: error)
-        }
-        refreshPreview()
-    }
-
-    /// Every negative of the separation as TIFFs in `folder`.
-    public func saveSeparations(to folder: URL) async {
-        busy = true
-        defer { busy = false }
-        let snapshot = session
-        do {
-            let written = try await Task.detached(priority: .userInitiated) { try snapshot.writeSeparations(folder) }.value
-            status = "Saved \(written.map(\.lastPathComponent).joined(separator: ", "))."
-            error = nil
-        } catch {
-            self.error = String(describing: error)
-        }
-    }
-
-    // MARK: contact sheets
-
-    /// The printable room (width, height) in inches: the page inside its margins, less the
-    /// safe edge and outline for a negative, and within a set size if one is on.
-    public var printableRoom: (Double, Double) {
-        let (paperW, paperH) = Paper.sizes[session.paper] ?? (8.5, 11)
-        let border = session.negative ? session.safeEdge + session.outline : 0
-        var width = paperW - 2 * session.margin - 2 * border, height = paperH - 2 * session.margin - 2 * border
-        if session.fit, let box = session.maxSize {
-            let (short, long) = (min(box.0, box.1) - 2 * border, max(box.0, box.1) - 2 * border)
-            (width, height) = (min(width, short), min(height, long))
-        }
-        return (max(width, 0.5), max(height, 0.5))
-    }
-
-    /// Where made contact sheets are kept.
-    public var contactSheetFolder: URL { settingsURL.deletingLastPathComponent().appendingPathComponent("contact-sheets") }
-
-    public func contactSheet() -> ContactSheetModel {
-        ContactSheetModel(room: printableRoom, units: units, folder: contactSheetFolder)
-    }
-
-    /// Print a made sheet: it becomes the photo, fitted to the page it was made for.
-    public func useContactSheet(_ url: URL) {
-        openPhoto(url)
-        setFit(true)
-    }
-
-    // MARK: saved negative setups
-
-    /// The saved setup the negative settings match right now, if any.
-    public var currentSetup: NegativeSetup? {
-        setups.first { setup in
-            let curve = setupLibrary.processURL(setup)?.resolvingSymlinksInPath()
-            return setup.colour == session.negativeColour && setup.mirror == session.mirror
-                && abs(setup.safeEdge - session.safeEdge) < 1e-9 && abs(setup.outline - session.outline) < 1e-9
-                && setup.guide == session.guide && setup.registration == session.registration
-                && curve == session.processPath?.resolvingSymlinksInPath()
-                && setup.printer == session.printer && setup.paper == session.paper
-                && matchesSeparation(setup)
-        }
-    }
-
-    /// The separation as set now, for saving in a setup (nil for one negative).
-    var currentSeparation: SetupSeparation? {
-        if separationKind == .colours {
-            return SetupSeparation(steps: separationSteps, splits: [], colours: colourCoats.map(\.hex),
-                                   saturation: colourSaturation)
-        }
-        return separationSplits.isEmpty ? nil
-            : SetupSeparation(steps: separationSteps, splits: separationSplits, overlap: separationOverlap)
-    }
-
-    /// Whether the separation (bands, overlap, its negatives' own curves, the coats curve) is the setup's.
-    func matchesSeparation(_ setup: NegativeSetup) -> Bool {
-        let resolved = { (url: URL?) in url?.resolvingSymlinksInPath() }
-        guard let s = setup.separation else { return separationKind == .tones && separationSplits.isEmpty }
-        let (curves, coats) = setupLibrary.separationURLs(setup)
-        let same = if let colours = s.colours {
-            separationKind == .colours && colours == colourCoats.map(\.hex) && abs(s.saturation - colourSaturation) < 1e-9
-        } else {
-            separationKind == .tones && s.steps == separationSteps && s.splits == separationSplits
-                && abs(s.overlap - separationOverlap) < 1e-9
-        }
-        return same
-            && curves.mapValues { $0.resolvingSymlinksInPath() } == session.layerProcessPaths.mapValues { $0.resolvingSymlinksInPath() }
-            && resolved(coats) == resolved(session.coatsCurvePath)
-    }
-
-    /// Switch to a saved setup: its curve, colour, mirror, edges, printer and paper.
-    public func applySetup(_ setup: NegativeSetup) {
-        setMode(.negative)
-        setPaper(setup.paper)
-        setPrinter(setup.printer)
-        if let curve = setupLibrary.processURL(setup) {
-            setProcess(curve)
-        } else {
-            setProcess(nil)
-            setNegativeColour(setup.colour)
-        }
-        session.mirror = setup.mirror
-        session.guide = setup.guide
-        session.registration = setup.registration
-        setSafeEdge(setup.safeEdge)
-        if setup.outline > 0 { outlineSize = setup.outline }
-        setOutline(setup.outline > 0)
-        applySeparation(of: setup)
-    }
-
-    /// The setup's separation (or one negative), with its negatives' own curves and the coats curve.
-    private func applySeparation(of setup: NegativeSetup) {
-        let (curves, coats) = setupLibrary.separationURLs(setup)
-        if let s = setup.separation, let colours = try? s.coatColours() {
-            // Worked out here and now, so its negatives are there for their curves.
-            (separationKind, colourCoats, colourSaturation) = (.colours, colours, s.saturation)
-            colourToken += 1
-            separatingColours = false
-            attempt { session.setColourSeparation(try ColourSeparation(coats: colours, saturation: s.saturation)) }
-        } else {
-            separationKind = .tones
-            if let s = setup.separation {
-                (separationSteps, separationSplits, separationOverlap) = (s.steps, s.splits, s.overlap)
-            } else {
-                separationSplits = []
-            }
-            applySeparation()
-        }
-        attempt {
-            for k in 0..<session.negativeCount { try session.setLayerProcess(k, curves[k]) }
-            try session.setCoatsCurve(coats)
-        }
-        refreshPreview()
-    }
-
-    /// A name to offer when saving: "Carbon, green, Letter".
-    public var suggestedSetupName: String {
-        let process = session.process.map(\.process).flatMap { $0.isEmpty ? nil : $0.capitalized } ?? "Negative"
-        return "\(process), \(session.negativeColour), \(session.paper)"
-    }
-
-    /// Save the negative settings as a setup (replacing one of the same name).
-    public func saveSetup(named name: String) {
-        attempt {
-            let setup = NegativeSetup(name: name, colour: session.negativeColour, mirror: session.mirror,
-                                      safeEdge: session.safeEdge, outline: session.outline, guide: session.guide,
-                                      registration: session.registration, printer: session.printer, paper: session.paper,
-                                      separation: currentSeparation)
-            let separated = session.separated || separationKind == .colours
-            try setupLibrary.save(setup, process: session.processPath,
-                                  layerProcesses: separated ? session.layerProcessPaths : [:],
-                                  coats: separated ? session.coatsCurvePath : nil)
-            setups = setupLibrary.all()
-            forgetKnownCurves()
-            // Point at the setup's own copies of the curves, so the setup shows as chosen.
-            if let saved = setups.first(where: { $0.name == name.trimmingCharacters(in: .whitespacesAndNewlines) }) {
-                if let curve = setupLibrary.processURL(saved) {
-                    try session.setProcess(curve)
-                    remember()
-                }
-                let (curves, coats) = setupLibrary.separationURLs(saved)
-                for (k, url) in curves { try session.setLayerProcess(k, url) }
-                if let coats { try session.setCoatsCurve(coats) }
-            }
-        }
-    }
-
-    public func deleteSetup(_ setup: NegativeSetup) {
-        attempt {
-            try setupLibrary.delete(setup)
-            setups = setupLibrary.all()
-            forgetKnownCurves()
-        }
-    }
-
-    public func setPaper(_ paper: String) {
-        attempt {
-            try session.setPaper(paper)
-            remember()
-        }
-        matchCalibration()
-        refreshPreview()
-    }
-
-    /// A CUPS printer to print to directly, or nil to choose in the macOS print panel.
-    public func setPrinter(_ name: String?) {
-        session.printer = name
-        let negative = role == .negative
-        saveSettings { if negative { $0.negativePrinter = name } else { $0.printer = name } }
-        matchCalibration()
-    }
-
-    public func setFit(_ on: Bool) {
-        session.fit = on
-        refreshPreview()
-    }
-
-    /// Fit within a set size (inches; the tissue's, for a negative), or nil for the page.
-    /// Remembered, as the tissue rarely changes.
-    public func setMaxSize(_ size: (Double, Double)?) {
-        if let size, !(size.0 > 0 && size.1 > 0) { return }
-        session.maxSize = size
-        saveSettings { $0.maxSize = size.map { [$0.0, $0.1] } }
-        refreshPreview()
-    }
-
-    /// The last set size, to offer when switching from the page to a set size.
-    public var rememberedMaxSize: (Double, Double) {
-        session.maxSize ?? settings.maxSize.flatMap { $0.count == 2 ? ($0[0], $0[1]) : nil } ?? (8, 10)
-    }
-
-    public func setPPI(_ ppi: Double?) {
-        session.ppi = ppi.flatMap { $0 > 0 ? $0 : nil }
-        refreshPreview()
-    }
-
-    // MARK: the blocking test and the calibration wizards
-
-    public func blockingTest() -> BlockingTestModel {
-        let test = BlockingTestModel(scannerHost: settings.scannerHost ?? "")
-        test.paper = session.paper
-        test.units = settings.units
-        test.sheetSize = rememberedChartSize
-        test.rememberSize = { [weak self] size in self?.saveSettings { $0.chartSize = size.map { [$0.0, $0.1] } } }
-        return test
-    }
-
-    /// Make negatives in the colour the blocking test found best.
-    public func useBlockingColour(_ colour: String, scannerHost: String) {
-        if !scannerHost.isEmpty { saveSettings { $0.scannerHost = scannerHost } }
-        session.setMode(.negative)
-        if let process = session.process, process.colour != colour {
-            error = "The process curve is for \(process.colour) negatives; clear it to use \(colour)."
-        } else {
-            attempt {
-                try session.setNegativeColour(colour)
-                remember()
-            }
-        }
-        refreshPreview()
-    }
-
-    public func calibrationWizard() -> CalibrationWizardModel {
-        CalibrationWizardModel(folder: library.folder, paper: session.paper, scannerHost: settings.scannerHost ?? "",
-                               starting: session.calibration, startingName: currentCalibration?.label,
-                               printers: printers, printer: session.printer ?? printers.first ?? "")
-    }
-
-    public func processWizard() -> ProcessWizardModel {
-        let wizard = ProcessWizardModel(folder: processFolder,
-                                        scannerHost: settings.scannerHost ?? "")
-        wizard.paper = session.paper
-        wizard.units = settings.units
-        wizard.sheetSize = rememberedChartSize
-        wizard.rememberSize = { [weak self] size in self?.saveSettings { $0.chartSize = size.map { [$0.0, $0.1] } } }
-        return wizard
-    }
-
-    /// The test sheets' remembered preferred size (nil: their own).
-    var rememberedChartSize: (Double, Double)? {
-        AppSettings.load(settingsURL).chartSize.flatMap { $0.count == 2 ? ($0[0], $0[1]) : nil }
-    }
-
-    public func finishCalibration(_ path: URL, scannerHost: String) {
-        if !scannerHost.isEmpty { saveSettings { $0.scannerHost = scannerHost } }
-        setCalibration(path)
-        if let entry = currentCalibration { status = "Using \(entry.label)." }
-    }
-
-    public func finishProcess(_ path: URL, scannerHost: String) {
-        if !scannerHost.isEmpty { saveSettings { $0.scannerHost = scannerHost } }
-        forgetKnownCurves()
-        setProcess(path)
-    }
-
     // MARK: what the window shows
 
     public var photoDescription: String {
@@ -881,6 +399,23 @@ public final class AppModel {
         var text = "\(source.lastPathComponent): \(photo.width) x \(photo.height) px"
         if let dpi = photo.dpi { text += String(format: ", %.0f ppi", dpi.0) }
         return ([text] + session.notes).joined(separator: "\n")
+    }
+
+    /// The photo's own resolution and the size it makes, e.g. "300 ppi (4 x 2.66 in)", or
+    /// that it has none (and what's used instead). Nil with no photo open.
+    /// The resolution the print is made at: the fit's when fitting, else the one set or the photo's own.
+    public var resolution: Double? {
+        guard session.photo != nil else { return nil }
+        return try? session.effectivePPI()
+    }
+
+    public var photoResolutionDescription: String? {
+        guard let photo = session.photo else { return nil }
+        guard let dpi = photo.dpi, dpi.0 > 0 else {
+            return String(format: "none set (%.0f ppi is used)", PrintSession.fallbackPPI)
+        }
+        let size = units.size(Double(photo.width) / dpi.0, Double(photo.height) / dpi.1)
+        return String(format: "%.0f ppi", dpi.0) + " (\(size))"
     }
 
     public var sizeDescription: String {
@@ -972,9 +507,12 @@ public final class AppModel {
 
     /// Everything the native print panel needs: the rendered image, its size and a title.
     public func printRequest() async -> (RGBImage, Double, Double, String, String)? {
-        guard canPrint, let (width, height) = try? session.sizeInches() else { return nil }
+        guard canPrint, var (width, height) = try? session.sizeInches() else { return nil }
         do {
             let image = try await renderedPrint()
+            if session.placed, let ppi = try? session.effectivePPI() {  // the page inside its margins
+                (width, height) = (Double(image.width) / ppi, Double(image.height) / ppi)
+            }
             return (image, width, height, session.paper, session.jobTitle)
         } catch {
             self.error = String(describing: error)

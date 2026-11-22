@@ -12,6 +12,8 @@ app="$here/build/OpenQuad.app"
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary" "$app/Contents/MacOS/OpenQuad"
+# OpenJPEG's BSD licence must travel with the app it's built into.
+cp "$here/OpenQuadCore/Sources/COpenJPEG/LICENSE" "$app/Contents/Resources/OpenJPEG-LICENSE.txt"
 iconset="$here/build/AppIcon.iconset"
 rm -rf "$iconset"
 swift "$here/OpenQuadApp/Icon/make-icon.swift" "$iconset"

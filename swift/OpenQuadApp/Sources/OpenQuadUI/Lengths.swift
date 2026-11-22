@@ -4,7 +4,7 @@
 import OpenQuadCore
 import SwiftUI
 
-/// A stepper for a length kept in inches, shown and stepped in `units`.
+/// A length kept in inches, shown, typed and stepped in `units`; typed values are kept in `range`.
 struct LengthStepper: View {
     let title: String
     let inches: Double
@@ -17,10 +17,21 @@ struct LengthStepper: View {
 
     var body: some View {
         let step = units == .millimetres ? mmStep : inchStep
-        Stepper(value: Binding(get: { units.fromInches(inches) },
-                               set: { set(units.toInches(($0 / step).rounded() * step)) }),
-                in: units.fromInches(range.lowerBound)...units.fromInches(range.upperBound), step: step) {
-            LabeledContent(title, value: units == .millimetres ? units.length(inches) : String(format: "%.2f in", inches))
+        let limits = units.fromInches(range.lowerBound)...units.fromInches(range.upperBound)
+        LabeledContent(title) {
+            HStack(spacing: 4) {
+                TextField(title, value: Binding(get: { units.fromInches(inches) },
+                                                set: { set(min(max(units.toInches($0), range.lowerBound), range.upperBound)) }),
+                          format: .number.precision(.fractionLength(0...2)))
+                    .labelsHidden()
+                    .frame(width: 56)
+                    .multilineTextAlignment(.trailing)
+                Text(units.rawValue)
+                Stepper(title, value: Binding(get: { units.fromInches(inches) },
+                                              set: { set(units.toInches(($0 / step).rounded() * step)) }),
+                        in: limits, step: step)
+                    .labelsHidden()
+            }
         }
     }
 }

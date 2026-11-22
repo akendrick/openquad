@@ -73,6 +73,7 @@ struct DeviceParity {
         for j in try #require(try vectors("devices")["jobs"] as? [[String: Any]]) {
             let job = try PrintJob(path: "/tmp/openquad/neg.tif", printer: "Canon_MG3600_series",
                                    paper: j["paper"] as? String ?? "Letter", ppi: (j["ppi"] as? NSNumber)?.doubleValue ?? 300,
+                                   landscape: j["landscape"] as? Bool ?? false,
                                    copies: j["copies"] as? Int ?? 1, title: j["title"] as? String,
                                    options: (j["options"] as? [[String]] ?? []).map { ($0[0], $0[1]) })
             #expect(job.command() == j["command"] as? [String])
@@ -98,6 +99,29 @@ struct DeviceParity {
         }
         #expect(try Printing.listPrinters(runner: { _ in (0, "Canon_MG3600_series\nPDF\n\n", "") }) == v["printers"] as? [String])
         #expect(throws: PrintError.self) { try Printing.listPrinters(runner: { _ in (1, "", "no CUPS") }) }
+    }
+
+    @Test func printerOptionsReadAsInPython() throws {
+        for p in try #require(try vectors("devices")["ppds"] as? [[String: Any]]) {
+            let options = Printing.parsePPD(p["text"] as! String)
+            let expected = try #require(p["options"] as? [[String: Any]])
+            #expect(options.map(\.keyword) == expected.map { $0["keyword"] as! String }, "\(p["name"]!)")
+            for (option, e) in zip(options, expected) {
+                #expect(option.label == e["label"] as? String)
+                #expect(option.defaultValue == e["default"] as? String)
+                #expect(option.choices.map { [$0.value, $0.name] } == e["choices"] as? [[String]])
+            }
+            let (media, quality) = Printing.mediaAndQuality(options)
+            #expect(media?.keyword == p["media"] as? String && quality?.keyword == p["quality"] as? String, "\(p["name"]!)")
+        }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("openquad-ppd-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let canon = try #require(try vectors("devices")["ppds"] as? [[String: Any]])[0]["text"] as! String
+        try canon.write(to: folder.appendingPathComponent("Canon_MG3600_series.ppd"), atomically: true, encoding: .utf8)
+        #expect(try Printing.printerOptions("Canon_MG3600_series", folder: folder).count == 3)
+        #expect(try Printing.printerOptions("Nothing", folder: folder).isEmpty)
+        #expect(throws: PrintError.self) { try Printing.printerOptions("../etc/passwd", folder: folder) }
+        #expect(PrinterOption(keyword: "K", label: "L", choices: [.init(value: "28", name: "Matte")]).name(of: "28") == "Matte")
     }
 
     @Test func tiffsReadAsInPython() throws {

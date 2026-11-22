@@ -6,6 +6,7 @@
 //                                       [--outline INCHES] [--units in|mm] [--setups FOLDER] [--setup NAME]
 //                                       [--separations N] [--layer K] [--overlap STEPS] [--step-test] [--coats-chart]
 //                                       [--show-coats] [--colour-separation] [--saturation S]
+//                                       [--on-page] [--place LEFT,TOP] [--fit-off] [--ppi PPI]
 //     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide|contact-sheet [--scan SCAN] [--run RUN]
 //                                       [--photos P1,P2,...] [--landscape] [--white] [--wedge] [--labels] [--crop]
 //                                       (contact-sheet)
@@ -124,6 +125,7 @@ enum Snapshot {
             model.setOutline(true)
         }
         if arguments.contains("--guide") { model.setGuide(true) }
+        if arguments.contains("--marks-outside") { model.setMarksInFit(false) }
         if arguments.contains("--registration") { model.setRegistration(true) }
         if let count = value("--separations").flatMap(Int.init) { model.setNegativeCount(count) }
         if let overlap = value("--overlap").flatMap(Double.init) { model.setSeparationOverlap(overlap) }
@@ -133,6 +135,24 @@ enum Snapshot {
         if arguments.contains("--coats-chart") { model.openCoatsChart() }
         if arguments.contains("--show-coats") { model.setShowCoats(true) }
         if let layer = value("--layer").flatMap(Int.init) { model.setLayer(layer - 1) }
+        if arguments.contains("--fit-off") { model.setFit(false) }
+        if let ppi = value("--ppi").flatMap(Double.init) { model.setPPI(ppi) }
+        if let side = value("--step-wedge") {  // the step wedges, on this side
+            model.setWedge(true)
+            model.setWedgeSide(side)
+        }
+        if arguments.contains("--colour-print") { model.setColourPrint(true) }
+        if arguments.contains("--colour-wedge") { model.setColourWedge(true) }
+        if let steps = value("--wedge-steps").flatMap(Int.init) { model.setWedgeSteps(steps) }
+        if let style = value("--wedge-style") { model.setWedgeStyle(style) }
+        if let gap = value("--wedge-gap").flatMap(Double.init) { model.setWedgeGap(gap) }
+        if arguments.contains("--wedge-labels") { model.setWedgeLabels(true) }
+        if arguments.contains("--landscape") { model.setLandscape(true) }
+        if let background = value("--wedge-background") { model.setWedgeBackground(background) }
+        if arguments.contains("--on-page") { model.setShowOnPage(true) }
+        if let place = value("--place")?.split(separator: ",").compactMap({ Double($0) }), place.count == 2 {
+            model.setPlacement((place[0], place[1]))
+        }
         if arguments.contains("--sheet-size") {  // the test sheets' set size, and their marks
             root.show(.processCalibration)
             root.blocking?.sheetSize = (8, 10)

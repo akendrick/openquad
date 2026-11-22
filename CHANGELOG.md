@@ -7,6 +7,73 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Orientation under Printer and size: Portrait or Landscape (the page turned on its side, for a
+  wide photo), remembered for each tab. Fitting, placing and the page preview use the turned
+  page; the print panel is set to match and a direct print is sent with `-o landscape`. Core:
+  `PrintSession.landscape`, `page_size` and `PrintJob.landscape` in Python and Swift alike
+  (shared vectors).
+
+- Background for the step wedges, under Step wedges (Print and Negative tabs, remembered for
+  each): what fills the space between the photo and its wedges. Colour, the default, keeps it as
+  before (on a negative its own opaque colour, or clear film if the wedge is made separately; on
+  a print, white paper); Black or White set it outright. Core: `PrintSession.wedge_background`
+  in Python and Swift alike (shared vectors).
+
+- Fit within printable area, under Registration (Print and Negative tabs, remembered for each).
+  On, as before, the photo shrinks so its marks' border (a print's white border, a negative's
+  safe edge and outline) fits within the margins too; off, the photo fits on its own and the
+  border lies outside it, in the margins. Core: `PrintSession.marks_in_fit` in Python and Swift
+  alike (shared vectors). Mirror moves to Printer and size.
+
+- Step wedge options: 11, 21, 31 or 51 steps; a plain strip or the printer calibration target's
+  style (two rows, white to black and back, in a thin black frame); a width of 0.2 to 1 in; and
+  the steps numbered in a band beside the wedge. The space from the photo can always be set (0 to
+  2 in, none by default): on a negative it is opaque like the safe edge, unless the wedge is made
+  separately, when it is clear film. Each tab remembers its choices. Core: `wedge_steps`,
+  `wedge_width`, `wedge_style` and `wedge_labels` in Python and Swift alike (shared vectors).
+- A print can be placed on its page too: Position on the page, under Printer and size in the
+  Print tab, previews the whole sheet and the print can be dragged anywhere inside the margins.
+
+- Mirror in the Print tab too (for transfers): the photo flips left to right; its marks and
+  wedges stay where they were put. The summary says so. Core: in Python and Swift alike.
+- Create wedge separately. A step wedge now joins the print by default: on a negative it sits at
+  the edge of the safe edge with no clear film between, running the full width of the photo and
+  its outline. Create wedge separately makes it a piece of its own, the gap away (as before).
+  Core: `PrintSession.wedge_separate`, remembered as `separate` in each tab's wedge settings.
+- Step wedges beside the print or negative. The Step wedges section (Print and Negative tabs) adds
+  an optional 31-step wedge, paper white to full black, on the top, bottom, left or right with a
+  gap of 0 to 2 in. On a print it is toned and calibrated like the photo; on a negative it goes
+  through the same process curve and safe edge, so the contact print shows every tone. A colour
+  print can add a colour gamut wedge: 31 hues as a tint, the full colour and a shade. The print
+  size and page fit allow for them, the summary lists them, and each tab remembers its own. Core:
+  `openquad.wedge` and `PrintSession.wedge`, `colour_wedge`, `set_wedge_side` and `set_wedge_gap`
+  in Python and Swift alike (shared vectors).
+- A printer's own media type and quality. Printing straight to a printer, the app's Printer and
+  paper section offers that printer's Media type and Quality (Matte Photo Paper, Super Fine and so
+  on, or the printer's default), read from its CUPS driver (PPD); AirPrint media get plain names.
+  They are sent to `lp`, remembered for each printer in each tab, kept in negative setups, and
+  listed in the summary before printing. Core: `printer_options`, `parse_ppd` and
+  `media_and_quality` in Python and Swift alike (shared vectors), and `PrintSession.printer_options`.
+  With the print panel, its own Media & Quality is used as before.
+- Size and resolution shows the photo's own resolution as soon as it is open ("Photo's own: 300 ppi
+  (4.00 x 2.66 in)"), or that it has none and 300 ppi is used, so an empty Resolution field is no
+  longer a guess.
+
+- A negative can go anywhere on the page. App: "Preview on the page" under Position on the page in the Negative
+  tab shows the whole sheet with its margins dashed; drag the negative to move it, or step it with
+  From the left and From the top, and Centre puts it back. It is kept inside the margins, and the
+  summary gives its position. When moved, the print is the page inside its margins with the
+  negative in place on clear film, so it lands where it was put through the print panel or `lp`.
+  Core: `PrintSession.set_placement` and `page_position` in Python and Swift alike (shared
+  vectors).
+- JPEG 2000 and GIMP photos. `.jp2`, `.j2k` and `.jpx` files open at their full bit depth through
+  OpenJPEG 2.5.4: Pillow's copy in Python, built into the Mac app (COpenJPEG, BSD 2-clause) since
+  macOS's ImageIO reads 16-bit JPEG 2000 as 8-bit. Grey, grey and alpha, RGB and RGB and alpha
+  are read, with the file's ICC profile and capture resolution; subsampled, YCC and CMYK files are
+  refused (save those as TIFF). GIMP's `.xcf` files open through GIMP 3 (`gimp-console`, found in
+  /Applications, ~/Applications, on the PATH or through `OPENQUAD_GIMP`): it merges the visible
+  layers, keeping transparency, into a 16-bit TIFF that loads as usual; the app does this off
+  the main thread, saying "Opening … in GIMP". The Open dialogs offer both.
 - Colour separations: a colour photo split by colour into 2-4 negatives, one per coat of a
   coloured pigment (tricolour gum, cyanotype under gum). Each coat is the colour it prints at full
   strength (pigment presets or any colour); each pixel gets the coat strengths whose stacked
@@ -117,6 +184,23 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- Registration and Step wedges are one section, Registration and step wedges; the wedges fold
+  away inside it.
+
+- The sidebar is regrouped. Darkroom marks is now Registration, and holds Mirror, Safe edge and
+  Outline in black (the Negative tab's Options section is gone). Printer and paper, Size and
+  resolution and Position on the page are one Printer and size section, with Position on the
+  page folded inside it. Resolution moves to the top, under the photo, and shows the ppi the
+  print is made at (not "photo's own"), with the photo's own beside it. Every length (safe edge,
+  wedge gap, outline, position) can be typed as well as stepped.
+
+- A tidier sidebar in the Print and Negative tabs. Every section folds away (click its title) and,
+  folded, shows what's set in it, e.g. "Darkroom marks: guide line" or "Separations: 3 negatives";
+  which are open is remembered. The photo is one row with Open… beside it. The Negative section
+  is three rows: Save and Delete setup moved to a ⋯ menu by Setup, Calibrate a Process… and Clear
+  to the process curve's Choose menu. Separations has its own section (it was inside Options), Page
+  is split into Printer and paper, Size and resolution, and Position on the page.
+
 - The blocking test and process charts print on the Negative tab's paper instead of always Letter.
 - The wizards and curve menus no longer re-read every kept run (or redraw the chart preview) on each
   redraw; they read again every few seconds, or as soon as they change something.
@@ -137,6 +221,12 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- With Fit within printable area off, a print or negative moved on the page kept its marks'
+  border inside the margins, pushing the photo in from the margin. Now the photo goes to the
+  margin and the border lies in it, as when centred.
+
+- A 16-bit colour JPEG 2000 read through Pillow came out 8-bit with its brightest values (65408
+  and up) turned black; JPEG 2000 is now decoded straight through OpenJPEG instead.
 - The app no longer crashes when a blocking colour is chosen while a process run in other
   colours is under way and that run's curve is then used or exported; the run keeps its colours.
 - The Negative tab no longer switches printer calibrations (or says a negative "will print

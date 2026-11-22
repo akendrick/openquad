@@ -38,6 +38,7 @@ struct SessionParity {
             try session.setPreset(c["preset"] as? String ?? "neutral")
             if c["calibration"] as? Bool == true { try session.setCalibration(calibrationURL) }
             try session.setPaper(c["paper"] as? String ?? "Letter")
+            session.landscape = c["landscape"] as? Bool ?? false
             session.fit = c["fit"] as? Bool ?? true
             session.ppi = (c["ppi"] as? NSNumber)?.doubleValue
             session.setMode(OutputMode(rawValue: c["mode"] as? String ?? "print")!)
@@ -55,6 +56,18 @@ struct SessionParity {
             session.units = LengthUnit(rawValue: c["units"] as? String ?? "in")!
             session.printer = "Canon_MG3600_series"
             try session.setColourPrint(c["colour_print"] as? Bool ?? false)
+            session.wedge = c["wedge"] as? Bool ?? false
+            session.colourWedge = c["colour_wedge"] as? Bool ?? false
+            try session.setWedgeSide(c["wedge_side"] as? String ?? "bottom")
+            try session.setWedgeGap((c["wedge_gap"] as? NSNumber)?.doubleValue ?? 0.25)
+            session.wedgeSeparate = c["wedge_separate"] as? Bool ?? false
+            try session.setWedgeSteps((c["wedge_steps"] as? NSNumber)?.intValue ?? 31)
+            try session.setWedgeWidth((c["wedge_width"] as? NSNumber)?.doubleValue ?? 0.4)
+            try session.setWedgeStyle(c["wedge_style"] as? String ?? "strip")
+            session.wedgeLabels = c["wedge_labels"] as? Bool ?? false
+            session.marksInFit = c["marks_in_fit"] as? Bool ?? true
+            try session.setWedgeBackground(c["wedge_background"] as? String ?? "colour")
+            try session.setPlacement((c["placement"] as? [NSNumber]).map { ($0[0].doubleValue, $0[1].doubleValue) })
 
             #expect(session.printsColour == c["prints_colour"] as? Bool)
             #expect(abs(try session.effectivePPI() - (c["ppi_used"] as! NSNumber).doubleValue) < 1e-9)
@@ -63,9 +76,23 @@ struct SessionParity {
             #expect(try session.fitsOnPaper() == c["fits"] as? Bool)
             #expect(try session.summary() == c["summary"] as? [String])
             #expect(session.notes == c["notes"] as? [String])
+            #expect(session.placed == c["placed"] as? Bool)
+            let position = try session.pagePosition(), expectedPosition = doubles(c["position"])
+            #expect(abs(position.0 - expectedPosition[0]) < 1e-9 && abs(position.1 - expectedPosition[1]) < 1e-9)
             let rendered = try session.renderPrint()
             #expect([rendered.height, rendered.width, 3] == ints(c["rendered_shape"]))
             #expect(rendered.pixels.map(Int.init) == ints(c["rendered"]))
+        }
+    }
+
+    @Test func greyWedgesMatchPython() throws {
+        for w in try #require(try vectors("session")["grey_wedges"] as? [[String: Any]]) {
+            let (pixels, width, height) = Wedge.grey(
+                length: w["length"] as! Int, thickness: w["thickness"] as! Int, horizontal: w["horizontal"] as! Bool,
+                steps: w["steps"] as! Int, calibration: w["calibration"] as! Bool, frame: w["frame"] as! Int,
+                band: w["band"] as! Int, bandFirst: w["band_first"] as! Bool)
+            #expect([height, width] == w["shape"] as? [Int])
+            #expect(digest(pixels) == w["sha256"] as? String, "grey wedge \(w)")
         }
     }
 
@@ -138,8 +165,20 @@ struct SessionParity {
         settings.negativePaper = "A4"
         settings.chartSize = [8, 10]
         settings.proofProfile = "/Library/ColorSync/Profiles/Paper.icc"
+        settings.printerOptions = ["Canon_MG3600_series": ["CNIJMediaType": "28", "CNIJPrintQuality": "0"]]
+        settings.negativePrinterOptions = ["Epson_ET_2900": ["MediaType": "transparency"]]
+        settings.printWedge = WedgeSettings(grey: true, colour: false, side: "left", gap: 0.5, separate: true, steps: 21,
+                                            width: 0.6, style: "calibration", labels: true, background: "black")
+        settings.negativeMarksInFit = false
+        settings.negativeLandscape = true
         try settings.save(url)
         #expect(AppSettings.load(url) == settings)
+        try Data(#"{"printer_options": {"A": {"x": "1", "y": 2}, "B": 3}, "negative_printer_options": []}"#.utf8).write(to: url)
+        #expect(AppSettings.load(url).printerOptions == ["A": ["x": "1"]] && AppSettings.load(url).negativePrinterOptions.isEmpty)
+        try Data(#"{"print_wedge": {"side": "middle", "gap": 1}, "negative_wedge": {"grey": 1, "side": "top", "gap": 9}}"#.utf8).write(to: url)
+        #expect(AppSettings.load(url).printWedge == nil)
+        #expect(AppSettings.load(url).negativeWedge == WedgeSettings(grey: false, colour: false, side: "top", gap: 2))
+        try settings.save(url)
         let text = try String(contentsOf: url, encoding: .utf8)
         #expect(text.contains("\"scanner_host\"") && !text.contains("preset") && text.contains("\"mm\""))
     }

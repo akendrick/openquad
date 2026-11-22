@@ -99,7 +99,7 @@ struct SeparationControls: View {
     }
 
     private var layerPicker: some View {
-        Picker("Show and print", selection: Binding(get: { model.session.layer }, set: { model.setLayer($0) })) {
+        Picker("Show and print", selection: model.binding(\.layer, model.setLayer)) {
             ForEach(0..<count, id: \.self) { Text("\($0 + 1)").tag($0) }
         }
         .pickerStyle(.segmented)
@@ -173,6 +173,9 @@ struct SeparationControls: View {
 /// latest, a coats curve) or another file.
 struct CurveMenu: View {
     let model: AppModel
+    /// Extra items at the foot of the menu: clear the curve, or make a new one.
+    var clear: (() -> Void)? = nil
+    var calibrate: (() -> Void)? = nil
     let choose: (URL) -> Void
 
     var body: some View {
@@ -189,6 +192,11 @@ struct CurveMenu: View {
             if !curves.isEmpty { Divider() }
             Button("Other File…") {
                 if let url = ContentView.askOpen(types: [UTType(filenameExtension: "oqproc")].compactMap { $0 }) { choose(url) }
+            }
+            if let calibrate { Button("Calibrate a Process…", action: calibrate) }
+            if let clear {
+                Divider()
+                Button("Clear", action: clear)
             }
         }
         .fixedSize()

@@ -37,7 +37,8 @@ opens on first launch (and later from **Help** or the **?** button).
 
 - **Print a photo:** open a photo, leave toning neutral or choose a duotone, and print through the
   macOS print panel or straight to a printer. Does the print match the preview, and come out at the
-  size it says?
+  size it says? Photos can be TIFF, PNG, JPEG, JPEG 2000 (`.jp2`, `.j2k`, `.jpx`, read at full
+  16-bit depth) or GIMP's `.xcf` (opened through GIMP 3, which must be installed).
 - **Calibrate your printer**, if it has a network (AirScan / eSCL) scanner: Calibrate This Printer…
   prints a test page, scans it and corrects colour casts and tone. How many rounds did it take, and
   did the goals get met?
@@ -45,7 +46,7 @@ opens on first launch (and later from **Help** or the **?** button).
   contact print (carbon, or another UV process).
 - **Contact sheets:** the Contact Sheet tab (⌘3) puts up to 16 photos on one sheet, to print or
   to make a negative of.
-- **Darkroom marks:** the guide line and registration marks (Darkroom marks, in the Print and
+- **Darkroom marks:** the guide line and registration marks (Registration, in the Print and
   Negative tabs and both calibration wizards). Can you see and line up a red or orange negative
   under your safelight?
 - **Tabs:** Print, Negative, Contact Sheet, Printer Calibration and Process Calibration each keep
@@ -85,7 +86,7 @@ The app keeps its calibration runs, scans and measurements in
 
 Hardware results: [docs/hardware-tests.md](docs/hardware-tests.md). Calibration data from real prints
 and scans: [calibration-data/](calibration-data/). Mac app details: [swift/README.md](swift/README.md).
-Screenshots: [docs/screenshots/](docs/screenshots/).
+Screenshots: [docs/screenshots/](docs/screenshots/) (the Print and Negative tabs are remade by `scripts/screenshots.py`).
 
 ## Python tools (command line and desktop app)
 
@@ -163,6 +164,12 @@ openquad negative photo.tif -o neg.tif --colour orange --fit Letter --guide --re
 openquad target --kind blocking --size 5x7 --guide -o blocking.tif
 ```
 
+To put a negative somewhere other than the middle of the sheet (several on one sheet of film,
+say), turn on **Preview on the page** under Page in the Negative tab: it shows the whole sheet
+with its margins dashed, and you drag the negative where you want it (or step it with From the
+left and From the top). It stays inside the margins, and every negative of a separation prints
+in the same place.
+
 In the app, the Process Calibration tab does the same. **Calibration Wizard** takes you from the
 blocking test to a finished curve one step at a time, with a button for each next step. **Advanced**
 shows every setting at once. Test sheets print on the Negative tab's paper.
@@ -231,7 +238,7 @@ openquad negative photo.tif -o gum.tif --process gum.oqproc --registration \
     --separations 3 --splits 10,20 --overlap 1 --coats-curve coats.oqproc
 ```
 
-The app has the same under the Negative tab's Options ▸ Separations: a diagram of the bands, "Use
+The app has the same under the Negative tab's Separations section: a diagram of the bands, "Use
 Step Test as Photo", and for the coats "Use Chart as Photo", "Read Chart Scan…" and the coats curve.
 Every curve chooser lists the curves OpenQuad already has (saved setups, the latest round of each
 process calibration, coats curves) as well as Other File…. "Preview all coats together" shows each coat
@@ -275,3 +282,8 @@ The Swift core is matched against the Python reference with test vectors
 ## Licence
 
 GPL-2.0-or-later. See [LICENSE](LICENSE). OpenQuad is not affiliated with QuadToneRIP.
+
+The Mac app includes the JPEG 2000 decoder from [OpenJPEG](https://github.com/uclouvain/openjpeg)
+2.5.4, under the BSD 2-clause licence
+([swift/OpenQuadCore/Sources/COpenJPEG/LICENSE](swift/OpenQuadCore/Sources/COpenJPEG/LICENSE),
+also inside the app as `OpenJPEG-LICENSE.txt`).

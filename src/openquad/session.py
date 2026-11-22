@@ -7,13 +7,15 @@ session uses the neutral preset until the user picks another.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Sequence
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
 from PIL import Image
 
+from openquad import wedge as wedges
 from openquad.chart import ProcessCurve, load_process
 from openquad.colour_separations import ColourSeparation, hex_colour
 from openquad.colour_separations import coat_image as colour_coat_image
@@ -22,9 +24,18 @@ from openquad.greybalance import Calibration, load_calibration
 from openquad.imageio import save_rgb, srgb_profile
 from openquad.marks import PRINT_BORDER, add_print_marks
 from openquad.negative import NEGATIVE_COLOURS, NegativeSettings, make_negative, negative_ppi
-from openquad.paper import DEFAULT_MARGIN, PAPER_SIZES, box_ppi, fit_ppi, oriented, print_size
+from openquad.paper import (
+    DEFAULT_MARGIN,
+    PAPER_SIZES,
+    box_ppi,
+    fit_ppi,
+    oriented,
+    page_size,
+    print_size,
+)
 from openquad.photo import Photo, load_photo
 from openquad.printing import PrintJob, Runner, run_command, send
+from openquad.quadfile import MAX_VALUE
 from openquad.separations import SeparationPlan, coat_image
 from openquad.units import box, check, length, size
 
@@ -35,6 +46,13 @@ class SessionError(ValueError):
     """The session can't do that yet (e.g. no photo or no printer chosen)."""
 
 
+def _one_of(value: str, choices: Sequence[str], what: str) -> str:
+    """`value` if it is one of `choices`, else a SessionError naming them."""
+    if value not in choices:
+        raise SessionError(f"unknown {what} {value!r}; choose from {', '.join(choices)}")
+    return value
+
+
 @dataclass
 class PrintSession:
     photo: Photo | None = None
@@ -43,7 +61,11 @@ class PrintSession:
     calibration: Calibration | None = None
     calibration_path: Path | None = None
     printer: str | None = None
+    # Driver options for printing straight to the printer (lp -o), e.g. its media type and
+    # quality: {"CNIJMediaType": "28"}. The print panel has its own.
+    printer_options: dict[str, str] = field(default_factory=dict)
     paper: str = "Letter"
+    landscape: bool = False  # the page turned on its side (wider than tall)
     fit: bool = True
     margin: float = DEFAULT_MARGIN
     ppi: float | None = None  # used when fit is off; None = the photo's own DPI
@@ -57,11 +79,31 @@ class PrintSession:
     process: ProcessCurve | None = None
     process_path: Path | None = None
     mirror: bool = False
+    # Fit the darkroom marks' border (a print's white border, a negative's safe edge and
+    # outline) within the printable area with the photo; if not, the photo alone fits and
+    # the border lies outside it, into the margins.
+    marks_in_fit: bool = True
     safe_edge: float = 0.25
     outline: float = 0.0  # inches of black between the safe edge and the photo (0 = none)
     # Darkroom marks in black: in a negative's safe edge, or a white border round a print.
     guide: bool = False  # a guide line round the image
     registration: bool = False  # crosshair targets and corner crop marks
+    # Step wedges beside the print on `wedge_side`, `wedge_gap` inches away: the grey wedge
+    # (through the same toning, calibration or process curve as the photo; `wedge_steps`
+    # steps, `wedge_width` inches wide, a strip or in the calibration target's style, its
+    # steps numbered if `wedge_labels`), and for a colour print a colour gamut wedge. On a
+    # negative the wedge is joined to it, the gap opaque like the safe edge, or made
+    # separately with its own safe edge and clear film between.
+    wedge: bool = False
+    colour_wedge: bool = False
+    wedge_side: str = "bottom"
+    wedge_gap: float = wedges.DEFAULT_GAP
+    wedge_separate: bool = False
+    wedge_steps: int = wedges.WEDGE_STEPS
+    wedge_width: float = wedges.WEDGE_WIDTH
+    wedge_style: str = "strip"
+    wedge_labels: bool = False
+    wedge_background: str = "colour"
     units: str = "in"  # how the summary shows lengths: "in" or "mm"
     # Separations: the photo split into several negatives by tone, printed one after another
     # in register on one sheet. None for a single negative. `layer` is the negative shown and
@@ -80,6 +122,9 @@ class PrintSession:
     # Print a colour photo in colour, on a colour-managed printer: its own colour and ICC
     # profile go to macOS, with no toning or calibration. Off (greyscale) for each new photo.
     colour_print: bool = False
+    # Where a negative goes on the page: its outer top-left corner, in inches from the paper's
+    # left and top edges, kept inside the margins. None = centred (as a print always is).
+    placement: tuple[float, float] | None = None
 
     # --- choosing things ------------------------------------------------------------
 
@@ -111,6 +156,71 @@ class PrintSession:
 
     def set_units(self, units: str) -> None:
         self.units = check(units)
+
+    def set_wedge_side(self, side: str) -> None:
+        self.wedge_side = _one_of(side, wedges.SIDES, "side")
+
+    def set_wedge_gap(self, gap: float) -> None:
+        if not np.isfinite(gap) or not 0 <= gap <= wedges.MAX_GAP:
+            raise SessionError(f"the gap must be 0 to {wedges.MAX_GAP:g} in, got {gap}")
+        self.wedge_gap = gap
+
+    def set_wedge_steps(self, steps: int) -> None:
+        if steps not in wedges.STEP_CHOICES:
+            choices = ", ".join(map(str, wedges.STEP_CHOICES))
+            raise SessionError(f"a step wedge has {choices} steps, not {steps}")
+        self.wedge_steps = steps
+
+    def set_wedge_width(self, width: float) -> None:
+        low, high = wedges.MIN_WIDTH, wedges.MAX_WIDTH
+        if not np.isfinite(width) or not low <= width <= high:
+            raise SessionError(f"the wedge's width must be {low:g} to {high:g} in, got {width}")
+        self.wedge_width = width
+
+    def set_wedge_background(self, background: str) -> None:
+        self.wedge_background = _one_of(background, wedges.BACKGROUNDS, "background")
+
+    def _wedge_fill(self) -> int:
+        """What fills the space round the wedges: black, or white (paper; clear film)."""
+        return 0 if self.wedge_background == "black" else MAX_VALUE
+
+    def set_wedge_style(self, style: str) -> None:
+        self.wedge_style = _one_of(style, wedges.STYLES, "wedge style")
+
+    @property
+    def wedge_kinds(self) -> list[str]:
+        """The wedges printed, nearest the print first: "grey", and "colour" on a colour print."""
+        kinds = ["grey"] if self.wedge else []
+        if self.colour_wedge and not self.negative and self.prints_colour:
+            kinds.append("colour")
+        return kinds
+
+    def _wedge_extra(self) -> tuple[float, float]:
+        border = self.safe_edge if self.negative else 0.0
+        width, height = wedges.extra(self.wedge_kinds, self._wedge_side(), self.wedge_gap,
+                                     border, self.wedge_width, self.wedge_labels)  # fmt: skip
+        if self.wedge_separate or not self.negative:
+            return width, height
+        # Joined: a negative's wedge shares the photo's safe edge on its inner side.
+        shared = border * len(self.wedge_kinds)
+        return (width - shared, height) if width else (width, height - shared)
+
+    def _grey_wedge(self, length: int, dpi: float, side: str) -> NDArray[np.uint16]:
+        """The grey wedge as chosen, at `dpi`, to go on `side` (its numbers on the far side)."""
+        return wedges.grey_wedge(
+            length, max(1, round(self.wedge_width * dpi)), side in ("top", "bottom"),
+            self.wedge_steps, self.wedge_style == "calibration", round(wedges.FRAME * dpi),
+            round(wedges.LABEL_BAND * dpi) if self.wedge_labels else 0, side in ("top", "left"),
+        )  # fmt: skip
+
+    def _wedge_side(self) -> str:
+        """The side as laid out before a negative is mirrored, so it prints on the side chosen."""
+        flipped = {"left": "right", "right": "left"}
+        return (
+            flipped.get(self.wedge_side, self.wedge_side)
+            if self.negative and self.mirror
+            else self.wedge_side
+        )
 
     def set_preset(self, name: str) -> None:
         if name not in PRESETS:
@@ -236,6 +346,13 @@ class PrintSession:
             raise SessionError(f"unknown paper {paper!r}")
         self.paper = paper
 
+    def _page(self) -> tuple[float, float]:
+        """The page (width, height) in inches as it lies: portrait or landscape."""
+        return page_size(self.paper, self.landscape)
+
+    def _paper_name(self) -> str:
+        return f"{self.paper}, landscape" if self.landscape else self.paper
+
     # --- size -----------------------------------------------------------------------
 
     def _photo(self) -> Photo:
@@ -246,26 +363,98 @@ class PrintSession:
     def effective_ppi(self) -> float:
         photo = self._photo()
         if self.fit:
-            if self._border:
-                ppi = negative_ppi(*photo.size, self.paper, self._border, self.margin)
+            extra_w, extra_h = self._wedge_extra()
+            if extra_w or extra_h:
+                ppi = self._page_ppi(extra_w, extra_h)
+            elif self._fit_border:
+                ppi = negative_ppi(
+                    *photo.size, self.paper, self._fit_border, self.margin, self.landscape
+                )
             else:
-                ppi = fit_ppi(*photo.size, self.paper, self.margin)
+                ppi = fit_ppi(*photo.size, self.paper, self.margin, self.landscape)
             if self.max_size:  # smaller of the page and the box (never past the page)
-                ppi = max(ppi, box_ppi(*photo.size, self.max_size, self._border))
+                ppi = max(ppi, box_ppi(*photo.size, self.max_size, self._fit_border))
             return ppi
         if self.ppi:
             return self.ppi
         return photo.dpi[0] if photo.dpi else FALLBACK_PPI
 
+    def _page_ppi(self, extra_w: float, extra_h: float) -> float:
+        """The resolution that fits the photo, its border and its wedges within the margins."""
+        width, height = self._photo().size
+        paper_w, paper_h = self._page()
+        room_w = paper_w - 2 * self.margin - 2 * self._fit_border - extra_w
+        room_h = paper_h - 2 * self.margin - 2 * self._fit_border - extra_h
+        if room_w <= 0 or room_h <= 0:
+            raise SessionError(f"no room for the photo and its wedge on {self._paper_name()}")
+        return max(width / room_w, height / room_h)
+
     def size_inches(self) -> tuple[float, float]:
         width, height = print_size(*self._photo().size, self.effective_ppi())
-        # A negative's safe edge, or a print's border for its marks, goes round the photo.
-        return width + 2 * self._border, height + 2 * self._border
+        # A negative's safe edge, or a print's border for its marks, goes round the photo;
+        # any wedges sit beside it.
+        extra_w, extra_h = self._wedge_extra()
+        return width + 2 * self._border + extra_w, height + 2 * self._border + extra_h
 
     def fits_on_paper(self) -> bool:
         width, height = self.size_inches()
-        paper_w, paper_h = PAPER_SIZES[self.paper]
+        paper_w, paper_h = self._page()
         return width <= paper_w + 1e-6 and height <= paper_h + 1e-6
+
+    # --- placing a negative on the page ---------------------------------------------
+
+    def set_placement(self, placement: tuple[float, float] | None) -> None:
+        """Put the negative's top-left corner at (left, top) inches on the page; None centres it."""
+        if placement is not None and not all(np.isfinite(placement)):
+            raise SessionError(f"not a position on the page: {placement}")
+        self.placement = placement
+
+    @property
+    def placed(self) -> bool:
+        """A print or negative moved from the centre, with room to move inside the margins."""
+        if self.placement is None:
+            return False
+        room_w, room_h = self._room()
+        width, height = self.size_inches()
+        return width <= room_w + 1e-6 and height <= room_h + 1e-6
+
+    @property
+    def _edge(self) -> float:
+        """How near the paper's edge the print may be put: the margin, less the marks' border
+        when it lies outside the printable area (Fit within printable area off)."""
+        return max(self.margin - (self._border - self._fit_border), 0.0)
+
+    def _room(self) -> tuple[float, float]:
+        """Where the print may be put: the page inside its margins, widened by the marks'
+        border when that lies outside the printable area."""
+        paper_w, paper_h = self._page()
+        return paper_w - 2 * self._edge, paper_h - 2 * self._edge
+
+    def page_position(self) -> tuple[float, float]:
+        """Where the print's top-left corner lands: inches from the paper's left and top."""
+        width, height = self.size_inches()
+        paper_w, paper_h = self._page()
+        if not self.placed or self.placement is None:
+            return (paper_w - width) / 2, (paper_h - height) / 2
+        left, top = self.placement
+        edge = self._edge
+        return (
+            min(max(left, edge), paper_w - edge - width),
+            min(max(top, edge), paper_h - edge - height),
+        )
+
+    def _on_page(self, image: NDArray[np.uint16], ppi: float) -> NDArray[np.uint16]:
+        """The image on clear film filling the page inside its margins, at its position. That
+        area prints centred on the page, so the negative lands where it was put."""
+        room_w, room_h = self._room()
+        height, width = image.shape[:2]
+        page_w, page_h = max(round(room_w * ppi), width), max(round(room_h * ppi), height)
+        left, top = self.page_position()
+        x = min(max(round((left - self._edge) * ppi), 0), page_w - width)
+        y = min(max(round((top - self._edge) * ppi), 0), page_h - height)
+        page = np.full((page_h, page_w, image.shape[2]), MAX_VALUE, dtype=np.uint16)
+        page[y : y + height, x : x + width] = image
+        return page
 
     # --- rendering ------------------------------------------------------------------
 
@@ -274,22 +463,57 @@ class PrintSession:
         the negative through the process curve, with its safe edge at `dpi`."""
         if self.negative:
             return self.render_layer(pixels, self.layer, dpi)
-        rgb = composite(pixels, PRESETS[self.preset])
+        dpi = dpi or self.effective_ppi()
+        rgb = composite(self._mirrored(pixels), PRESETS[self.preset])
         rgb = self.calibration.apply(rgb) if self.calibration else rgb
-        return add_print_marks(rgb, dpi or self.effective_ppi(), self.guide, self.registration)
+        printed = add_print_marks(rgb, dpi, self.guide, self.registration)
+        return self._with_print_wedges(printed, pixels.shape[:2], dpi, calibrated=True)
 
     def render_colour(
         self, rgb: NDArray[np.uint16], dpi: float | None = None
     ) -> NDArray[np.uint16]:
-        """A colour print: the photo's own colour, untouched, with any darkroom marks."""
-        return add_print_marks(rgb, dpi or self.effective_ppi(), self.guide, self.registration)
+        """A colour print: the photo's own colour, untouched, with any darkroom marks and wedges."""
+        dpi = dpi or self.effective_ppi()
+        printed = add_print_marks(self._mirrored(rgb), dpi, self.guide, self.registration)
+        return self._with_print_wedges(printed, rgb.shape[:2], dpi, colour=True)
+
+    def _mirrored(self, pixels: NDArray[np.uint16]) -> NDArray[np.uint16]:
+        """A print's photo flipped left to right when mirrored (for transfers); its marks and
+        wedges stay where they were put."""
+        return np.ascontiguousarray(pixels[:, ::-1]) if self.mirror else pixels
+
+    def _with_print_wedges(
+        self, image: NDArray[np.uint16], shape: tuple[int, ...], dpi: float,
+        calibrated: bool = False, colour: bool = False,
+    ) -> NDArray[np.uint16]:  # fmt: skip
+        """A print with its wedges: the grey wedge toned (and calibrated) like the photo, or
+        left neutral on a colour print, and the colour wedge."""
+        horizontal = self.wedge_side in ("top", "bottom")
+        length = shape[1] if horizontal else shape[0]
+        made = []
+        for kind in self.wedge_kinds:
+            if kind == "grey":
+                ramp = self._grey_wedge(length, dpi, self.wedge_side)
+                if colour:
+                    made.append(np.stack([ramp] * 3, -1))
+                    continue
+                rgb = composite(ramp, PRESETS[self.preset])
+                made.append(self.calibration.apply(rgb) if calibrated and self.calibration else rgb)
+            else:
+                row = max(1, round(wedges.COLOUR_ROW * dpi))
+                made.append(wedges.colour_wedge(length, row, horizontal))
+        return wedges.attach(
+            image, made, self.wedge_side, round(self.wedge_gap * dpi), self._wedge_fill()
+        )
 
     def render_print(self) -> NDArray[np.uint16]:
         """The full-resolution print: in colour, or rendered from the greyscale photo."""
         colour = self._colour()
         if self.prints_colour and colour is not None:
-            return self.render_colour(colour)
-        return self.render(self._source())
+            image = self.render_colour(colour)
+        else:
+            image = self.render(self._source())
+        return self._on_page(image, self.effective_ppi()) if self.placed else image
 
     def _source(self) -> NDArray[np.uint16]:
         """The pixels negatives are made from: the photo's colour for a colour separation
@@ -309,7 +533,48 @@ class PrintSession:
         self, pixels: NDArray[np.uint16], layer: int, dpi: float | None = None
     ) -> NDArray[np.uint16]:
         """Negative `layer` of the separation (any layer is the whole negative without one).
-        `pixels` are greyscale, or 16-bit colour (height, width, 3) for a colour separation."""
+        `pixels` are greyscale, or 16-bit colour (height, width, 3) for a colour separation.
+        A grey wedge is made into a negative the same way, with its own safe edge. Joined, it
+        runs the full width of the photo and its outline, and the gap between is opaque like
+        the safe edge; made separately, the gap is clear film."""
+        dpi = dpi or self.effective_ppi()
+        settings = self._negative_settings(layer if self.separated else None)
+        image = self._negative_layer(pixels, layer, dpi, settings)
+        if not self.wedge:
+            return image
+        side = self._wedge_side()
+        horizontal = side in ("top", "bottom")
+        length = pixels.shape[1] if horizontal else pixels.shape[0]
+        if not self.wedge_separate:  # as long as the photo and its outline, edge to edge
+            length += 2 * round(settings.outline * dpi)
+        ramp = self._grey_wedge(length, dpi, side)
+        if self.colour_separation is not None:
+            ramp = np.stack([ramp] * 3, -1)
+        bare = replace(settings, outline=0.0, guide=False, registration=False, mark=False,
+                       label=0, clear_targets=False)  # fmt: skip
+        wedge = self._negative_layer(ramp, layer, dpi, bare)
+        gap, edge = round(self.wedge_gap * dpi), round(settings.safe_edge * dpi)
+        height, width = wedge.shape[:2]
+        if self.wedge_separate or edge == 0:
+            return wedges.attach(image, [wedge], side, gap, self._wedge_fill())
+        if self.wedge_background != "colour":  # joined, the space black or clear
+            wedge = {"top": wedge[: height - edge], "bottom": wedge[edge:],
+                     "left": wedge[:, : width - edge], "right": wedge[:, edge:]}[side]  # fmt: skip
+            return wedges.attach(image, [wedge], side, gap, self._wedge_fill())
+        # Joined: the wedge's inner safe edge becomes the gap, opaque like the safe edge.
+        if side == "bottom":
+            wedge = np.concatenate([np.repeat(wedge[:1], gap, 0), wedge[edge:]], 0)
+        elif side == "top":
+            wedge = np.concatenate([wedge[: height - edge], np.repeat(wedge[-1:], gap, 0)], 0)
+        elif side == "right":
+            wedge = np.concatenate([np.repeat(wedge[:, :1], gap, 1), wedge[:, edge:]], 1)
+        else:
+            wedge = np.concatenate([wedge[:, : width - edge], np.repeat(wedge[:, -1:], gap, 1)], 1)
+        return wedges.attach(image, [wedge], side, 0)
+
+    def _negative_layer(
+        self, pixels: NDArray[np.uint16], layer: int, dpi: float, settings: NegativeSettings
+    ) -> NDArray[np.uint16]:
         if self.colour_separation is not None:
             pixels = colour_coat_image(pixels, self.colour_separation, layer)
             process = self.layer_process(layer)
@@ -324,8 +589,7 @@ class PrintSession:
             process = self.layer_process(layer)
         if process is not None:
             pixels = process.apply(pixels)
-        settings = self._negative_settings(layer if self.separated else None)
-        return make_negative(pixels, settings, dpi or self.effective_ppi())
+        return make_negative(pixels, settings, dpi)
 
     def preview(self, max_side: int = 900) -> NDArray[np.uint8]:
         """An 8-bit RGB preview of the toned photo (without calibration: what you'll see).
@@ -356,9 +620,17 @@ class PrintSession:
                 source = shrink(source)
             shown = self.render(source, dpi=self.effective_ppi() * scale)
             return (shown >> 8).astype(np.uint8)
-        toned = composite(shrink(pixels), PRESETS[self.preset])
-        shown = add_print_marks(toned, self.effective_ppi() * scale, self.guide, self.registration)
+        small = shrink(pixels)
+        dpi = self.effective_ppi() * scale
+        toned = composite(self._mirrored(small), PRESETS[self.preset])
+        shown = add_print_marks(toned, dpi, self.guide, self.registration)
+        shown = self._with_print_wedges(shown, small.shape, dpi)
         return (shown >> 8).astype(np.uint8)
+
+    @property
+    def _fit_border(self) -> float:
+        """The border the fit allows for: none when the marks lie outside the printable area."""
+        return self._border if self.marks_in_fit else 0.0
 
     @property
     def _border(self) -> float:
@@ -368,10 +640,43 @@ class PrintSession:
             return self.outline + self.safe_edge
         return PRINT_BORDER if self.guide or self.registration else 0.0
 
+    def _wedge_lines(self) -> list[str]:
+        where = {"top": "above", "bottom": "below", "left": "left of", "right": "right of"}[
+            self.wedge_side
+        ]
+        thing = "negative" if self.negative else "print"
+        details = (["calibration style"] if self.wedge_style == "calibration" else []) + (
+            ["numbered"] if self.wedge_labels else []
+        )
+        names = {
+            "grey": f"Step wedge: {self.wedge_steps} steps, {self._length(self.wedge_width)} wide"
+            + (f" ({', '.join(details)})" if details else ""),
+            "colour": f"Colour wedge: {wedges.WEDGE_STEPS} hues",
+        }
+        away = f"{self._length(self.wedge_gap)} away" if self.wedge_gap else "joined to it"
+        if self.negative and self.wedge_separate:
+            away += ", made separately"
+        if self.wedge_background != "colour":
+            away += f", on {self.wedge_background}"
+        return [f"{names[kind]}, {where} the {thing}, {away}" for kind in self.wedge_kinds]
+
     def _marks_line(self) -> list[str]:
         named = ((self.guide, "guide line"), (self.registration, "registration marks"))
         marks = [name for on, name in named if on]
-        return [f"Darkroom marks: {' and '.join(marks)}"] if marks else []
+        outside = (
+            []
+            if self.marks_in_fit or not self._border
+            else ["Fit: the photo alone; its border lies outside the printable area"]
+        )
+        return ([f"Darkroom marks: {' and '.join(marks)}"] if marks else []) + outside
+
+    def _position_line(self) -> list[str]:
+        if self.placement is None:
+            return []
+        if not self.placed:
+            return ["Position: centred (no room to move it inside the margins)"]
+        left, top = self.page_position()
+        return [f"Position: {self._length(left)} from the left, {self._length(top)} from the top"]
 
     def _length(self, inches: float) -> str:
         return length(inches, self.units)
@@ -416,13 +721,15 @@ class PrintSession:
                 f"Photo: {self.source.name if self.source else 'untitled'}",
                 "Output: digital negative",
                 f"Printer: {self.printer or 'not chosen'}",
-                f"Paper: {self.paper}",
+                f"Paper: {self._paper_name()}",
                 *self._within(),
                 f"Size: {size(width, height, self.units)} with a {self._length(self.safe_edge)} "
                 f"safe edge{outline}",
+                *self._position_line(),
                 *self._separation_lines(process),
                 f"Mirrored: {'yes' if self.mirror else 'no'}",
                 *self._marks_line(),
+                *self._wedge_lines(),
             ]
         if self.prints_colour:
             embedded = self._photo().icc_profile is not None
@@ -433,11 +740,14 @@ class PrintSession:
         return [
             f"Photo: {self.source.name if self.source else 'untitled'}",
             f"Printer: {self.printer or 'not chosen'}",
-            f"Paper: {self.paper}",
+            f"Paper: {self._paper_name()}",
             *self._within(),
             f"Size: {size(width, height, self.units)} at {self.effective_ppi():.0f} ppi",
+            *self._position_line(),
             *tones,
+            *(["Mirrored: yes"] if self.mirror else []),
             *self._marks_line(),
+            *self._wedge_lines(),
         ]
 
     # --- output ---------------------------------------------------------------------
@@ -473,7 +783,8 @@ class PrintSession:
             title += f" (negative {self.layer + 1} of {self.negative_count})"
         return PrintJob(
             path=path, printer=self.printer, paper=self.paper, ppi=self.effective_ppi(),
-            title=title,
+            landscape=self.landscape, title=title,
+            options=tuple(sorted(self.printer_options.items())),
         )  # fmt: skip
 
     def print(self, scratch: str | Path, runner: Runner = run_command) -> str:

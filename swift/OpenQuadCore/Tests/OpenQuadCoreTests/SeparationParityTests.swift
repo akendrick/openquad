@@ -106,6 +106,12 @@ struct SeparationParity {
             #expect(digest(negative.pixels) == expected["sha256"] as? String, "coated negative \(k + 1)")
         }
         #expect(try session.summary() == v["coated_summary"] as? [String])
+        session.wedge = true  // each negative's wedge goes through its own band and curve
+        for (k, expected) in (v["wedged"] as! [[String: Any]]).enumerated() {
+            let negative = try session.renderLayer(photo.pixels, width: photo.width, height: photo.height, layer: k)
+            #expect(digest(negative.pixels) == expected["sha256"] as? String, "wedged negative \(k + 1)")
+        }
+        session.wedge = false
         try session.setCoatsCurve(nil)
         #expect(session.coatsCurvePath == nil)
         // The shown negative is the one printed, and each can have its own curve.
@@ -116,6 +122,9 @@ struct SeparationParity {
         #expect(session.layerProcessPaths[2] != nil)
         session.printer = "Canon"
         #expect(try session.printJob(URL(fileURLWithPath: "/tmp/x.tif")).title?.hasSuffix("(negative 2 of 3)") == true)
+        session.printerOptions = ["CNIJPrintQuality": "0", "CNIJMediaType": "28"]
+        let command = try session.printJob(URL(fileURLWithPath: "/tmp/x.tif")).command()
+        #expect(Array(command.suffix(5).prefix(4)) == ["-o", "CNIJMediaType=28", "-o", "CNIJPrintQuality=0"])  // sorted
         let folder = try temporaryFolder()
         let written = try session.writeSeparations(folder)
         #expect(written.map(\.lastPathComponent) == ["photo-grey16-1of3.tif", "photo-grey16-2of3.tif", "photo-grey16-3of3.tif"])

@@ -75,6 +75,8 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
     public var registration: Bool
     /// The CUPS queue, or nil to choose in the macOS print panel.
     public var printer: String?
+    /// The printer's driver options (media type, quality) when printing straight to it.
+    public var printerOptions: [String: String]
     public var paper: String
     /// Several negatives printed coat over coat, or nil for one negative.
     public var separation: SetupSeparation?
@@ -84,7 +86,8 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
 
     public init(name: String, colour: String, process: String? = nil, mirror: Bool = false, safeEdge: Double = 0.25,
                 outline: Double = 0, guide: Bool = false, registration: Bool = false, printer: String? = nil,
-                paper: String = "Letter", separation: SetupSeparation? = nil, created: String = "") {
+                printerOptions: [String: String] = [:], paper: String = "Letter", separation: SetupSeparation? = nil,
+                created: String = "") {
         self.name = name
         self.colour = colour
         self.process = process
@@ -94,6 +97,7 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
         self.guide = guide
         self.registration = registration
         self.printer = printer
+        self.printerOptions = printerOptions
         self.paper = paper
         self.separation = separation
         self.created = created
@@ -111,6 +115,7 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
         var guide: Bool?  // absent in setups saved before darkroom marks
         var registration: Bool?
         var printer: String?
+        var printer_options: [String: String]?  // absent in setups saved before printer options
         var paper: String
         var separation: SetupSeparation.File?  // absent for one negative
         var created: String?
@@ -144,12 +149,13 @@ public struct NegativeSetup: Sendable, Equatable, Identifiable {
         return NegativeSetup(name: file.name, colour: file.colour, process: file.process, mirror: file.mirror,
                              safeEdge: min(max(file.safe_edge, 0), 2), outline: min(max(file.outline, 0), 1),
                              guide: file.guide ?? false, registration: file.registration ?? false, printer: file.printer,
-                             paper: file.paper, separation: separation, created: file.created ?? "")
+                             printerOptions: file.printer_options ?? [:], paper: file.paper, separation: separation, created: file.created ?? "")
     }
 
     public func encode() throws -> Data {
         let file = File(format: "openquad-setup", version: 1, name: name, colour: colour, process: process, mirror: mirror,
-                        safe_edge: safeEdge, outline: outline, guide: guide, registration: registration, printer: printer, paper: paper,
+                        safe_edge: safeEdge, outline: outline, guide: guide, registration: registration, printer: printer,
+                        printer_options: printerOptions.isEmpty ? nil : printerOptions, paper: paper,
                         separation: separation.map { s in
                             SetupSeparation.File(steps: s.steps, splits: s.splits, overlap: s.overlap,
                                                  curves: s.curves.isEmpty ? nil

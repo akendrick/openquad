@@ -13,7 +13,7 @@ struct SetupTests {
         let curveFile = folder.appendingPathComponent("cyanotype.oqproc")
         try ProcessCurve.identity(colour: "orange").encode().write(to: curveFile)
         let setup = NegativeSetup(name: "  Cyanotype on Pictorico ", colour: "orange", mirror: true, safeEdge: 0.3,
-                                  outline: 0.08, printer: "Epson_ET_2900", paper: "A4")
+                                  outline: 0.08, printer: "Epson_ET_2900", printerOptions: ["MediaType": "transparency"], paper: "A4")
         let saved = try library.save(setup, process: curveFile)
         #expect(saved.name == "Cyanotype on Pictorico" && saved.process == "cyanotype-on-pictorico.oqproc" && !saved.created.isEmpty)
         try FileManager.default.removeItem(at: curveFile)  // the setup keeps working without the original
@@ -22,8 +22,11 @@ struct SetupTests {
         let copy = try #require(library.processURL(listed))
         #expect(try ProcessCurve.decode(Data(contentsOf: copy)).colour == "orange")
 
+        #expect(listed.printerOptions == ["MediaType": "transparency"])
         var black = NegativeSetup(name: "Carbon", colour: "black")
         black = try library.save(black, process: nil)
+        let encoded = String(decoding: try black.encode(), as: UTF8.self)
+        #expect(black.printerOptions.isEmpty && !encoded.contains("printer_options"))
         #expect(library.all().map(\.name) == ["Carbon", "Cyanotype on Pictorico"] && black.process == nil)
         var changed = listed
         changed.mirror = false
