@@ -185,39 +185,37 @@ public struct ContentView: View {
     @ViewBuilder private var wedgeControls: some View {
         let negative = model.session.negative
         Toggle(negative ? "Step wedge" : "Black and white step wedge",
-               isOn: Binding(get: { model.session.wedge }, set: { model.setWedge($0) }))
+               isOn: model.binding(\.wedge, model.setWedge))
         if model.session.wedge {
-            Picker("Steps", selection: Binding(get: { model.session.wedgeSteps }, set: { model.setWedgeSteps($0) })) {
+            Picker("Steps", selection: model.binding(\.wedgeSteps, model.setWedgeSteps)) {
                 ForEach(Wedge.stepChoices, id: \.self) { Text("\($0)").tag($0) }
             }
             .pickerStyle(.segmented)
-            Picker("Style", selection: Binding(get: { model.session.wedgeStyle }, set: { model.setWedgeStyle($0) })) {
+            Picker("Style", selection: model.binding(\.wedgeStyle, model.setWedgeStyle)) {
                 Text("Strip").tag("strip")
                 Text("Calibration target").tag("calibration")
             }
             LengthStepper(title: "Width", inches: model.session.wedgeWidth, range: Wedge.minWidth...Wedge.maxWidth,
                           inchStep: 0.05, mmStep: 1, units: model.units) { model.setWedgeWidth($0) }
-            Toggle("Number the steps", isOn: Binding(get: { model.session.wedgeLabels }, set: { model.setWedgeLabels($0) }))
+            Toggle("Number the steps", isOn: model.binding(\.wedgeLabels, model.setWedgeLabels))
         }
         if !negative && model.session.printsColour {
-            Toggle("Colour gamut wedge", isOn: Binding(get: { model.session.colourWedge }, set: { model.setColourWedge($0) }))
+            Toggle("Colour gamut wedge", isOn: model.binding(\.colourWedge, model.setColourWedge))
         }
         if !model.session.wedgeKinds.isEmpty {
-            Picker("Side", selection: Binding(get: { model.session.wedgeSide }, set: { model.setWedgeSide($0) })) {
+            Picker("Side", selection: model.binding(\.wedgeSide, model.setWedgeSide)) {
                 ForEach(Wedge.sides, id: \.self) { Text($0.capitalized).tag($0) }
             }
             .pickerStyle(.segmented)
             LengthStepper(title: "Space from the photo", inches: model.session.wedgeGap, range: 0...Wedge.maxGap,
                           inchStep: 0.05, mmStep: 1, units: model.units) { model.setWedgeGap($0) }
-            Picker("Background", selection: Binding(get: { model.session.wedgeBackground },
-                                                    set: { model.setWedgeBackground($0) })) {
+            Picker("Background", selection: model.binding(\.wedgeBackground, model.setWedgeBackground)) {
                 Text(negative ? "Colour (the negative's own)" : "Colour (the paper)").tag("colour")
                 Text("Black").tag("black")
                 Text("White").tag("white")
             }
             if negative {
-                Toggle("Create wedge separately", isOn: Binding(get: { model.session.wedgeSeparate },
-                                                                set: { model.setWedgeSeparate($0) }))
+                Toggle("Create wedge separately", isOn: model.binding(\.wedgeSeparate, model.setWedgeSeparate))
             }
         }
         Text(negative
@@ -231,18 +229,18 @@ public struct ContentView: View {
     }
 
     @ViewBuilder private var printerAndPaper: some View {
-        Toggle("Mirror (flip left to right)", isOn: Binding(get: { model.session.mirror }, set: { model.setMirror($0) }))
-        Picker("Printer", selection: Binding(get: { model.session.printer }, set: { model.setPrinter($0) })) {
+        Toggle("Mirror (flip left to right)", isOn: model.binding(\.mirror, model.setMirror))
+        Picker("Printer", selection: model.binding(\.printer, model.setPrinter)) {
             Text("Choose in the print panel").tag(String?.none)
             ForEach(model.printers, id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ")).tag(String?.some($0)) }
             if let printer = model.session.printer, !model.printers.contains(printer) {
                 Text(printer.replacingOccurrences(of: "_", with: " ")).tag(String?.some(printer))
             }
         }
-        Picker("Paper", selection: Binding(get: { model.session.paper }, set: { model.setPaper($0) })) {
+        Picker("Paper", selection: model.binding(\.paper, model.setPaper)) {
             ForEach(paperOrder, id: \.self) { Text($0).tag($0) }
         }
-        Picker("Orientation", selection: Binding(get: { model.session.landscape }, set: { model.setLandscape($0) })) {
+        Picker("Orientation", selection: model.binding(\.landscape, model.setLandscape)) {
             Label("Portrait", systemImage: "rectangle.portrait").tag(false)
             Label("Landscape", systemImage: "rectangle").tag(true)
         }
@@ -275,7 +273,7 @@ public struct ContentView: View {
     /// as soon as it's open, so you know what "the photo's own" means.
     @ViewBuilder private var sizeControls: some View {
         Toggle("Fit to page (\(model.units.length(model.session.margin)) margins)",
-               isOn: Binding(get: { model.session.fit }, set: { model.setFit($0) }))
+               isOn: model.binding(\.fit, model.setFit))
         if model.session.fit { fitWithin }
         if !model.sizeDescription.isEmpty {
             LabeledContent("Print size") { Text(model.sizeDescription).multilineTextAlignment(.trailing) }
@@ -354,7 +352,7 @@ public struct ContentView: View {
     @ViewBuilder private var printControls: some View {
         if model.canPrintColour {
             Toggle("Print in colour (colour-managed printer)",
-                   isOn: Binding(get: { model.session.colourPrint }, set: { model.setColourPrint($0) }))
+                   isOn: model.binding(\.colourPrint, model.setColourPrint))
         }
         if model.session.printsColour { colourControls } else { greyControls }
     }
@@ -379,7 +377,7 @@ public struct ContentView: View {
     }
 
     @ViewBuilder private var greyControls: some View {
-        Picker("Toning", selection: Binding(get: { model.session.preset }, set: { model.setPreset($0) })) {
+        Picker("Toning", selection: model.binding(\.preset, model.setPreset)) {
             ForEach(presetLabels, id: \.0) { Text($0.1).tag($0.0) }
         }
         Picker("Calibration", selection: Binding(get: { model.currentCalibration?.url }, set: { model.setCalibration($0) })) {
@@ -448,7 +446,7 @@ public struct ContentView: View {
                 .help("Save or delete setups")
             }
         }
-        Picker("Ink colour", selection: Binding(get: { model.session.negativeColour }, set: { model.setNegativeColour($0) })) {
+        Picker("Ink colour", selection: model.binding(\.negativeColour, model.setNegativeColour)) {
             ForEach(Negative.colourOrder, id: \.self) { Text($0.capitalized).tag($0) }
         }
         .disabled(model.session.process != nil)  // the process curve decides the colour
@@ -468,7 +466,7 @@ public struct ContentView: View {
     /// printable area with the photo: set once per process, then left alone.
     @ViewBuilder private var registrationOptions: some View {
         if model.session.negative { negativeEdges }
-        Toggle("Fit within printable area", isOn: Binding(get: { model.session.marksInFit }, set: { model.setMarksInFit($0) }))
+        Toggle("Fit within printable area", isOn: model.binding(\.marksInFit, model.setMarksInFit))
         if !model.session.marksInFit {
             Text(model.session.negative
                  ? "The photo fits the page on its own; the safe edge, outline and marks lie outside it, in the margins."
@@ -648,5 +646,13 @@ struct FoldingSection<Content: View>: View {
             .accessibilityValue(open ? "open" : "closed: \(summary)")
             if open { content }
         }
+    }
+}
+
+extension AppModel {
+    /// A binding for a control: reads the session and changes it through `set`, the model's
+    /// setter (which checks, remembers and redraws).
+    func binding<Value>(_ path: KeyPath<PrintSession, Value>, _ set: @escaping (Value) -> Void) -> Binding<Value> {
+        Binding(get: { self.session[keyPath: path] }, set: { set($0) })
     }
 }
