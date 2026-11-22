@@ -7,7 +7,8 @@ does to every tone. The colour wedge is 31 hues round the colour wheel in three 
 tint, the full colour and a shade), to see how much of the colour the printer reaches.
 
 The grey wedge has 11, 21, 31 or 51 steps, any width from 0.2 to 1 in, and comes as a plain
-strip or in the style of the printer calibration target: two rows (white to black, then
+strip, in ChartThrob's style (a 21-step strip with a smooth gradient bar beside it) or in the
+style of the printer calibration target: two rows (white to black, then
 black to white) inside a thin black frame. Its steps can be numbered in a band beside it.
 
 A wedge is as long as the photo's side it sits along, and sits `gap` inches from the
@@ -28,7 +29,8 @@ WEDGE_STEPS = 31
 STEP_CHOICES = (11, 21, 31, 51)
 WEDGE_WIDTH = 0.4  # inches across the grey wedge
 MIN_WIDTH, MAX_WIDTH = 0.2, 1.0
-STYLES = ("strip", "calibration")
+STYLES = ("strip", "calibration", "chartthrob")
+CHARTTHROB_STEPS = 21  # ChartThrob's style: always this many steps, with a gradient bar beside them
 #: What fills the space between the photo and its wedges: "colour" (on a negative its own
 #: colour, opaque like the safe edge; on a print, white paper), "black" or "white".
 BACKGROUNDS = ("colour", "black", "white")
@@ -69,14 +71,22 @@ def _level(i: int, steps: int) -> int:
 
 
 def _grey_area(
-    length: int, thickness: int, steps: int, calibration: bool, frame: int
+    length: int, thickness: int, steps: int, calibration: bool, frame: int, gradient: bool = False
 ) -> NDArray[np.uint16]:
     """The wedge itself, laid out horizontally: (thickness, length)."""
     area = np.full((thickness, length), MAX_VALUE, dtype=np.uint16)
     offset, edges = _patches(length, thickness, steps, calibration, frame)
     if not calibration:
+        # ChartThrob's style: the steps take the first 3/5 of the width, a gap, then the gradient.
+        strip_rows = (
+            max(1, thickness * 3 // 5) if gradient and thickness >= 3 and length >= 2 else thickness
+        )
         for i in range(steps):
-            area[:, edges[i] : edges[i + 1]] = _level(i, steps)
+            area[:strip_rows, edges[i] : edges[i + 1]] = _level(i, steps)
+        if strip_rows < thickness:
+            start = min(thickness - 1, strip_rows + max(1, thickness // 20))
+            for x in range(length):
+                area[start:, x] = round(MAX_VALUE * (1 - x / (length - 1)))
         return area
     f = offset // 2
     if f:
@@ -127,17 +137,18 @@ def _label_band(
 def grey_wedge(
     length: int, thickness: int, horizontal: bool, steps: int = WEDGE_STEPS,
     calibration: bool = False, frame: int = 0, band: int = 0, band_first: bool = False,
+    gradient: bool = False,
 ) -> NDArray[np.uint16]:  # fmt: skip
     """The grey wedge, greyscale (0 black, 65535 white): white to black, left to right (or
     top to bottom), `length` x `thickness` pixels, plus a `band` of step numbers beside it
     (before the wedge if `band_first`). The calibration style has two rows inside a black
-    frame `frame` pixels wide."""
+    frame `frame` pixels wide; with `gradient`, a bar beside the steps fades white to black."""
     if length < 1 or thickness < 1:
         raise ValueError("the wedge has no pixels")
     if steps < 2:
         raise ValueError(f"a wedge needs at least 2 steps, got {steps}")
     calibration = calibration and thickness >= 2
-    wedge = _grey_area(length, thickness, steps, calibration, frame)
+    wedge = _grey_area(length, thickness, steps, calibration, frame, gradient)
     if not horizontal:
         wedge = np.ascontiguousarray(wedge.T)
     if band < 1:
