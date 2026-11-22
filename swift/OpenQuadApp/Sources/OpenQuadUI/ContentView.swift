@@ -89,13 +89,12 @@ public struct ContentView: View {
                         Text("Position on the page")
                     }
                 }
-                FoldingSection(title: "Marks", summary: registrationSummary, open: $openMarks) {
+                FoldingSection(title: "Registration and step wedges", summary: registrationSummary, open: $openMarks) {
                     registrationOptions
                     DarkroomMarks(guide: model.session.guide, registration: model.session.registration,
                                   negative: model.session.negative, units: model.units,
                                   setGuide: model.setGuide, setRegistration: model.setRegistration)
-                }
-                FoldingSection(title: "Step wedge", summary: model.wedgeDescription, open: $openWedges) {
+                    Text("Step wedge").font(.subheadline.weight(.semibold)).padding(.top, 4)
                     wedgeControls
                 }
             }
@@ -523,6 +522,7 @@ public struct ContentView: View {
         if model.session.guide { set.append("guide line") }
         if model.session.registration { set.append("marks") }
         if !model.session.marksInFit { set.append("outside") }
+        if model.wedgeDescription != "none" { set.append("wedge \(model.wedgeDescription)") }
         return set.isEmpty ? "none" : set.joined(separator: ", ")
     }
 
