@@ -34,6 +34,11 @@ public struct ContentView: View {
                 .frame(minWidth: 320, idealWidth: 340, maxWidth: 420)
             previewPane
                 .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity)
+                .dropDestination(for: URL.self) { urls, _ in
+                    guard let url = urls.first else { return false }
+                    model.openPhoto(url)
+                    return true
+                }
         }
         .frame(minWidth: 820, minHeight: 600)
         .alert("Save Negative Setup", isPresented: $savingSetup) {
@@ -74,17 +79,6 @@ public struct ContentView: View {
                 } else {
                     FoldingSection(title: "Toning and calibration", summary: toningSummary, open: $openToning) { printControls }
                 }
-                FoldingSection(title: "Registration and step wedges", summary: registrationSummary, open: $openMarks) {
-                    registrationOptions
-                    DarkroomMarks(guide: model.session.guide, registration: model.session.registration,
-                                  negative: model.session.negative, units: model.units,
-                                  setGuide: model.setGuide, setRegistration: model.setRegistration)
-                    DisclosureGroup(isExpanded: $openWedges) {
-                        wedgeControls
-                    } label: {
-                        LabeledContent("Step wedges") { Text(model.wedgeDescription).foregroundStyle(.secondary) }
-                    }
-                }
                 FoldingSection(title: "Printer and size", summary: [pageSummary, sizeSummary].joined(separator: ", "),
                                open: $openPage) {
                     printerAndPaper
@@ -94,6 +88,15 @@ public struct ContentView: View {
                     } label: {
                         Text("Position on the page")
                     }
+                }
+                FoldingSection(title: "Marks", summary: registrationSummary, open: $openMarks) {
+                    registrationOptions
+                    DarkroomMarks(guide: model.session.guide, registration: model.session.registration,
+                                  negative: model.session.negative, units: model.units,
+                                  setGuide: model.setGuide, setRegistration: model.setRegistration)
+                }
+                FoldingSection(title: "Step wedge", summary: model.wedgeDescription, open: $openWedges) {
+                    wedgeControls
                 }
             }
             .controlSize(.small)
@@ -117,18 +120,35 @@ public struct ContentView: View {
                     .foregroundStyle(.red)
                     .padding(.horizontal)
             }
+            if let reason = printBlockedReason {
+                Label(reason, systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal)
+            }
             HStack {
                 Button("Save Print File…", action: savePrintFile)
                     .disabled(model.session.photo == nil || model.busy)
                 Spacer()
-                if model.busy { ProgressView().controlSize(.small) }
+                if model.busy {
+                    ProgressView().controlSize(.small)
+                    Text("Working…").font(.callout).foregroundStyle(.secondary)
+                }
                 Button("Print…", action: printPhoto)
                     .keyboardShortcut("p")
                     .buttonStyle(.borderedProminent)
                     .disabled(!model.canPrint)
+                    .help(printBlockedReason ?? "Print this photo")
             }
             .padding()
         }
+    }
+
+    /// Why Print… is unavailable, when a photo is open but cannot be printed as set.
+    private var printBlockedReason: String? {
+        guard model.session.photo != nil, !model.busy, !model.canPrint else { return nil }
+        return "The photo is larger than the paper at this size: turn on “Scale to fill the page” or choose larger paper."
     }
 
     /// The photo: its name and size on one line, with Open beside it.
@@ -167,16 +187,13 @@ public struct ContentView: View {
                     .frame(width: 64)
                     .multilineTextAlignment(.trailing)
                     .disabled(model.session.fit)
+                    .help(model.session.fit ? "Scale to fill the page (under Printer and size) sets the resolution; turn it off to type one."
+                                            : "The resolution the print is made at")
                 Text("ppi")
             }
         }
-        if let own = model.photoResolutionDescription {
+        if !model.session.fit, let own = model.photoResolutionDescription {
             LabeledContent("Photo's own") { Text(own).multilineTextAlignment(.trailing) }
-        }
-        if model.session.fit {
-            Text("Fit to page (under Printer and size) sets the resolution; turn it off to type one.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -184,7 +201,7 @@ public struct ContentView: View {
     /// or through the process curve), and for a colour print the colour gamut wedge.
     @ViewBuilder private var wedgeControls: some View {
         let negative = model.session.negative
-        Toggle(negative ? "Step wedge" : "Black and white step wedge",
+        Toggle(negative ? "Grey step wedge" : "Grey step wedge",
                isOn: model.binding(\.wedge, model.setWedge))
         if model.session.wedge {
             Picker("Steps", selection: model.binding(\.wedgeSteps, model.setWedgeSteps)) {
@@ -231,7 +248,7 @@ public struct ContentView: View {
     @ViewBuilder private var printerAndPaper: some View {
         Toggle("Mirror (flip left to right)", isOn: model.binding(\.mirror, model.setMirror))
         Picker("Printer", selection: model.binding(\.printer, model.setPrinter)) {
-            Text("Choose in the print panel").tag(String?.none)
+            Text("Ask each time (print panel)").tag(String?.none)
             ForEach(model.printers, id: \.self) { Text($0.replacingOccurrences(of: "_", with: " ")).tag(String?.some($0)) }
             if let printer = model.session.printer, !model.printers.contains(printer) {
                 Text(printer.replacingOccurrences(of: "_", with: " ")).tag(String?.some(printer))
@@ -272,7 +289,7 @@ public struct ContentView: View {
     /// Fit or a set resolution, and the size that makes. The photo's own resolution is shown
     /// as soon as it's open, so you know what "the photo's own" means.
     @ViewBuilder private var sizeControls: some View {
-        Toggle("Fit to page (\(model.units.length(model.session.margin)) margins)",
+        Toggle("Scale to fill the page (\(model.units.length(model.session.margin)) margins)",
                isOn: model.binding(\.fit, model.setFit))
         if model.session.fit { fitWithin }
         if !model.sizeDescription.isEmpty {
@@ -466,7 +483,7 @@ public struct ContentView: View {
     /// printable area with the photo: set once per process, then left alone.
     @ViewBuilder private var registrationOptions: some View {
         if model.session.negative { negativeEdges }
-        Toggle("Fit within printable area", isOn: model.binding(\.marksInFit, model.setMarksInFit))
+        Toggle("Keep marks inside the printable area", isOn: model.binding(\.marksInFit, model.setMarksInFit))
         if !model.session.marksInFit {
             Text(model.session.negative
                  ? "The photo fits the page on its own; the safe edge, outline and marks lie outside it, in the margins."
@@ -506,7 +523,6 @@ public struct ContentView: View {
         if model.session.guide { set.append("guide line") }
         if model.session.registration { set.append("marks") }
         if !model.session.marksInFit { set.append("outside") }
-        if model.wedgeDescription != "none" { set.append("wedge \(model.wedgeDescription)") }
         return set.isEmpty ? "none" : set.joined(separator: ", ")
     }
 
@@ -561,8 +577,13 @@ public struct ContentView: View {
                     }
                 }
             } else {
-                ContentUnavailableView("Open a photo to begin", systemImage: "photo",
-                                       description: Text("Greyscale or colour, any size; printed in the tones you choose, or in colour."))
+                ContentUnavailableView {
+                    Label("Open a photo to begin", systemImage: "photo")
+                } description: {
+                    Text("Drop a photo here. Greyscale or colour, any size; printed in the tones you choose, or in colour.")
+                } actions: {
+                    Button("Open Photo…", action: openPhoto)
+                }
             }
         }
     }
