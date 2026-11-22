@@ -192,3 +192,16 @@ def test_app_collects_garbage_only_on_the_main_thread(qtbot) -> None:  # type: i
         assert timer.isActive() and timer.interval() == GC_INTERVAL_MS
     finally:
         timer.stop()
+
+
+def test_step_wedge_controls_and_the_chartthrob_style(window, qtbot, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
+    open_photo(window, qtbot, tmp_path)
+    assert not window.session.wedge and not window.wedge_style_box.isEnabled()
+    window.wedge_box.setChecked(True)
+    assert window.session.wedge and window.wedge_steps_box.isEnabled()
+    window.wedge_style_box.setCurrentIndex(window.wedge_style_box.findData("chartthrob"))
+    assert window.session.wedge_style == "chartthrob" and window.session.shown_wedge_steps == 21
+    assert not window.wedge_steps_box.isEnabled()  # ChartThrob's style is always 21 steps
+    window.wedge_side_box.setCurrentIndex(window.wedge_side_box.findData("right"))
+    assert window.session.wedge_side == "right"
+    assert window.preview_label.pixmap() is not None
