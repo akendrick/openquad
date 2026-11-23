@@ -1,6 +1,6 @@
 # Plan: colour calibration
 
-Status: phase 0 software built (Python), waiting for a real IT8.7/2 target. Written 2026-11-22.
+Status: phases 0 and 1 software built (Python), waiting for a real IT8.7/2 target and test prints. Written 2026-11-22.
 
 ## What this is for
 
@@ -79,6 +79,17 @@ vectors (`scripts/export_swift_vectors.py`), as now.
   needs to be finer.
 - `measure.py` generalises from wedge rows to a grid layout described by the target's JSON. Each
   patch gives scanner RGB → (scanner model) → L\*a\*b\*, normalised to the paper white.
+- **Built (2026-11-23):** `openquad.colour_target`, `openquad target --kind colour [--fine]` and
+  `openquad measure-colour`, Python only, tested on simulated prints and scans. Rather than
+  generalising `measure.py`, the colour target has its own module that reuses `find_frame`,
+  `count_marks` and median sampling. Patches run edge to edge inside the frame (0.43 in, 15 × 17 on
+  one page; 0.32 in for the fine target, 21 columns over two pages), the whole set shuffled with a
+  fixed seed. Page marks (one square for page 1, two for page 2) sit left of the frame, so scans
+  can be given in any order and either way up. Paper white is sampled from the bare strips above
+  and below the patches; a note is added if pages' paper white differs by more than 3%. With no
+  scanner model the scan is taken as sRGB and adapted to D50 (Bradford), so both paths give D50
+  XYZ. **Still to do:** print and scan the target on a real printer and check the measurements
+  repeat between prints.
 
 ### Phase 2: build the profile
 

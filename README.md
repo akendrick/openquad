@@ -150,6 +150,19 @@ Give `--corners` once if the target sat in the same place on every scan, or once
 `check.png` shows the sampled boxes; each should sit inside its patch. The report ends with a
 go/no-go verdict.
 
+Then print the colour target and measure it (phase 1). It prints like any photo (sRGB, at 100%);
+`--fine` makes a two-page target with 768 patches instead of 255:
+
+```bash
+openquad target --kind colour -o colour.tif      # also writes colour.json, the layout
+openquad measure-colour colour-scan.tif --target colour.json --scanner-model scanner.json \
+    -o colour-measured.json
+```
+
+Scan each page (Document mode, 300 ppi or more) and give the scans in any order, either way up.
+Without `--scanner-model` the scan is taken as sRGB. The measurement holds each patch's RGB sent
+and its colour measured (XYZ under D50, and L\*a\*b\* relative to the paper white).
+
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
 `--ppi`, `--copies` and `--option NAME=VALUE` (driver options) to change that.
 

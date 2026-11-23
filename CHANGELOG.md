@@ -7,6 +7,16 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Colour calibration, phase 1: the colour target and measuring it. `openquad target --kind colour`
+  writes a one-page target of 255 patches (a 6-level RGB grid, 21 greys, and the primaries and
+  secondaries as tints at three strengths), shuffled the same way every time, inside the black
+  frame the grey target uses, with its layout saved beside it as JSON; `--fine` makes a 9-level,
+  768-patch target over two pages, numbered with page marks. `openquad measure-colour SCAN...
+  --target LAYOUT [--scanner-model MODEL] -o OUT` finds each page's frame, reads which page it is
+  from its marks (turning a scan that came back upside down), samples every patch and the paper,
+  and saves each patch's RGB sent with its XYZ (D50, through the scanner model; or the scan taken
+  as sRGB) and L\*a\*b\* relative to the paper. Python only, tested on simulated prints. Core:
+  `openquad.colour_target`; `colour.linear_rgb_to_xyz` and `d65_to_d50` (Bradford).
 - Colour calibration, phase 0: measuring how well the scanner sees colour, from an IT8.7/2
   reflective target and its reference file. `openquad scanner-profile SCAN... --reference REF
   --corners "x,y x,y x,y x,y x,y"` (the centres of A1, A22, L1, GS0 and GS23) samples every patch,
