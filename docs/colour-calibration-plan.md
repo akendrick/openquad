@@ -1,6 +1,6 @@
 # Plan: colour calibration
 
-Status: proposal, nothing built yet. Written 2026-11-22.
+Status: phase 0 software built (Python), waiting for a real IT8.7/2 target. Written 2026-11-22.
 
 ## What this is for
 
@@ -61,6 +61,13 @@ vectors (`scripts/export_swift_vectors.py`), as now.
   relative consistency only.
 - New: `scanner_profile.py` (and the Swift port), a `scanner` entry in the calibration library,
   and `openquad scanner-profile` in the CLI.
+- **Built (2026-11-23):** `openquad.scanner_profile` and `openquad scanner-profile`, Python only,
+  tested on simulated scans. The target is located from five patch centres read off the scan
+  (A1, A22, L1, GS0, GS23); finding them automatically can come later. The model is fitted to the
+  average of the scans; repeatability is each patch's largest difference from that average. The
+  Swift port and the library entry wait for a go verdict on a real target (they're only needed by
+  the app, in phase 4). **Still to do:** buy an IT8.7/2 target, scan it on the MG3600 and the
+  ET-2900, and record the verdicts in `docs/hardware-tests.md`.
 
 ### Phase 1: colour target and measuring it
 

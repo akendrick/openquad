@@ -135,6 +135,21 @@ openquad linearize m3-corrected.json --calibration canon-plain-v3.oqcal -o canon
 ```
 A calibration is only valid for the printer, paper and driver settings it was made with.
 
+Before colour calibration (see [docs/colour-calibration-plan.md](docs/colour-calibration-plan.md)),
+check the scanner can measure colour, with an IT8.7/2 reflective target and its reference file.
+Scan the target two or three times (Document mode, 300 ppi or more, a different spot on the glass
+each time), read the centres of patches A1, A22, L1, GS0 and GS23 off the scan in pixels (any image
+editor shows them), and run:
+
+```bash
+openquad scanner-profile it8-1.jpg it8-2.jpg it8-3.jpg --reference R190808.txt \
+    --corners "212,388 2318,391 209,1446 212,1690 2318,1693" --check-image check.png -o scanner.json
+```
+
+Give `--corners` once if the target sat in the same place on every scan, or once per scan.
+`check.png` shows the sampled boxes; each should sit inside its patch. The report ends with a
+go/no-go verdict.
+
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
 `--ppi`, `--copies` and `--option NAME=VALUE` (driver options) to change that.
 
