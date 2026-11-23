@@ -270,6 +270,7 @@ struct CoatRow: View {
             Button { model.removeCoat(index) } label: { Image(systemName: "minus.circle") }
                 .buttonStyle(.borderless)
                 .disabled(model.colourCoats.count <= ColourSeparation.minCoats)
+                .accessibilityLabel("Remove coat \(index + 1)")
                 .help("Remove coat \(index + 1)")
         }
     }

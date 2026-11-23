@@ -270,7 +270,13 @@ public struct ContactSheetView: View {
             Form {
                 Section("Photos (\(model.entries.count) of \(ContactSheet.maxPhotos))") {
                     Button("Add Photos…", action: addPhotos)
+                        .keyboardShortcut("o")
                         .disabled(!model.canAdd)
+                    if model.entries.isEmpty {
+                        Text("No photos yet. Add some, or drop them on this window.")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    } else {
                     List {
                         ForEach(model.entries) { entry in
                             HStack {
@@ -282,6 +288,7 @@ public struct ContactSheetView: View {
                                     Image(systemName: "minus.circle")
                                 }
                                 .buttonStyle(.borderless)
+                                .accessibilityLabel("Remove \(entry.url.lastPathComponent)")
                                 .help("Remove from the sheet")
                             }
                         }
@@ -291,6 +298,7 @@ public struct ContactSheetView: View {
                     Text("Drag to reorder, or drop photos on the sheet.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                    }
                 }
                 Section("Sheet") {
                     Picker("Orientation", selection: Binding(get: { model.landscape }, set: { model.setLandscape($0) })) {
@@ -309,7 +317,7 @@ public struct ContactSheetView: View {
                                                                            set: { value in model.update { $0.crop = value } }))
                     Toggle("File names", isOn: Binding(get: { model.layout.labels },
                                                        set: { value in model.update { $0.labels = value } }))
-                    Toggle("Greyscale step wedge", isOn: Binding(get: { model.layout.wedge },
+                    Toggle("Grey step wedge", isOn: Binding(get: { model.layout.wedge },
                                                                  set: { value in model.update { $0.wedge = value } }))
                     LengthStepper(title: "Space between", inches: model.layout.gap, range: 0...1, inchStep: 0.05, mmStep: 1,
                                   units: model.units) { value in model.update { $0.gap = value } }
@@ -342,13 +350,15 @@ public struct ContactSheetView: View {
                 if model.busy && model.loading == nil { ProgressView().controlSize(.small) }
                 Spacer()
                 if let close { Button("Cancel", action: close) }
-                Button("Make a Negative") { make(for: .negative) }
+                Button("Send to Negative Tab") { make(for: .negative) }
                     .disabled(model.entries.isEmpty || model.busy)
-                    .help("Make the sheet for the Negative tab's page and open it there")
-                Button("Print It") { make(for: .print) }
+                    .help(model.entries.isEmpty ? "Add photos first"
+                          : "Make the sheet for the Negative tab's page and open it there")
+                Button("Send to Print Tab") { make(for: .print) }
                     .keyboardShortcut(.defaultAction)
                     .disabled(model.entries.isEmpty || model.busy)
-                    .help("Make the sheet for the Print tab's page and open it there")
+                    .help(model.entries.isEmpty ? "Add photos first"
+                          : "Make the sheet for the Print tab's page and open it there")
             }
             .padding()
         }

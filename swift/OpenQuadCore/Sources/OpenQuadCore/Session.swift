@@ -393,7 +393,7 @@ public struct PrintSession: Sendable {
     }
 
     /// How near the paper's edge the print may be put: the margin, less the marks' border when
-    /// it lies outside the printable area (Fit within printable area off).
+    /// it lies outside the printable area (Keep marks inside the printable area off).
     var edge: Double { max(margin - (border - fitBorder), 0) }
 
     /// Where the print may be put, (width, height) in inches: the page inside its margins,
