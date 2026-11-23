@@ -195,11 +195,13 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- How to Use OpenQuad is now a guide for each tab: a Start Here page and a page per tab, each saying
-  what the tab is for, with step-by-step walkthroughs of the things you do there (24 in all, from
-  printing a colour photo to splitting a photo into tricolour negatives). The ? button and Help
-  menu open it on the tab you're using; first launch opens Start Here, and Next walks through
-  every walkthrough in turn. Guide version 32, so it shows again once.
+- Walkthroughs on every tab: Walkthroughs in the toolbar (or Help ▸ Walkthroughs for This Tab)
+  opens a panel beside the tab saying what the tab is for, with step-by-step walkthroughs of the
+  things you do there (20 across the five tabs, from printing a colour photo to splitting a photo
+  into tricolour negatives), to follow while you work. The panel shows whichever tab is in front,
+  remembers the walkthrough chosen on each, and stays open or closed as you left it. How to Use
+  OpenQuad, the intro on first launch, is now Start Here alone (four walkthroughs); guide version
+  32, so it shows again once.
 - Registration and Step wedges are one section, Registration and step wedges; the wedges fold
   away inside it.
 

@@ -1,6 +1,6 @@
-// "How to Use OpenQuad": a page for each tab, saying what the tab is for, with step-by-step
-// walkthroughs of the things you do there. Shown on first launch (and when it changes) from
-// Start Here, and from the Help menu or the toolbar's ? on the tab you're using.
+// The walkthroughs: for each tab, what it's for and step-by-step walkthroughs of the things you
+// do there, shown beside the tab (TabWalkthroughs.swift). Also "How to Use OpenQuad", the intro
+// (Start Here only), shown on first launch (and when it changes) and from the Help menu.
 
 import SwiftUI
 
@@ -8,6 +8,8 @@ public struct GuideView: View {
     /// Raise when the guide changes enough to show it again on launch.
     public static let version = 32
     public static let showNotification = Notification.Name("OpenQuadShowGuide")
+    /// Shows the walkthroughs beside the tab in front.
+    public static let showWalkthroughsNotification = Notification.Name("OpenQuadShowWalkthroughs")
 
     /// One thing you do, from start to finish.
     struct Walkthrough {
@@ -36,13 +38,17 @@ public struct GuideView: View {
         pages.firstIndex { $0.tab == tab } ?? 0
     }
 
+    /// A tab's walkthroughs.
+    static func page(for tab: AppTab) -> Page { pages[pageIndex(for: tab)] }
+
     // MARK: Start Here
 
     static let startHerePage = Page(
         tab: nil, symbol: "sparkles", title: "Welcome to OpenQuad",
         purpose: "OpenQuad prints black-and-white photos with accurate, neutral tones on an ordinary inkjet printer, "
             + "and makes digital negatives for contact printing (carbon, cyanotype, gum and other UV processes). "
-            + "Each tab at the top does one job; this guide has a page for each, with walkthroughs.",
+            + "Each tab at the top does one job, and has its own walkthroughs: choose Walkthroughs in the "
+            + "toolbar and they open beside the tab, so you can follow the steps as you go.",
         walkthroughs: [
             Walkthrough(
                 title: "Find your way round",
@@ -56,8 +62,9 @@ public struct GuideView: View {
                     ("Process Calibration (⌘5)", "Finds the negative colour that blocks UV best for your process, "
                         + "then the curve that makes the print's tones land where they should."),
                     ("Switch freely", "Calibrate one printer, print on another and refine a process at the same "
-                        + "time; each tab keeps its photo and settings. The ? button opens the guide for the tab "
-                        + "you're on."),
+                        + "time; each tab keeps its photo and settings."),
+                    ("Walkthroughs", "The Walkthroughs button in the toolbar opens step-by-step help for the "
+                        + "tab you're on, beside your work. It stays open as you switch tabs, showing each tab's own."),
                 ]),
             Walkthrough(
                 title: "Your first black-and-white print",
@@ -384,7 +391,7 @@ public struct GuideView: View {
                     ("Size and marks", "Standard size, or Fit within a set size (e.g. your tissue). Darkroom marks "
                         + "help you place it under a red safelight."),
                     ("Print the test sheet", "On film, then expose it on your tissue at your usual time and develop it."),
-                    ("Scan the print", "When it's dry: Scan the Print, or Read a Scan File…. OpenQuad reads it any way "
+                    ("Scan the print", "When it's dry, Scan the Print (or Read a Scan File…); OpenQuad reads it any way "
                         + "up, tilted or mirrored."),
                     ("Pick the colour", "The report says which colours block fully and how many distinct steps each "
                         + "gives. Use the best one; Skip: I Know My Colour if you already know it."),
@@ -415,139 +422,114 @@ public struct GuideView: View {
                 ]),
         ])
 
-    // MARK: View
+    // MARK: View (the intro)
 
     let done: () -> Void
-    @State private var page: Int
     @State private var walkthrough: Int
     @Environment(\.dismiss) private var dismiss
 
-    /// Opens at `page` (0 is Start Here) and its `walkthrough`.
-    public init(page: Int = 0, walkthrough: Int = 0, done: @escaping () -> Void = {}) {
+    private static var intro: Page { startHerePage }
+
+    /// Opens at the intro's `walkthrough`.
+    public init(walkthrough: Int = 0, done: @escaping () -> Void = {}) {
         self.done = done
-        let page = min(max(page, 0), Self.pages.count - 1)
-        _page = State(initialValue: page)
-        _walkthrough = State(initialValue: min(max(walkthrough, 0), Self.pages[page].walkthroughs.count - 1))
-    }
-
-    /// Opens at the page for `tab` (Start Here for none).
-    public init(tab: AppTab?, done: @escaping () -> Void = {}) {
-        self.init(page: Self.pageIndex(for: tab), done: done)
-    }
-
-    private var isLast: Bool {
-        page == Self.pages.count - 1 && walkthrough == Self.pages[page].walkthroughs.count - 1
+        _walkthrough = State(initialValue: min(max(walkthrough, 0), Self.intro.walkthroughs.count - 1))
     }
 
     public var body: some View {
-        let current = Self.pages[page]
-        let shown = current.walkthroughs[walkthrough]
+        let intro = Self.intro
         VStack(alignment: .leading, spacing: 14) {
-            Picker("Guide page", selection: Binding(get: { page }, set: { go(to: $0, walkthrough: 0) })) {
-                ForEach(Self.pages.indices, id: \.self) { i in Text(Self.pages[i].name).tag(i) }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
             HStack(alignment: .top, spacing: 14) {
-                Image(systemName: current.symbol)
+                Image(systemName: intro.symbol)
                     .font(.system(size: 30))
                     .foregroundStyle(.tint)
                     .frame(width: 40)
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(current.title).font(.title.bold())
-                    Text(current.purpose).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(intro.title).font(.title.bold())
+                    Text(intro.purpose).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
-
             HStack(alignment: .top, spacing: 16) {
-                VStack(alignment: .leading, spacing: 2) {
-                    ForEach(current.walkthroughs.indices, id: \.self) { i in
-                        Button { walkthrough = i } label: {
-                            Text(current.walkthroughs[i].title)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 5)
-                                .background(i == walkthrough ? Color.accentColor.opacity(0.15) : .clear,
-                                            in: RoundedRectangle(cornerRadius: 6))
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(i == walkthrough ? .isSelected : [])
-                    }
-                    Spacer(minLength: 0)
-                }
-                .frame(width: 220)
-
+                WalkthroughList(walkthroughs: intro.walkthroughs, selection: $walkthrough)
+                    .frame(width: 220)
                 ScrollView {  // a long walkthrough scrolls instead of being clipped
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(shown.title).font(.title3.bold())
-                        Text(shown.summary).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        ForEach(Array(shown.steps.enumerated()), id: \.offset) { n, step in
-                            HStack(alignment: .top, spacing: 10) {
-                                Text("\(n + 1)")
-                                    .font(.callout.bold().monospacedDigit())
-                                    .foregroundStyle(.white)
-                                    .frame(width: 22, height: 22)
-                                    .background(Circle().fill(Color.accentColor))
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(step.action).bold()
-                                    Text(step.detail).fixedSize(horizontal: false, vertical: true)
-                                }
-                            }
-                            .accessibilityElement(children: .combine)
-                            .accessibilityLabel("Step \(n + 1): \(step.action). \(step.detail)")
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.trailing, 6)
+                    WalkthroughSteps(walkthrough: intro.walkthroughs[walkthrough])
+                        .padding(.trailing, 6)
                 }
-                .id("\(page)-\(walkthrough)")  // each walkthrough starts at its top
+                .id(walkthrough)  // each walkthrough starts at its top
             }
-
             HStack {
-                Text("\(current.name): \(walkthrough + 1) of \(current.walkthroughs.count)")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
+                Text("\(walkthrough + 1) of \(intro.walkthroughs.count)").font(.callout).foregroundStyle(.secondary)
                 Spacer()
                 Button("Close") { finish() }.keyboardShortcut(.cancelAction)
-                Button("Back") { back() }.disabled(page == 0 && walkthrough == 0)
-                if isLast {
-                    Button("Start Using OpenQuad") { finish() }.keyboardShortcut(.defaultAction)
+                Button("Back") { walkthrough -= 1 }.disabled(walkthrough == 0)
+                if walkthrough < intro.walkthroughs.count - 1 {
+                    Button("Next") { walkthrough += 1 }.keyboardShortcut(.defaultAction)
                 } else {
-                    Button("Next") { next() }.keyboardShortcut(.defaultAction)
+                    Button("Start Using OpenQuad") { finish() }.keyboardShortcut(.defaultAction)
                 }
             }
         }
         .padding(24)
-        .frame(width: 860, height: 600)
-    }
-
-    private func go(to page: Int, walkthrough: Int) {
-        self.page = page
-        self.walkthrough = walkthrough
-    }
-
-    /// The next walkthrough, then the next page's first.
-    private func next() {
-        if walkthrough < Self.pages[page].walkthroughs.count - 1 {
-            walkthrough += 1
-        } else if page < Self.pages.count - 1 {
-            go(to: page + 1, walkthrough: 0)
-        }
-    }
-
-    private func back() {
-        if walkthrough > 0 {
-            walkthrough -= 1
-        } else if page > 0 {
-            go(to: page - 1, walkthrough: Self.pages[page - 1].walkthroughs.count - 1)
-        }
+        .frame(width: 760, height: 560)
     }
 
     private func finish() {
         done()
         dismiss()
+    }
+}
+
+/// The walkthroughs' titles, to pick one.
+struct WalkthroughList: View {
+    let walkthroughs: [GuideView.Walkthrough]
+    @Binding var selection: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(walkthroughs.indices, id: \.self) { i in
+                Button { selection = i } label: {
+                    Text(walkthroughs[i].title)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(i == selection ? Color.accentColor.opacity(0.15) : .clear,
+                                    in: RoundedRectangle(cornerRadius: 6))
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(i == selection ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+        }
+    }
+}
+
+/// One walkthrough: its title, what it's for and its numbered steps.
+struct WalkthroughSteps: View {
+    let walkthrough: GuideView.Walkthrough
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(walkthrough.title).font(.title3.bold())
+            Text(walkthrough.summary).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            ForEach(Array(walkthrough.steps.enumerated()), id: \.offset) { n, step in
+                HStack(alignment: .top, spacing: 10) {
+                    Text("\(n + 1)")
+                        .font(.callout.bold().monospacedDigit())
+                        .foregroundStyle(.white)
+                        .frame(width: 22, height: 22)
+                        .background(Circle().fill(Color.accentColor))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(step.action).bold()
+                        Text(step.detail).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Step \(n + 1): \(step.action). \(step.detail)")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

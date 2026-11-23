@@ -69,6 +69,7 @@ struct GapsTests {
             #expect(pages[index].tab == tab && pages[index].name == tab.title)
         }
         #expect(GuideView.pageIndex(for: nil) == 0)
+        for tab in AppTab.allCases { #expect(GuideView.page(for: tab).tab == tab) }  // each tab's own, for its panel
         #expect(pages.count == AppTab.allCases.count + 1)
         for page in pages {
             #expect(!page.purpose.isEmpty)
