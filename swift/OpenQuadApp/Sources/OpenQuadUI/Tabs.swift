@@ -283,6 +283,8 @@ public final class AppRoot {
 public struct RootView: View {
     @Bindable var root: AppRoot
     @State private var showGuide = false
+    /// The tab the guide opens on; none for Start Here.
+    @State private var guideTab: AppTab?
     @AppStorage("guideSeen") private var guideSeen = 0
     let guideOnLaunch: Bool
 
@@ -315,17 +317,22 @@ public struct RootView: View {
         .toolbar {
             ToolbarItem(placement: .principal) { TabBar(selection: $root.tab) }
             ToolbarItem(placement: .primaryAction) {
-                Button { showGuide = true } label: { Label("How to Use OpenQuad", systemImage: "questionmark.circle") }
-                    .help("How to use OpenQuad")
+                Button { openGuide(root.tab) } label: { Label("How to Use OpenQuad", systemImage: "questionmark.circle") }
+                    .help("How to use this tab")
             }
         }
         .navigationTitle("")
-        .sheet(isPresented: $showGuide) { GuideView { guideSeen = GuideView.version } }
-        .onReceive(NotificationCenter.default.publisher(for: GuideView.showNotification)) { _ in showGuide = true }
+        .sheet(isPresented: $showGuide) { GuideView(tab: guideTab) { guideSeen = GuideView.version } }
+        .onReceive(NotificationCenter.default.publisher(for: GuideView.showNotification)) { _ in openGuide(root.tab) }
         .onAppear {
-            if guideOnLaunch && guideSeen < GuideView.version { showGuide = true }  // first launch: walk through the app
+            if guideOnLaunch && guideSeen < GuideView.version { openGuide(nil) }  // first launch: Start Here
             root.printModel.loadPrinters()  // whichever tab opens first, the wizards get the printers too
         }
+    }
+
+    private func openGuide(_ tab: AppTab?) {
+        guideTab = tab
+        showGuide = true
     }
 
     @ViewBuilder private var page: some View {

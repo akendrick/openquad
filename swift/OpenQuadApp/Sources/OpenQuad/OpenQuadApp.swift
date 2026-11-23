@@ -213,7 +213,8 @@ enum Snapshot {
             if let scan { test.read(file: scan) }
             return AnyView(BlockingTestView(model: test) { _ in })
         case "guide":
-            return AnyView(GuideView(page: value("--page").flatMap(Int.init) ?? 0))
+            return AnyView(GuideView(page: value("--page").flatMap(Int.init) ?? 0,
+                                     walkthrough: value("--walkthrough").flatMap(Int.init) ?? 0))
         case "contact-sheet":
             let sheet = ContactSheetModel(room: (7.5, 10), folder: folder)
             fillSheet(sheet)
