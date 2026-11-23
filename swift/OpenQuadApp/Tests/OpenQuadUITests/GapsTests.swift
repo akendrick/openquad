@@ -61,17 +61,32 @@ struct GapsTests {
         #expect(app.session.printer == nil)
     }
 
-    @Test func guideCoversEveryPart() {
-        let titles = GuideView.pages.map(\.title)
-        #expect(titles.count == 10 && titles.first == "Welcome to OpenQuad")
-        for part in ["Print a photo", "Calibrate your printer", "Digital negatives", "Contact sheets",
-                     "Find the best blocking colour", "Calibrate the process", "Multi-coat separations",
-                     "Colour separations"] {
+    @Test func guideHasAWalkthroughPageForEveryTab() {
+        let pages = GuideView.pages
+        #expect(pages.first?.tab == nil && pages.first?.name == "Start Here")
+        for tab in AppTab.allCases {  // every tab has its own page, and the ? opens it
+            let index = GuideView.pageIndex(for: tab)
+            #expect(pages[index].tab == tab && pages[index].name == tab.title)
+        }
+        #expect(GuideView.pageIndex(for: nil) == 0)
+        for tab in AppTab.allCases { #expect(GuideView.page(for: tab).tab == tab) }  // each tab's own, for its panel
+        #expect(pages.count == AppTab.allCases.count + 1)
+        for page in pages {
+            #expect(!page.purpose.isEmpty)
+            #expect(page.walkthroughs.count >= 2, "\(page.name) needs a variety of walkthroughs")
+            for walkthrough in page.walkthroughs {
+                #expect(walkthrough.steps.count >= 3, "\(page.name): \(walkthrough.title)")
+                #expect(walkthrough.steps.allSatisfy { !$0.action.isEmpty && !$0.detail.isEmpty })
+            }
+        }
+        let titles = pages.flatMap { $0.walkthroughs.map(\.title) }
+        #expect(Set(titles).count == titles.count)  // no two walkthroughs share a title
+        for part in ["Print a colour photo", "Split by tone: multi-coat negatives", "Split by colour: tricolour negatives",
+                     "Make one negative of many photos", "Calibrate a printer, round by round",
+                     "Step 1: find the best blocking colour", "Step 2: calibrate the process curve"] {
             #expect(titles.contains(part))
         }
-        #expect(GuideView.pages.allSatisfy { !$0.steps.isEmpty })
-        for tab in AppTab.allCases where tab != .print {  // every tab is explained
-            #expect(GuideView.pages.contains { $0.text.contains(tab.title) || $0.steps.joined().contains(tab.title) })
-        }
+        let text = pages.flatMap { [$0.purpose] + $0.walkthroughs.flatMap { $0.steps.map { $0.action + $0.detail } } }.joined()
+        #expect(!text.lowercased().contains("color") || text.contains("ColorSync"))  // always "colour"
     }
 }

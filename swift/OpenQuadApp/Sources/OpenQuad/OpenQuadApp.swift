@@ -82,6 +82,9 @@ struct OpenQuadApp: App {
             }
             CommandGroup(replacing: .help) {
                 Button("How to Use OpenQuad") { NotificationCenter.default.post(name: GuideView.showNotification, object: nil) }
+                Button("Walkthroughs for This Tab") {
+                    NotificationCenter.default.post(name: GuideView.showWalkthroughsNotification, object: nil)
+                }
                     .keyboardShortcut("?")
             }
         }
@@ -179,7 +182,8 @@ enum Snapshot {
 
     /// The print window, or (for a snapshot) one of the wizards, filled in from a scan.
     static func content(_ root: AppRoot) -> AnyView {
-        wizard ?? AnyView(RootView(root: root, guideOnLaunch: value("--snapshot") == nil))
+        wizard ?? AnyView(RootView(root: root, guideOnLaunch: value("--snapshot") == nil,
+                                walkthrough: value("--walkthrough").flatMap(Int.init)))
     }
 
     /// Built once: the scene's body is evaluated again on every change.
@@ -213,7 +217,7 @@ enum Snapshot {
             if let scan { test.read(file: scan) }
             return AnyView(BlockingTestView(model: test) { _ in })
         case "guide":
-            return AnyView(GuideView(page: value("--page").flatMap(Int.init) ?? 0))
+            return AnyView(GuideView(walkthrough: value("--walkthrough").flatMap(Int.init) ?? 0))
         case "contact-sheet":
             let sheet = ContactSheetModel(room: (7.5, 10), folder: folder)
             fillSheet(sheet)

@@ -284,11 +284,18 @@ public struct RootView: View {
     @Bindable var root: AppRoot
     @State private var showGuide = false
     @AppStorage("guideSeen") private var guideSeen = 0
+    /// The walkthroughs beside the tab: open or not (remembered), and which one each tab shows.
+    @State private var walkthroughsShown: Bool
+    @State private var walkthroughChoice: [AppTab: Int] = [:]
     let guideOnLaunch: Bool
+    let walkthrough: Int?
 
-    public init(root: AppRoot, guideOnLaunch: Bool = true) {
+    /// `walkthrough`: open the walkthroughs at that one for the first tab (for snapshots).
+    public init(root: AppRoot, guideOnLaunch: Bool = true, walkthrough: Int? = nil) {
         self.root = root
         self.guideOnLaunch = guideOnLaunch
+        self.walkthrough = walkthrough
+        _walkthroughsShown = State(initialValue: walkthrough != nil || UserDefaults.standard.bool(forKey: "walkthroughsShown"))
     }
 
     public var body: some View {
@@ -308,22 +315,40 @@ public struct RootView: View {
                 .background(Color.green.opacity(0.08))
                 Divider()
             }
-            page
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            HStack(spacing: 0) {
+                page
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if walkthroughsShown {  // the tab's walkthroughs, beside it
+                    Divider()
+                    TabWalkthroughsView(tab: root.tab, selection: $walkthroughChoice)
+                        .frame(width: 330)
+                        .frame(maxHeight: .infinity)
+                        .background(.background)
+                        .transition(.move(edge: .trailing))
+                }
+            }
+            .animation(.default, value: walkthroughsShown)
         }
-        .frame(minWidth: 900, minHeight: 620)
+        .frame(minWidth: walkthroughsShown ? 1100 : 900, minHeight: 620)
         .toolbar {
             ToolbarItem(placement: .principal) { TabBar(selection: $root.tab) }
             ToolbarItem(placement: .primaryAction) {
-                Button { showGuide = true } label: { Label("How to Use OpenQuad", systemImage: "questionmark.circle") }
-                    .help("How to use OpenQuad")
+                Button { walkthroughsShown.toggle() } label: { Label("Walkthroughs", systemImage: "questionmark.circle") }
+                    .help(walkthroughsShown ? "Hide the walkthroughs" : "Step-by-step walkthroughs for this tab, beside it")
             }
         }
         .navigationTitle("")
         .sheet(isPresented: $showGuide) { GuideView { guideSeen = GuideView.version } }
         .onReceive(NotificationCenter.default.publisher(for: GuideView.showNotification)) { _ in showGuide = true }
+        .onReceive(NotificationCenter.default.publisher(for: GuideView.showWalkthroughsNotification)) { _ in
+            walkthroughsShown = true
+        }
+        .onChange(of: walkthroughsShown) { _, shown in
+            if walkthrough == nil { UserDefaults.standard.set(shown, forKey: "walkthroughsShown") }  // not snapshots
+        }
         .onAppear {
-            if guideOnLaunch && guideSeen < GuideView.version { showGuide = true }  // first launch: walk through the app
+            if guideOnLaunch && guideSeen < GuideView.version { showGuide = true }  // first launch: the intro
+            if let walkthrough { walkthroughChoice[root.tab] = walkthrough }
             root.printModel.loadPrinters()  // whichever tab opens first, the wizards get the printers too
         }
     }
