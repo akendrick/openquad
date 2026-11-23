@@ -41,12 +41,12 @@ public struct GuideView: View {
                      "Calibration: pick one of your saved calibrations (Import… adds a file). Choosing a printer "
                         + "under Printer and size picks its newest calibration for that paper.",
                      "Resolution, at the top under the photo, shows the ppi the print is made at, with the photo's own "
-                        + "beside it. Fit to page (under Printer and size) sets it; turn Fit off to type one, and "
+                        + "beside it. Scale to fill the page (under Printer and size) sets it; turn it off to type one, and "
                         + "Photo's Own goes back to the photo's. Print size shows the result.",
-                     "Registration and step wedges: the darkroom marks, then the step wedges. Fit within printable area fits them with the photo (the photo "
+                     "Registration and step wedges: the darkroom marks, then the step wedge. Keep marks inside the printable area fits them with the photo (the photo "
                         + "shrinks a little); turn it off and the photo fits on its own, the marks outside it in the "
                         + "margins. Mirror (under Printer and size) flips the photo left to right, for transfers.",
-                     "Step wedges (under Registration and step wedges): a black and white wedge (toned and calibrated like the photo) and, for a colour "
+                     "Step wedge (under Registration and step wedges): a grey wedge (toned and calibrated like the photo) and, for a colour "
                         + "print, a colour gamut wedge. Choose 11, 21, 31 or 51 steps, a plain strip or the "
                         + "calibration target's style (two rows in a black frame) or ChartThrob's (21 steps with a gradient bar), its width, numbered steps, the "
                         + "side and the space from the photo. They're remembered.",
@@ -54,7 +54,7 @@ public struct GuideView: View {
                         + "for a wide photo. The print is sent turned to match; each tab remembers its own.",
                      "Position on the page (under Printer and size): Preview on the page shows the whole sheet; drag "
                         + "the print to put it anywhere inside the margins.",
-                     "Print… (⌘P). With \"Choose in the print panel\" the macOS panel opens: pick the printer and the "
+                     "Print… (⌘P). With \"Ask each time (print panel)\" the macOS panel opens: pick the printer and the "
                         + "same Media & Quality settings every time. Or pick a printer to print straight to it: its own "
                         + "Media type and Quality then appear under Printer and size, remembered for that printer.",
                      "Save Print File… writes the finished 16-bit file to print from another app at 100%."]),
@@ -80,7 +80,7 @@ public struct GuideView: View {
                         + "Once a process is calibrated, Save Setup… (in the ⋯ menu beside it) keeps it under a name, e.g. Cyanotype on Pictorico.",
                      "Ink colour and Process curve: both come from the Process Calibration tab (Calibrate a Process… is in the "
                         + "curve's Choose menu).",
-                     "Registration and step wedges holds Safe edge, Outline in black, Fit within printable area and the darkroom "
+                     "Registration and step wedges holds Safe edge, Outline in black, Keep marks inside the printable area and the darkroom "
                         + "marks; Mirror is under Printer and size. Lengths can be typed or stepped. Mirror if the film's printed side must face the tissue: the F cut into the safe "
                         + "edge reads correctly in the print when the mirror setting was right. Outline in black adds a "
                         + "border of the width you set between the safe edge and the photo.",
@@ -88,7 +88,7 @@ public struct GuideView: View {
                         + "side, crop marks at the corners), in the safe edge. Red and orange negatives all but vanish "
                         + "under a red safelight; black shows. The marks block UV like the safe edge, so they don't print. "
                         + "The Print tab offers them too, in a thin white border round the print.",
-                     "Step wedges (under Registration and step wedges): a step wedge beside the negative made with the same process curve, so the contact "
+                     "Step wedge (under Registration and step wedges): a step wedge beside the negative made with the same process curve, so the contact "
                         + "print shows how the process holds every tone, with the same choices as in Print. The space "
                         + "from the photo is opaque like the safe edge; Create wedge separately gives the wedge its own "
                         + "safe edge, with clear film between. Background sets that space to black or white instead.",
@@ -137,8 +137,8 @@ public struct GuideView: View {
              steps: ["Add Photos… (or drop them on the sheet); a bar shows each photo opening and the time left. Drag "
                         + "the list to change the order.",
                      "Choose portrait or landscape, a black or white background, whole photos or cropped to fill, "
-                        + "file names, and a greyscale step wedge to check the print's tones.",
-                     "Print It makes the sheet for the Print tab's page and opens it there; Make a Negative makes it "
+                        + "file names, and a grey step wedge to check the print's tones.",
+                     "Send to Print Tab makes the sheet for the Print tab's page and opens it there; Send to Negative Tab makes it "
                         + "for the Negative tab's page (inside its safe edge and outline)."]),
         Page(symbol: "square.grid.3x3.square", title: "Find the best blocking colour",
              text: "Process Calibration, step 1: a sheet of every negative colour, to find the one that blocks UV best.",
