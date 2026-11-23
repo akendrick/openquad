@@ -215,7 +215,31 @@ class MainWindow(QMainWindow):
             self.wedge_side_box.addItem(where.capitalize(), where)
         self.wedge_side_box.setCurrentIndex(self.wedge_side_box.findData(self.session.wedge_side))
         self.wedge_side_box.currentIndexChanged.connect(self._wedge_changed)
-        for box in (self.wedge_style_box, self.wedge_steps_box, self.wedge_side_box):
+        self.wedge_width_box = QDoubleSpinBox()
+        self.wedge_width_box.setRange(wedges.MIN_WIDTH, wedges.MAX_WIDTH)
+        self.wedge_width_box.setSingleStep(0.05)
+        self.wedge_width_box.setDecimals(2)
+        self.wedge_width_box.setSuffix(" in")
+        self.wedge_width_box.setValue(self.session.wedge_width)
+        self.wedge_width_box.valueChanged.connect(self._wedge_changed)
+        self.wedge_gap_box = QDoubleSpinBox()
+        self.wedge_gap_box.setRange(0.0, wedges.MAX_GAP)
+        self.wedge_gap_box.setSingleStep(0.05)
+        self.wedge_gap_box.setDecimals(2)
+        self.wedge_gap_box.setSuffix(" in")
+        self.wedge_gap_box.setValue(self.session.wedge_gap)
+        self.wedge_gap_box.valueChanged.connect(self._wedge_changed)
+        self.wedge_labels_box = QCheckBox("Number the steps")
+        self.wedge_labels_box.toggled.connect(self._wedge_changed)
+        self._wedge_widgets = (
+            self.wedge_style_box,
+            self.wedge_steps_box,
+            self.wedge_side_box,
+            self.wedge_width_box,
+            self.wedge_gap_box,
+            self.wedge_labels_box,
+        )
+        for box in self._wedge_widgets:
             box.setEnabled(False)  # until the wedge is switched on
 
         self.save_button = QPushButton("Save print file…")
@@ -250,6 +274,9 @@ class MainWindow(QMainWindow):
         form.addRow("Wedge style", self.wedge_style_box)
         form.addRow("Wedge steps", self.wedge_steps_box)
         form.addRow("Wedge side", self.wedge_side_box)
+        form.addRow("Wedge width", self.wedge_width_box)
+        form.addRow("Space from photo", self.wedge_gap_box)
+        form.addRow(self.wedge_labels_box)
         buttons = QHBoxLayout()
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.print_button)
@@ -454,13 +481,16 @@ class MainWindow(QMainWindow):
         """The step wedge and its style, steps and side; ChartThrob's style is always 21 steps."""
         style = self.wedge_style_box.currentData()
         on = self.wedge_box.isChecked()
-        self.wedge_style_box.setEnabled(on)
-        self.wedge_side_box.setEnabled(on)
+        for box in self._wedge_widgets:
+            box.setEnabled(on)
         self.wedge_steps_box.setEnabled(on and style != "chartthrob")
         self.session.wedge = self.wedge_box.isChecked()
         self.session.set_wedge_style(style)
         self.session.set_wedge_steps(self.wedge_steps_box.currentData())
         self.session.set_wedge_side(self.wedge_side_box.currentData())
+        self.session.set_wedge_width(self.wedge_width_box.value())
+        self.session.set_wedge_gap(self.wedge_gap_box.value())
+        self.session.wedge_labels = self.wedge_labels_box.isChecked()
         self._refresh()
 
     def _mirror_changed(self, checked: bool) -> None:

@@ -204,4 +204,11 @@ def test_step_wedge_controls_and_the_chartthrob_style(window, qtbot, tmp_path: P
     assert not window.wedge_steps_box.isEnabled()  # ChartThrob's style is always 21 steps
     window.wedge_side_box.setCurrentIndex(window.wedge_side_box.findData("right"))
     assert window.session.wedge_side == "right"
+    window.wedge_width_box.setValue(0.6)
+    window.wedge_gap_box.setValue(0.25)
+    window.wedge_labels_box.setChecked(True)
+    assert (window.session.wedge_width, window.session.wedge_gap) == (0.6, 0.25)
+    assert window.session.wedge_labels
+    window.wedge_box.setChecked(False)
+    assert not window.wedge_width_box.isEnabled() and not window.session.wedge
     assert window.preview_label.pixmap() is not None
