@@ -7,6 +7,17 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Colour calibration, phase 0: measuring how well the scanner sees colour, from an IT8.7/2
+  reflective target and its reference file. `openquad scanner-profile SCAN... --reference REF
+  --corners "x,y x,y x,y x,y x,y"` (the centres of A1, A22, L1, GS0 and GS23) samples every patch,
+  fits a scanner model (per-channel curves from the grey row, then a matrix or a second-order
+  polynomial to XYZ under D50), and reports CIEDE2000 against the reference: on the fitted
+  patches, on patches held out column by column, and between scans for repeatability. It ends
+  with a go/no-go verdict for the rest of colour calibration (held-out mean 2 or less, repeatable
+  within 1) and writes the model and report as JSON; `--check-image` outlines the sampled boxes.
+  Python only for now; the Swift port follows if the verdict is go. Core: `openquad.scanner_profile`;
+  `colour.xyz_to_lab` and `lab_to_xyz` with a white point, `D50_WHITE` and `delta_e_2000`
+  (checked against Sharma, Wu and Dalal's test pairs).
 - Orientation under Printer and size: Portrait or Landscape (the page turned on its side, for a
   wide photo), remembered for each tab. Fitting, placing and the page preview use the turned
   page; the print panel is set to match and a direct print is sent with `-o landscape`. Core:

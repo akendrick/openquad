@@ -61,6 +61,14 @@ from openquad.negative import (
 from openquad.paper import DEFAULT_MARGIN, box_ppi, fit_ppi
 from openquad.photo import load_photo
 from openquad.printing import PrintError, PrintJob, Runner, list_printers, run_command, send
+from openquad.scanner_profile import (
+    KINDS,
+    Corners,
+    draw_boxes,
+    profile_scanner,
+    read_reference,
+    save_report,
+)
 from openquad.separations import (
     DEFAULT_STEPS,
     MAX_SEPARATIONS,
@@ -334,6 +342,33 @@ def build_parser() -> argparse.ArgumentParser:
     lin.add_argument("measurement", type=Path, help="measurement of a target printed with CAL")
     lin.add_argument("--calibration", type=Path, required=True, help="CAL the target used")
     lin.add_argument("-o", "--output", type=Path, help="linearized calibration to write")
+
+    sp = commands.add_parser(
+        "scanner-profile", help="measure how well the scanner sees colour, from an IT8.7/2 target"
+    )
+    sp.add_argument(
+        "scans", type=Path, nargs="+", help="scans of the target (two or more for repeatability)"
+    )
+    sp.add_argument(
+        "--reference", type=Path, required=True, help="the target's CGATS reference file"
+    )
+    sp.add_argument(
+        "--corners",
+        action="append",
+        required=True,
+        help='patch centres in pixels, "x,y x,y x,y x,y x,y" for A1 A22 L1 GS0 GS23: '
+        "once for all the scans, or once per scan",
+    )
+    sp.add_argument(
+        "-o", "--output", type=Path, required=True, help="scanner model and report (JSON)"
+    )
+    sp.add_argument(
+        "--model", choices=("auto", *KINDS), default="auto", help="scanner model (default auto)"
+    )
+    sp.add_argument("--scanner", default="", help="scanner it was made for")
+    sp.add_argument(
+        "--check-image", type=Path, help="PNG of the first scan with the sampled boxes outlined"
+    )
     return parser
 
 
@@ -720,6 +755,25 @@ def _measure(args: argparse.Namespace) -> None:
     print(f"wrote {args.output}")
 
 
+def _scanner_profile(args: argparse.Namespace) -> None:
+    corners = [Corners.parse(text) for text in args.corners]
+    scans = [load_scan(path) for path in args.scans]
+    if args.check_image:
+        Image.fromarray(draw_boxes(scans[0], corners[0])).save(args.check_image)
+        print(f"wrote {args.check_image}")
+    report = profile_scanner(
+        scans,
+        corners,
+        read_reference(args.reference),
+        kind=args.model,
+        scanner=args.scanner,
+        reference_name=args.reference.name,
+    )
+    save_report(report, args.output)
+    print(report.summary())
+    print(f"wrote {args.output}")
+
+
 def _greybalance(args: argparse.Namespace) -> None:
     measurement = Measurement.from_json(args.measurement.read_text(encoding="utf-8"))
     calibration = build_calibration(
@@ -787,6 +841,8 @@ def main(
             _greybalance(args)
         elif args.command == "linearize":
             _linearize(args)
+        elif args.command == "scanner-profile":
+            _scanner_profile(args)
         else:
             parser.print_help()
     except (OSError, ValueError, PrintError, ScanError) as exc:
