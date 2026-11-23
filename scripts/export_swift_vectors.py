@@ -1075,16 +1075,19 @@ def session_vectors(directory: Path) -> tuple[dict[str, Any], list[Path]]:
     from openquad.wedge import grey_wedge
 
     grey_wedges = []
-    for length, thickness, horizontal, steps, calibration_style, frame, band, first in (
+    for length, thickness, horizontal, steps, calibration_style, frame, band, first, *rest in (
         (330, 24, True, 11, False, 0, 36, False), (200, 30, False, 21, True, 3, 48, True),
         (120, 40, True, 31, True, 2, 24, True), (510, 12, False, 51, False, 0, 60, False),
-        (60, 5, True, 11, True, 4, 0, False),
+        (60, 5, True, 11, True, 4, 0, False), (210, 40, True, 21, False, 0, 24, False, True),
+        (180, 30, False, 21, False, 0, 0, True, True), (50, 2, True, 21, False, 0, 0, False, True),
     ):  # fmt: skip
+        gradient = bool(rest and rest[0])
         made = grey_wedge(length, thickness, horizontal, steps, calibration_style, frame, band,
-                          first)  # fmt: skip
+                          first, gradient)  # fmt: skip
         grey_wedges.append({"length": length, "thickness": thickness, "horizontal": horizontal,
                             "steps": steps, "calibration": calibration_style, "frame": frame,
-                            "band": band, "band_first": first, "shape": list(made.shape),
+                            "band": band, "band_first": first, "gradient": gradient,
+                            "shape": list(made.shape),
                             "sha256": _digest(made)["sha256"]})  # fmt: skip
     return {"photos": photos, "calibration": calibration.read_text(), "sessions": sessions,
             "grey_wedges": grey_wedges}, written  # fmt: skip

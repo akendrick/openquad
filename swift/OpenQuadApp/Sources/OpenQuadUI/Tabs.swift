@@ -300,6 +300,7 @@ public struct RootView: View {
                     Spacer()
                     Button { root.notice = nil } label: { Image(systemName: "xmark") }
                         .buttonStyle(.borderless)
+                        .accessibilityLabel("Dismiss")
                         .help("Dismiss")
                 }
                 .padding(.horizontal)
@@ -409,6 +410,9 @@ struct TabBar: View {
                 }
                 .buttonStyle(.plain)
                 .help("\(tab.title) (⌘\(AppTab.allCases.firstIndex(of: tab)! + 1))")
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(tab.title)
+                .accessibilityHint("Tab \(AppTab.allCases.firstIndex(of: tab)! + 1) of \(AppTab.allCases.count)")
                 .accessibilityAddTraits(selection == tab ? .isSelected : [])
             }
         }

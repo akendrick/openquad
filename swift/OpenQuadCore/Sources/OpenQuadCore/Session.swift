@@ -248,11 +248,15 @@ public struct PrintSession: Sendable {
         return width != 0 ? (width - shared, height) : (width, height - shared)
     }
 
+    /// The steps the wedge is made with: ChartThrob's style always has 21.
+    public var shownWedgeSteps: Int { wedgeStyle == "chartthrob" ? Wedge.chartThrobSteps : wedgeSteps }
+
     /// The grey wedge as chosen, at `dpi`, to go on `side` (its numbers on the far side).
     func greyWedge(length: Int, dpi: Double, side: String) -> ([UInt16], Int, Int) {
         Wedge.grey(length: length, thickness: max(1, pyRound(wedgeWidth * dpi)), horizontal: side == "top" || side == "bottom",
-                   steps: wedgeSteps, calibration: wedgeStyle == "calibration", frame: pyRound(Wedge.frame * dpi),
-                   band: wedgeLabels ? pyRound(Wedge.labelBand * dpi) : 0, bandFirst: side == "top" || side == "left")
+                   steps: shownWedgeSteps, calibration: wedgeStyle == "calibration", frame: pyRound(Wedge.frame * dpi),
+                   band: wedgeLabels ? pyRound(Wedge.labelBand * dpi) : 0, bandFirst: side == "top" || side == "left",
+                   gradient: wedgeStyle == "chartthrob")
     }
 
     /// The side as laid out before a negative is mirrored, so it prints on the side chosen.
@@ -393,7 +397,7 @@ public struct PrintSession: Sendable {
     }
 
     /// How near the paper's edge the print may be put: the margin, less the marks' border when
-    /// it lies outside the printable area (Fit within printable area off).
+    /// it lies outside the printable area (Keep marks inside the printable area off).
     var edge: Double { max(margin - (border - fitBorder), 0) }
 
     /// Where the print may be put, (width, height) in inches: the page inside its margins,
@@ -692,13 +696,13 @@ public struct PrintSession: Sendable {
     var wedgeLines: [String] {
         let whereTo = ["top": "above", "bottom": "below", "left": "left of", "right": "right of"][wedgeSide]!
         let thing = negative ? "negative" : "print"
-        let details = (wedgeStyle == "calibration" ? ["calibration style"] : []) + (wedgeLabels ? ["numbered"] : [])
+        let details = (wedgeStyle == "calibration" ? ["calibration style"] : wedgeStyle == "chartthrob" ? ["ChartThrob style, with gradient"] : []) + (wedgeLabels ? ["numbered"] : [])
         var away = wedgeGap != 0 ? "\(units.length(wedgeGap)) away" : "joined to it"
         if negative && wedgeSeparate { away += ", made separately" }
         if wedgeBackground != "colour" { away += ", on \(wedgeBackground)" }
         return wedgeKinds.map { kind in
             let name = kind == .grey
-                ? "Step wedge: \(wedgeSteps) steps, \(units.length(wedgeWidth)) wide"
+                ? "Step wedge: \(shownWedgeSteps) steps, \(units.length(wedgeWidth)) wide"
                     + (details.isEmpty ? "" : " (\(details.joined(separator: ", ")))")
                 : "Colour wedge: \(Wedge.steps) hues"
             return "\(name), \(whereTo) the \(thing), \(away)"

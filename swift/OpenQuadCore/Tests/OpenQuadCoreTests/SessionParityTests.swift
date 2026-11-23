@@ -90,7 +90,7 @@ struct SessionParity {
             let (pixels, width, height) = Wedge.grey(
                 length: w["length"] as! Int, thickness: w["thickness"] as! Int, horizontal: w["horizontal"] as! Bool,
                 steps: w["steps"] as! Int, calibration: w["calibration"] as! Bool, frame: w["frame"] as! Int,
-                band: w["band"] as! Int, bandFirst: w["band_first"] as! Bool)
+                band: w["band"] as! Int, bandFirst: w["band_first"] as! Bool, gradient: w["gradient"] as! Bool)
             #expect([height, width] == w["shape"] as? [Int])
             #expect(digest(pixels) == w["sha256"] as? String, "grey wedge \(w)")
         }

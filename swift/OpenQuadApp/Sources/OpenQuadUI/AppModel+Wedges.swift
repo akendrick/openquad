@@ -72,7 +72,7 @@ extension AppModel {
     public var wedgeDescription: String {
         let kinds = session.wedgeKinds
         guard !kinds.isEmpty else { return "none" }
-        let steps = "\(session.wedgeSteps) steps"
+        let steps = "\(session.shownWedgeSteps) steps"
         let what = kinds == [.colour] ? "colour" : kinds.count == 2 ? "\(steps) and colour" : steps
         let whereTo = ["top": "above", "bottom": "below", "left": "on the left", "right": "on the right"][session.wedgeSide] ?? ""
         return "\(what), \(whereTo)"
