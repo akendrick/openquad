@@ -281,3 +281,23 @@ def test_the_space_round_a_wedge_can_be_black_or_white(tmp_path: Path) -> None:
     assert (printed[200 : 200 + round(0.5 * session.effective_ppi())] == 0).all()
     with pytest.raises(SessionError, match="unknown background"):
         session.set_wedge_background("grey")
+
+
+def test_chartthrob_style_has_21_steps_and_a_gradient_bar() -> None:
+    from openquad.wedge import MAX_VALUE, grey_wedge
+
+    made = grey_wedge(210, 40, True, 21, gradient=True)
+    assert made.shape == (40, 210)
+    strip, bar = made[5], made[39]
+    assert len(set(strip.tolist())) == 21 and strip[0] == MAX_VALUE and strip[-1] == 0
+    assert len(set(bar.tolist())) > 100 and bar[0] == MAX_VALUE and bar[-1] == 0
+    assert (np.diff(bar.astype(int)) <= 0).all()
+    assert len(set(grey_wedge(210, 40, True, 21)[39].tolist())) == 21  # no gradient otherwise
+
+
+def test_chartthrob_style_in_a_session() -> None:
+    session = PrintSession()
+    session.wedge = True
+    session.set_wedge_steps(11)
+    session.set_wedge_style("chartthrob")
+    assert session.shown_wedge_steps == 21

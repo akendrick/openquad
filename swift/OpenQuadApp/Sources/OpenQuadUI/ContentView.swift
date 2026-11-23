@@ -203,13 +203,16 @@ public struct ContentView: View {
         Toggle(negative ? "Grey step wedge" : "Grey step wedge",
                isOn: model.binding(\.wedge, model.setWedge))
         if model.session.wedge {
-            Picker("Steps", selection: model.binding(\.wedgeSteps, model.setWedgeSteps)) {
-                ForEach(Wedge.stepChoices, id: \.self) { Text("\($0)").tag($0) }
+            if model.session.wedgeStyle != "chartthrob" {
+                Picker("Steps", selection: model.binding(\.wedgeSteps, model.setWedgeSteps)) {
+                    ForEach(Wedge.stepChoices, id: \.self) { Text("\($0)").tag($0) }
+                }
+                .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
             Picker("Style", selection: model.binding(\.wedgeStyle, model.setWedgeStyle)) {
                 Text("Strip").tag("strip")
                 Text("Calibration target").tag("calibration")
+                Text("ChartThrob (21 steps and gradient)").tag("chartthrob")
             }
             LengthStepper(title: "Width", inches: model.session.wedgeWidth, range: Wedge.minWidth...Wedge.maxWidth,
                           inchStep: 0.05, mmStep: 1, units: model.units) { model.setWedgeWidth($0) }

@@ -48,7 +48,7 @@ public struct GuideView: View {
                         + "margins. Mirror (under Printer and size) flips the photo left to right, for transfers.",
                      "Step wedge (under Registration and step wedges): a grey wedge (toned and calibrated like the photo) and, for a colour "
                         + "print, a colour gamut wedge. Choose 11, 21, 31 or 51 steps, a plain strip or the "
-                        + "calibration target's style (two rows in a black frame), its width, numbered steps, the "
+                        + "calibration target's style (two rows in a black frame) or ChartThrob's (21 steps with a gradient bar), its width, numbered steps, the "
                         + "side and the space from the photo. They're remembered.",
                      "Orientation (under Printer and size): Portrait, or Landscape to turn the page on its side "
                         + "for a wide photo. The print is sent turned to match; each tab remembers its own.",

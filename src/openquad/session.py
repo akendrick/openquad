@@ -205,12 +205,18 @@ class PrintSession:
         shared = border * len(self.wedge_kinds)
         return (width - shared, height) if width else (width, height - shared)
 
+    @property
+    def shown_wedge_steps(self) -> int:
+        """The steps the wedge is made with: ChartThrob's style always has 21."""
+        return wedges.CHARTTHROB_STEPS if self.wedge_style == "chartthrob" else self.wedge_steps
+
     def _grey_wedge(self, length: int, dpi: float, side: str) -> NDArray[np.uint16]:
         """The grey wedge as chosen, at `dpi`, to go on `side` (its numbers on the far side)."""
         return wedges.grey_wedge(
             length, max(1, round(self.wedge_width * dpi)), side in ("top", "bottom"),
-            self.wedge_steps, self.wedge_style == "calibration", round(wedges.FRAME * dpi),
+            self.shown_wedge_steps, self.wedge_style == "calibration", round(wedges.FRAME * dpi),
             round(wedges.LABEL_BAND * dpi) if self.wedge_labels else 0, side in ("top", "left"),
+            self.wedge_style == "chartthrob",
         )  # fmt: skip
 
     def _wedge_side(self) -> str:
@@ -645,11 +651,14 @@ class PrintSession:
             self.wedge_side
         ]
         thing = "negative" if self.negative else "print"
-        details = (["calibration style"] if self.wedge_style == "calibration" else []) + (
-            ["numbered"] if self.wedge_labels else []
-        )
+        style = {
+            "calibration": ["calibration style"],
+            "chartthrob": ["ChartThrob style, with gradient"],
+        }
+        details = style.get(self.wedge_style, []) + (["numbered"] if self.wedge_labels else [])
         names = {
-            "grey": f"Step wedge: {self.wedge_steps} steps, {self._length(self.wedge_width)} wide"
+            "grey": f"Step wedge: {self.shown_wedge_steps} steps, "
+            f"{self._length(self.wedge_width)} wide"
             + (f" ({', '.join(details)})" if details else ""),
             "colour": f"Colour wedge: {wedges.WEDGE_STEPS} hues",
         }

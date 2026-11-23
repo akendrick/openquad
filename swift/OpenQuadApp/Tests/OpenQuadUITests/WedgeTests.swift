@@ -73,4 +73,24 @@ struct WedgeTests {
         m.setWedge(true)
         #expect(m.wedgeDescription == "31 steps and colour, below")
     }
+
+    /// ChartThrob's style: always 21 steps, with a gradient bar beside them; remembered.
+    @Test func chartThrobStyle() throws {
+        let m = try model()
+        m.setWedge(true)
+        m.setWedgeSteps(11)
+        m.setWedgeStyle("chartthrob")
+        #expect(m.session.wedgeStyle == "chartthrob" && m.wedgeDescription == "21 steps, below")
+        #expect(try model().session.wedgeStyle == "chartthrob")
+
+        let (pixels, width, height) = Wedge.grey(length: 210, thickness: 40, horizontal: true, steps: 21, gradient: true)
+        #expect(width == 210 && height == 40)
+        let strip = Array(pixels[5 * width..<6 * width]), bar = Array(pixels[39 * width..<40 * width])
+        #expect(Set(strip).count == 21)  // 21 flat steps
+        #expect(strip.first == UInt16(maxValue) && strip.last == 0)
+        #expect(Set(bar).count > 100 && bar.first == UInt16(maxValue) && bar.last == 0)  // a smooth ramp
+        #expect(bar == bar.sorted(by: >))
+        let (plain, _, _) = Wedge.grey(length: 210, thickness: 40, horizontal: true, steps: 21)
+        #expect(Set(Array(plain[39 * width..<40 * width])).count == 21)  // no gradient without the style
+    }
 }

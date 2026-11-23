@@ -7,8 +7,9 @@
 // the full colour and a shade), to see how much of the colour the printer reaches.
 //
 // The grey wedge has 11, 21, 31 or 51 steps, any width from 0.2 to 1 in, and comes as a plain
-// strip or in the style of the printer calibration target: two rows (white to black, then
-// black to white) inside a thin black frame. Its steps can be numbered in a band beside it.
+// strip, in the style of the printer calibration target (two rows, white to black then
+// black to white, inside a thin black frame), or in ChartThrob's style (a 21-step strip with a
+// smooth gradient bar beside it). Its steps can be numbered in a band beside it.
 //
 // A wedge is as long as the photo's side it sits along, and sits `gap` inches from the print
 // (or the negative's safe edge) on the chosen side, centred along it.
@@ -21,7 +22,9 @@ public enum Wedge {
     /// Inches across the grey wedge.
     public static let width = 0.4
     public static let minWidth = 0.2, maxWidth = 1.0
-    public static let styles = ["strip", "calibration"]
+    public static let styles = ["strip", "calibration", "chartthrob"]
+    /// ChartThrob's style: always this many steps, with a smooth gradient bar beside them.
+    public static let chartThrobSteps = 21
     /// What fills the space between the photo and its wedges: "colour" (on a negative its own
     /// colour, opaque like the safe edge; on a print, white paper), "black" or "white".
     public static let backgrounds = ["colour", "black", "white"]
@@ -70,14 +73,24 @@ public enum Wedge {
     }
 
     /// The wedge itself, laid out horizontally: `thickness` rows of `length`.
-    static func greyArea(length: Int, thickness: Int, steps: Int, calibration: Bool, frame: Int) -> [UInt16] {
+    static func greyArea(length: Int, thickness: Int, steps: Int, calibration: Bool, frame: Int,
+                         gradient: Bool = false) -> [UInt16] {
         var area = [UInt16](repeating: UInt16(maxValue), count: thickness * length)
         let (offset, edges) = patches(length: length, thickness: thickness, steps: steps, calibration: calibration, frame: frame)
         func fill(_ rows: Range<Int>, _ columns: Range<Int>, _ value: UInt16) {
             for y in rows { for x in columns { area[y * length + x] = value } }
         }
         guard calibration else {
-            for i in 0..<steps { fill(0..<thickness, edges[i]..<edges[i + 1], level(i, steps)) }
+            // ChartThrob's style: the steps take the first 3/5 of the width, a gap, then the gradient bar.
+            let stripRows = gradient && thickness >= 3 && length >= 2 ? max(1, thickness * 3 / 5) : thickness
+            for i in 0..<steps { fill(0..<stripRows, edges[i]..<edges[i + 1], level(i, steps)) }
+            if stripRows < thickness {
+                let start = min(thickness - 1, stripRows + max(1, thickness / 20))
+                for x in 0..<length {
+                    let value = UInt16(pyRound(Double(maxValue) * (1 - Double(x) / Double(length - 1))))
+                    fill(start..<thickness, x..<x + 1, value)
+                }
+            }
             return area
         }
         let f = offset / 2
@@ -135,11 +148,12 @@ public enum Wedge {
     /// the wedge if `bandFirst`). The calibration style has two rows inside a black frame `frame`
     /// pixels wide. Returns (pixels, width, height).
     public static func grey(length: Int, thickness: Int, horizontal: Bool, steps: Int = steps, calibration: Bool = false,
-                            frame: Int = 0, band: Int = 0, bandFirst: Bool = false) -> ([UInt16], Int, Int) {
+                            frame: Int = 0, band: Int = 0, bandFirst: Bool = false, gradient: Bool = false) -> ([UInt16], Int, Int) {
         precondition(length >= 1 && thickness >= 1, "the wedge has no pixels")
         precondition(steps >= 2, "a wedge needs at least 2 steps, got \(steps)")
         let calibration = calibration && thickness >= 2
-        let area = greyArea(length: length, thickness: thickness, steps: steps, calibration: calibration, frame: frame)
+        let area = greyArea(length: length, thickness: thickness, steps: steps, calibration: calibration, frame: frame,
+                            gradient: gradient)
         if horizontal {
             guard band >= 1 else { return (area, length, thickness) }
             let labels = labelBand(length: length, thickness: thickness, band: band, steps: steps, calibration: calibration,

@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from openquad import wedge as wedges
 from openquad.composite import PRESETS
 from openquad.escl import Fetch, discover, http_fetch
 from openquad.negative import NEGATIVE_COLOURS
@@ -192,6 +193,55 @@ class MainWindow(QMainWindow):
         self.safe_edge_box.setValue(self.session.safe_edge)
         self.safe_edge_box.valueChanged.connect(self._safe_edge_changed)
 
+        self.wedge_box = QCheckBox("Grey step wedge")
+        self.wedge_box.toggled.connect(self._wedge_changed)
+        self.wedge_style_box = QComboBox()
+        for label, style in (
+            ("Strip", "strip"),
+            ("Calibration target", "calibration"),
+            ("ChartThrob (21 steps and gradient)", "chartthrob"),
+        ):
+            self.wedge_style_box.addItem(label, style)
+        self.wedge_style_box.currentIndexChanged.connect(self._wedge_changed)
+        self.wedge_steps_box = QComboBox()
+        for steps in wedges.STEP_CHOICES:
+            self.wedge_steps_box.addItem(f"{steps} steps", steps)
+        self.wedge_steps_box.setCurrentIndex(
+            self.wedge_steps_box.findData(self.session.wedge_steps)
+        )
+        self.wedge_steps_box.currentIndexChanged.connect(self._wedge_changed)
+        self.wedge_side_box = QComboBox()
+        for where in wedges.SIDES:
+            self.wedge_side_box.addItem(where.capitalize(), where)
+        self.wedge_side_box.setCurrentIndex(self.wedge_side_box.findData(self.session.wedge_side))
+        self.wedge_side_box.currentIndexChanged.connect(self._wedge_changed)
+        self.wedge_width_box = QDoubleSpinBox()
+        self.wedge_width_box.setRange(wedges.MIN_WIDTH, wedges.MAX_WIDTH)
+        self.wedge_width_box.setSingleStep(0.05)
+        self.wedge_width_box.setDecimals(2)
+        self.wedge_width_box.setSuffix(" in")
+        self.wedge_width_box.setValue(self.session.wedge_width)
+        self.wedge_width_box.valueChanged.connect(self._wedge_changed)
+        self.wedge_gap_box = QDoubleSpinBox()
+        self.wedge_gap_box.setRange(0.0, wedges.MAX_GAP)
+        self.wedge_gap_box.setSingleStep(0.05)
+        self.wedge_gap_box.setDecimals(2)
+        self.wedge_gap_box.setSuffix(" in")
+        self.wedge_gap_box.setValue(self.session.wedge_gap)
+        self.wedge_gap_box.valueChanged.connect(self._wedge_changed)
+        self.wedge_labels_box = QCheckBox("Number the steps")
+        self.wedge_labels_box.toggled.connect(self._wedge_changed)
+        self._wedge_widgets = (
+            self.wedge_style_box,
+            self.wedge_steps_box,
+            self.wedge_side_box,
+            self.wedge_width_box,
+            self.wedge_gap_box,
+            self.wedge_labels_box,
+        )
+        for box in self._wedge_widgets:
+            box.setEnabled(False)  # until the wedge is switched on
+
         self.save_button = QPushButton("Save print file…")
         self.save_button.clicked.connect(self.save_print_file)
         self.print_button = QPushButton("Print…")
@@ -220,6 +270,13 @@ class MainWindow(QMainWindow):
         form.addRow(self.fit_box)
         form.addRow("Resolution", self.ppi_box)
         form.addRow("Print size", self.size_label)
+        form.addRow(self.wedge_box)
+        form.addRow("Wedge style", self.wedge_style_box)
+        form.addRow("Wedge steps", self.wedge_steps_box)
+        form.addRow("Wedge side", self.wedge_side_box)
+        form.addRow("Wedge width", self.wedge_width_box)
+        form.addRow("Space from photo", self.wedge_gap_box)
+        form.addRow(self.wedge_labels_box)
         buttons = QHBoxLayout()
         buttons.addWidget(self.save_button)
         buttons.addWidget(self.print_button)
@@ -418,6 +475,22 @@ class MainWindow(QMainWindow):
         except ValueError as exc:
             self.show_error(str(exc))
         self._remember()
+        self._refresh()
+
+    def _wedge_changed(self, *_: object) -> None:
+        """The step wedge and its style, steps and side; ChartThrob's style is always 21 steps."""
+        style = self.wedge_style_box.currentData()
+        on = self.wedge_box.isChecked()
+        for box in self._wedge_widgets:
+            box.setEnabled(on)
+        self.wedge_steps_box.setEnabled(on and style != "chartthrob")
+        self.session.wedge = self.wedge_box.isChecked()
+        self.session.set_wedge_style(style)
+        self.session.set_wedge_steps(self.wedge_steps_box.currentData())
+        self.session.set_wedge_side(self.wedge_side_box.currentData())
+        self.session.set_wedge_width(self.wedge_width_box.value())
+        self.session.set_wedge_gap(self.wedge_gap_box.value())
+        self.session.wedge_labels = self.wedge_labels_box.isChecked()
         self._refresh()
 
     def _mirror_changed(self, checked: bool) -> None:
