@@ -45,6 +45,7 @@ from openquad.colour_target import (
     save_measurement,
     target_page,
 )
+from openquad.colour_verify import DAMPING, ColourRun, ColourRunError
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.contactsheet import BACKGROUNDS, MAX_PHOTOS, SheetLayout, make_sheet
 from openquad.curve_export import FORMATS, export_curve
@@ -421,6 +422,34 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         help="forward model smoothing (default: chosen by leaving patches out)",
     )
+    ps = profile_commands.add_parser(
+        "start", help="start a calibration run: a first profile, then verify and refine it"
+    )
+    ps.add_argument("folder", type=Path, help="run folder (everything for the run is kept here)")
+    ps.add_argument("measurements", type=Path, nargs="+", help="colour target measurements")
+    ps.add_argument("--name", required=True, help="profile file name, e.g. mg3600-plain")
+    ps.add_argument("--description", default="", help="the profile's name, as apps list it")
+    pp = profile_commands.add_parser(
+        "page", help="write the run's verification page, to print through its current profile"
+    )
+    pp.add_argument("folder", type=Path, help="run folder")
+    pp.add_argument("--dpi", type=float, default=DEFAULT_DPI, help="resolution (default 300)")
+    pv = profile_commands.add_parser(
+        "verify", help="measure scans of the verification page and judge the profile"
+    )
+    pv.add_argument("folder", type=Path, help="run folder")
+    pv.add_argument("scans", type=Path, nargs="+", help="one scan of each page, in any order")
+    pv.add_argument("--scanner-model", type=Path, help="scanner model (openquad scanner-profile)")
+    pr = profile_commands.add_parser(
+        "refine", help="build the run's next profile from what the verification page measured"
+    )
+    pr.add_argument("folder", type=Path, help="run folder")
+    pr.add_argument(
+        "--damping",
+        type=float,
+        default=DAMPING,
+        help=f"share of the measured error to correct (default {DAMPING:g})",
+    )
     return parser
 
 
@@ -470,17 +499,44 @@ def _measure_colour(args: argparse.Namespace) -> None:
 
 
 def _profile(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
-    if args.profile_command != "build":
+    command = args.profile_command
+    if command == "build":
+        measurements = [_colour_measurement(path) for path in args.measurements]
+        report = build_profile(measurements, args.smoothing)
+        output: Path = args.output
+        model_path = save_profile(report, output, args.description or output.stem)
+        print(report.summary())
+        print(f"wrote {output} and {model_path} (the forward model)")
+    elif command == "start":
+        measurements = [_colour_measurement(path) for path in args.measurements]
+        run, summary = ColourRun.start(args.folder, args.name, measurements, args.description)
+        print(summary)
+        print(f"wrote {run.folder / run.current.profile} (round {run.current.version})")
+        print(f"next: openquad profile page {run.folder}")
+    elif command == "page":
+        run = ColourRun.resume(args.folder)
+        for path in run.make_pages(args.dpi):
+            print(f"wrote {path}")
+        print("print it exactly as you printed the colour target: the profile is already")
+        print(f"applied to it. Then scan it: openquad profile verify {run.folder} SCAN...")
+    elif command == "verify":
+        run = ColourRun.resume(args.folder)
+        scanner = load_model(args.scanner_model) if args.scanner_model else None
+        verdict = run.measure(args.scans, scanner)
+        print(verdict.summary())
+        if not verdict.passed:
+            print(f"next: openquad profile refine {run.folder}")
+    elif command == "refine":
+        run = ColourRun.resume(args.folder)
+        current = run.refine(args.damping)
+        print(f"wrote {run.folder / current.profile} (round {current.version})")
+        print(f"next: openquad profile page {run.folder}")
+    else:
         parser.parse_args(["profile", "--help"])
-        return
-    measurements = [
-        ColourMeasurement.from_json(path.read_text(encoding="utf-8")) for path in args.measurements
-    ]
-    report = build_profile(measurements, args.smoothing)
-    output: Path = args.output
-    model_path = save_profile(report, output, args.description or output.stem)
-    print(report.summary())
-    print(f"wrote {output} and {model_path} (the forward model)")
+
+
+def _colour_measurement(path: Path) -> ColourMeasurement:
+    return ColourMeasurement.from_json(path.read_text(encoding="utf-8"))
 
 
 def _target(args: argparse.Namespace) -> None:
@@ -951,7 +1007,7 @@ def main(
             _profile(args, parser)
         else:
             parser.print_help()
-    except (OSError, ValueError, PrintError, ScanError) as exc:
+    except (OSError, ValueError, PrintError, ScanError, ColourRunError) as exc:
         print(f"openquad: error: {exc}", file=sys.stderr)
         return 1
     return 0

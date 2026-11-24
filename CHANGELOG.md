@@ -7,6 +7,18 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Colour calibration, phase 3: checking a profile on real prints and refining it, in rounds kept
+  in a run folder with a `run.json` log (as grey calibration runs are). `openquad profile start
+  FOLDER MEASUREMENT... --name NAME` builds the first profile; `profile page FOLDER` writes a
+  verification page of 144 colours the profile wasn't built from (a colour checker's 24, 8 skin
+  tones, a 12-step grey wedge and 100 random photo colours), each sent through the profile's
+  relative colourimetric inverse; `profile verify FOLDER SCAN...` measures it and judges it
+  against the goals (ΔE00 mean under 3 and 95% under 6 for printable colours; greys' cast under
+  3 and tone within 2 L\*), with the worst patches named; `profile refine FOLDER [--damping D]`
+  fits a smooth correction to what was measured, folds half of it (by default) into the forward
+  model and builds the next profile. Python only, tested on a simulated printer that drifted:
+  two rounds bring it from a mean of 3.8 to 1.2. Core: `openquad.colour_verify`;
+  `colour_target.layout_target` and `colour_profile.fit_lattice`.
 - Colour calibration, phase 2: building the printer's colour profile. `openquad profile build
   MEASUREMENT... -o PROFILE.icc [--description NAME] [--smoothing S]` fits a forward model (RGB sent
   to L\*a\*b\* measured: a 9×9×9 lattice fitted with a smoothing term, the amount chosen by leaving

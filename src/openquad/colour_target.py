@@ -162,18 +162,26 @@ def make_target(
     one (two pages), unless `patch` is given."""
     patches = colour_patches(grid)
     order = np.random.default_rng(SHUFFLE_SEED).permutation(len(patches))
-    size = patch or (0.43 if grid == 6 else 0.32)
-    shell = ColourTarget(pages=(patches,), columns=1, patch=size, grid=grid)
-    columns = math.floor((printable[0] - shell.lead - 2 * shell.edge) / size + 1e-9)
-    rows = math.floor((printable[1] - 2 * shell.edge) / size + 1e-9)
+    return layout_target(patches[order], patch or (0.43 if grid == 6 else 0.32), grid, printable)
+
+
+def layout_target(
+    patches: NDArray[np.uint16],
+    patch: float = 0.43,
+    grid: int = 0,
+    printable: tuple[float, float] = PRINTABLE,
+) -> ColourTarget:
+    """Lay patches out in the order given, on as many pages as they need."""
+    shell = ColourTarget(pages=(patches,), columns=1, patch=patch, grid=grid)
+    columns = math.floor((printable[0] - shell.lead - 2 * shell.edge) / patch + 1e-9)
+    rows = math.floor((printable[1] - 2 * shell.edge) / patch + 1e-9)
     if columns < 4 or rows < 4:
         raise ValueError(
-            f"patches of {size:g} in don't fit a {printable[0]:g} x {printable[1]:g} in page"
+            f"patches of {patch:g} in don't fit a {printable[0]:g} x {printable[1]:g} in page"
         )
     per_page = columns * rows
-    shuffled = patches[order]
-    pages = tuple(shuffled[i : i + per_page] for i in range(0, len(shuffled), per_page))
-    return ColourTarget(pages=pages, columns=columns, patch=size, grid=grid)
+    pages = tuple(patches[i : i + per_page] for i in range(0, len(patches), per_page))
+    return ColourTarget(pages=pages, columns=columns, patch=patch, grid=grid)
 
 
 def target_page(target: ColourTarget, page: int, dpi: float = 300.0) -> NDArray[np.uint16]:
