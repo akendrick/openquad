@@ -17,6 +17,7 @@ from PIL import Image, ImageCms
 from openquad.cli import main
 from openquad.colour_convert import (
     ColourConvertError,
+    _profile,
     device_table,
     is_rgb_output_profile,
     proof,
@@ -113,8 +114,7 @@ def test_to_device_follows_littlecms(library: Path) -> None:
     # On the table's nodes, the same as LittleCMS converting 8-bit pixels directly.
     nodes = np.array([[[0, 0, 0], [255, 255, 255], [125, 60, 200], [5, 250, 35]]], np.uint8)
     transform = ImageCms.buildTransform(
-        ImageCms.ImageCmsProfile(io.BytesIO(srgb_profile() or b"")),
-        ImageCms.ImageCmsProfile(io.BytesIO(profile)), "RGB", "RGB",
+        _profile(None), ImageCms.ImageCmsProfile(io.BytesIO(profile)), "RGB", "RGB",
     )  # fmt: skip
     direct = np.asarray(ImageCms.applyTransform(Image.fromarray(nodes), transform), np.int64)
     device = to_device(nodes.astype(np.uint16) * 257, None, profile).astype(np.int64)
