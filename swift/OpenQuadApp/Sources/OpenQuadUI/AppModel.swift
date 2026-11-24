@@ -41,6 +41,8 @@ public final class AppModel {
     public private(set) var proofProfiles: [ProofProfile] = []
     /// Saved calibrations to choose from: the newest of each printer and paper.
     public private(set) var calibrations: [LibraryEntry] = []
+    /// OpenQuad printer profiles for colour prints: the newest of each printer and paper.
+    public private(set) var colourProfiles: [ColourProfileEntry] = []
     public let library: CalibrationLibrary
     /// Saved negative setups (process curve, colour, mirror, edges, printer, paper).
     public let setupLibrary: SetupLibrary
@@ -78,6 +80,12 @@ public final class AppModel {
             entries.append(current)  // an older version, or a file kept elsewhere
         }
         calibrations = entries
+        var profiles = library.latestColourProfiles()
+        if let path = session.colourProfilePath, let current = library.colourProfile(path),
+           !profiles.contains(where: { $0.url == current.url }) {
+            profiles.append(current)
+        }
+        colourProfiles = profiles
     }
 
     /// The library entry for the calibration in use, if any.
@@ -112,6 +120,7 @@ public final class AppModel {
             attempt { try session.setCalibration(nil) }
             status = "No calibration for \(LibraryEntry.printerName(printer)) on \(session.paper) yet: it will print uncorrected."
         }
+        matchColourProfile(printer)
         remember()
         refreshLibrary()
     }
@@ -140,6 +149,9 @@ public final class AppModel {
         session.landscape = role == .negative ? settings.negativeLandscape : settings.landscape
         if let path = settings.calibration, FileManager.default.fileExists(atPath: path) {
             try? session.setCalibration(URL(fileURLWithPath: path))
+        }
+        if role == .print, let path = settings.colourProfile, FileManager.default.fileExists(atPath: path) {
+            try? session.setColourProfile(URL(fileURLWithPath: path))
         }
         if let path = settings.process, FileManager.default.fileExists(atPath: path) {
             try? session.setProcess(URL(fileURLWithPath: path))
@@ -306,6 +318,62 @@ public final class AppModel {
         refreshPreview()
     }
 
+    // MARK: colour profiles (colour calibration)
+
+    /// The library entry for the printer profile colour prints go through, if any.
+    public var currentColourProfile: ColourProfileEntry? {
+        session.colourProfilePath.flatMap { path in
+            colourProfiles.first { $0.url == path.resolvingSymlinksInPath() } ?? library.colourProfile(path)
+        }
+    }
+
+    /// The profiles to offer: this printer's (all of them when printing through the panel).
+    public var colourProfileChoices: [ColourProfileEntry] {
+        guard let printer = session.printer else { return colourProfiles }
+        return colourProfiles.filter { $0.printer == printer || $0.url == currentColourProfile?.url }
+    }
+
+    /// Convert colour prints through an OpenQuad printer profile (nil: macOS's). Remembered.
+    public func setColourProfile(_ url: URL?) {
+        attempt {
+            try session.setColourProfile(url)
+            saveSettings { $0.colourProfile = url?.path }
+        }
+        refreshLibrary()
+        refreshPreview()
+    }
+
+    /// Use the newest profile made for this printer and paper; drop one made for another printer.
+    func matchColourProfile(_ printer: String) {
+        if let match = library.matchColourProfile(printer: printer, paper: session.paper) {
+            if match.url != session.colourProfilePath?.resolvingSymlinksInPath() {
+                attempt { try session.setColourProfile(match.url) }
+                saveSettings { $0.colourProfile = match.url.path }
+            }
+        } else if let current = currentColourProfile, current.printer != printer {
+            attempt { try session.setColourProfile(nil) }
+            saveSettings { $0.colourProfile = nil }
+        }
+    }
+
+    /// Copy the profile in use to ~/Library/ColorSync/Profiles, for other apps.
+    public func exportColourProfile(folder: URL? = nil) {
+        guard let entry = currentColourProfile else { return }
+        attempt {
+            let url = try library.exportToColorSync(entry, folder: folder)
+            status = "Copied to \(url.deletingLastPathComponent().path) as \(url.lastPathComponent): other apps can use it now."
+        }
+        loadProofProfiles()
+    }
+
+    /// A finished colour calibration: colour prints go through its profile.
+    public func finishColourProfile(_ path: URL, scannerHost: String) {
+        if !scannerHost.isEmpty { saveSettings { $0.scannerHost = scannerHost } }
+        refreshLibrary()
+        setColourProfile(path)
+        if let entry = currentColourProfile { status = "Colour prints now go through \(entry.label)." }
+    }
+
     /// What the preview shows, when it isn't simply the print: a colour print, soft-proofed or not.
     public var previewCaption: String? {
         if showingPage {
@@ -319,6 +387,9 @@ public final class AppModel {
             return "All \(session.negativeCount) coats together, each in its own colour (prints one negative at a time)"
         }
         guard session.printsColour else { return nil }
+        if let current = currentColourProfile {
+            return "Soft-proof: through \(current.label), as it will print"
+        }
         guard let url = proofProfile else { return "Colour print: the photo's own colours, colour-managed by macOS" }
         let name = proofProfiles.first { $0.url == url }?.name ?? url.deletingPathExtension().lastPathComponent
         return "Soft-proof: \(name)"
@@ -453,7 +524,7 @@ public final class AppModel {
             }
             return
         }
-        let proof = snapshot.printsColour ? proofProfile : nil
+        let proof = snapshot.printsColour ? (snapshot.colourProfilePath ?? proofProfile) : nil
         Task.detached(priority: .userInitiated) {
             // A colour print is shown in its own profile; soft-proofed if a profile is chosen.
             var image = (try? snapshot.preview())?.cgImage(eightBit: true, iccProfile: snapshot.printProfile())

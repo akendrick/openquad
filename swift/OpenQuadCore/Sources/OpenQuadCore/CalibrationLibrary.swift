@@ -128,3 +128,126 @@ public struct CalibrationLibrary: Sendable {
         return entry
     }
 }
+
+// MARK: - colour profiles and scanner models
+
+/// One round's printer profile from a colour calibration run.
+public struct ColourProfileEntry: Sendable, Equatable, Identifiable {
+    public let url: URL
+    public let printer: String
+    public let paper: String
+    public let settings: String
+    public let created: Date?
+    public let version: Int
+    /// The round's verification: mean ΔE00 and whether the goals were met, if it was checked.
+    public let mean: Double?
+    public let passed: Bool?
+    public let run: String
+
+    public var id: URL { url }
+    public var viaPanel: Bool { settings.lowercased().contains("print panel") }
+
+    /// E.g. "Canon MG3600 · Letter plain · v2 · ΔE 1.4 · 24 Nov 2026".
+    public var label: String {
+        var parts = [LibraryEntry.printerName(printer)]
+        if !paper.isEmpty { parts.append(paper) }
+        parts.append("v\(version)")
+        if let mean { parts.append(String(format: "ΔE %.1f%@", mean, passed == true ? " ✓" : "")) }
+        if viaPanel { parts.append("print panel") }
+        if let created {
+            let format = DateFormatter()
+            format.dateFormat = "d MMM yyyy"
+            format.locale = Locale(identifier: "en_GB")
+            parts.append(format.string(from: created))
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    public func fits(printer queue: String, paper size: String) -> Bool {
+        guard printer == queue else { return false }
+        return paper.isEmpty || paper.lowercased().split(separator: " ").first.map(String.init) == size.lowercased()
+    }
+}
+
+/// A scanner's colour model kept in the library (made by `openquad scanner-profile`).
+public struct ScannerModelEntry: Sendable, Equatable, Identifiable, Hashable {
+    public let url: URL
+    public let name: String
+    public var id: URL { url }
+}
+
+extension CalibrationLibrary {
+    /// Every profile of every colour calibration run, newest first.
+    public func colourProfiles() -> [ColourProfileEntry] {
+        guard let folders = try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil) else { return [] }
+        var entries: [ColourProfileEntry] = []
+        for runFolder in folders {
+            guard let run = try? ColourRun.resume(runFolder) else { continue }
+            for round in run.rounds {
+                let url = runFolder.appendingPathComponent(round.profile).resolvingSymlinksInPath()
+                guard FileManager.default.fileExists(atPath: url.path) else { continue }
+                let created = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+                entries.append(ColourProfileEntry(url: url, printer: run.printer, paper: run.paperLabel, settings: run.settings,
+                                                  created: created, version: round.version, mean: round.assessment?["mean"],
+                                                  passed: round.action.map { $0 == "done" }, run: run.name))
+            }
+        }
+        return entries.sorted { ($0.created ?? .distantPast, $0.version, $0.url.path) > ($1.created ?? .distantPast, $1.version, $1.url.path) }
+    }
+
+    /// The newest profile for each printer, paper and print method.
+    public func latestColourProfiles() -> [ColourProfileEntry] {
+        var seen = Set<String>()
+        return colourProfiles().filter { seen.insert("\($0.printer)|\($0.paper.lowercased())|\($0.viaPanel)").inserted }
+    }
+
+    /// The best profile for printing to `printer` on `paper`: newest, preferring the same print method.
+    public func matchColourProfile(printer: String, paper: String, viaPanel: Bool = false) -> ColourProfileEntry? {
+        let fitting = colourProfiles().filter { $0.fits(printer: printer, paper: paper) }
+        return fitting.first { $0.viaPanel == viaPanel } ?? fitting.first
+    }
+
+    /// The entry for a profile file, if it's one of the library's.
+    public func colourProfile(_ url: URL) -> ColourProfileEntry? {
+        let resolved = url.resolvingSymlinksInPath()
+        return colourProfiles().first { $0.url == resolved }
+    }
+
+    /// Copy a profile where ColorSync and other apps find it; returns the copy.
+    @discardableResult
+    public func exportToColorSync(_ entry: ColourProfileEntry, folder: URL? = nil) throws -> URL {
+        let target = folder ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/ColorSync/Profiles")
+        try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
+        let name = "OpenQuad \(entry.run) v\(entry.version).icc".replacingOccurrences(of: "/", with: "-")
+        let url = target.appendingPathComponent(name)
+        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        try FileManager.default.copyItem(at: entry.url, to: url)
+        return url
+    }
+
+    public var scannerFolder: URL { folder.appendingPathComponent("scanners") }
+
+    /// The scanner models kept in the library, by name.
+    public func scannerModels() -> [ScannerModelEntry] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: scannerFolder, includingPropertiesForKeys: nil)) ?? []
+        return files.filter { $0.pathExtension.lowercased() == "json" }.compactMap { url -> ScannerModelEntry? in
+            guard let model = try? ScannerModel.decode(Data(contentsOf: url)) else { return nil }
+            let stem = url.deletingPathExtension().lastPathComponent
+            return ScannerModelEntry(url: url.resolvingSymlinksInPath(), name: model.scanner.isEmpty ? stem : "\(model.scanner) (\(stem))")
+        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    /// Copy a scanner model (from `openquad scanner-profile`) into the library.
+    @discardableResult
+    public func importScannerModel(_ source: URL) throws -> ScannerModelEntry {
+        let data = try Data(contentsOf: source)
+        _ = try ScannerModel.decode(data)
+        try FileManager.default.createDirectory(at: scannerFolder, withIntermediateDirectories: true)
+        if let existing = scannerModels().first(where: { (try? Data(contentsOf: $0.url)) == data }) { return existing }
+        let url = scannerFolder.appendingPathComponent(source.lastPathComponent)
+        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        try data.write(to: url)
+        return try scannerModels().first { $0.url == url.resolvingSymlinksInPath() }
+            ?? { throw FileFormatError(description: "\(source.lastPathComponent) isn't a scanner model") }()
+    }
+}

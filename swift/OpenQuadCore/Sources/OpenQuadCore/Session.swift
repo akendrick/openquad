@@ -98,8 +98,28 @@ public struct PrintSession: Sendable {
     /// Print a colour photo in colour, on a colour-managed printer: its own colour and ICC
     /// profile go to macOS, with no toning or calibration. Off (greyscale) for each new photo.
     public private(set) var colourPrint = false
+    /// A colour print's OpenQuad printer profile (colour calibration): the photo is converted
+    /// through it and sent sRGB-tagged, as the target was. nil: macOS matches the colours.
+    public private(set) var colourProfilePath: URL?
+    var colourProfile: Data?
 
     public init() {}
+
+    /// Convert colour prints through this printer profile (an RGB output ICC profile), or not.
+    public mutating func setColourProfile(_ url: URL?) throws {
+        guard let url else {
+            (colourProfile, colourProfilePath) = (nil, nil)
+            return
+        }
+        let data = try Data(contentsOf: url)
+        guard ColourConvert.isRGBOutputProfile(data) else {
+            throw SessionError(description: "\(url.lastPathComponent) isn't an RGB printer profile")
+        }
+        (colourProfile, colourProfilePath) = (data, url)
+    }
+
+    /// A colour print goes through an OpenQuad printer profile.
+    public var convertsColour: Bool { printsColour && colourProfile != nil }
 
     /// Print the photo in its own colour (colour-managed), or in greyscale.
     public mutating func setColourPrint(_ on: Bool) throws {
@@ -537,7 +557,10 @@ public struct PrintSession: Sendable {
         let photo = try currentPhoto()
         let image: RGBImage
         if printsColour, let colour = photo.colour {
-            image = try renderColour(colour, width: photo.width, height: photo.height)
+            let pixels = try colourProfile.map {
+                try ColourConvert.toDevice(colour, width: photo.width, height: photo.height, from: photo.iccProfile, to: $0)
+            } ?? colour
+            image = try renderColour(pixels, width: photo.width, height: photo.height)
         } else {
             let (pixels, colour) = negativeSource(photo)
             image = try render(pixels, width: photo.width, height: photo.height, colour: colour)
@@ -554,7 +577,7 @@ public struct PrintSession: Sendable {
 
     /// The ICC profile the print file carries: a colour print's own (sRGB if untagged).
     public func printProfile() -> Data? {
-        if printsColour, let profile = photo?.iccProfile { return profile }
+        if printsColour && colourProfile == nil, let profile = photo?.iccProfile { return profile }
         return ImageFiles.srgbProfile()
     }
 
@@ -680,9 +703,10 @@ public struct PrintSession: Sendable {
                 "Mirrored: \(mirror ? "yes" : "no")",
             ] + marksLine + wedgeLines
         }
-        let tones = printsColour
-            ? ["Output: colour print (colour-managed by macOS)",
-               "Colour profile: \(photo?.iccProfile != nil ? "embedded in the photo" : "none (read as sRGB)")"]
+        let source = "Colour profile: \(photo?.iccProfile != nil ? "embedded in the photo" : "none (read as sRGB)")"
+        let tones = convertsColour
+            ? ["Output: colour print through the printer profile \(colourProfilePath?.lastPathComponent ?? "")", source]
+            : printsColour ? ["Output: colour print (colour-managed by macOS)", source]
             : ["Toning: \(preset)", "Calibration: \(calibrationPath?.lastPathComponent ?? "none")"]
         return [
             "Photo: \(photoName)",
@@ -781,6 +805,8 @@ public struct AppSettings: Sendable, Equatable {
     public var chartSize: [Double]?
     /// The ICC profile colour prints are soft-proofed with (nil: no soft-proof).
     public var proofProfile: String?
+    /// The OpenQuad printer profile colour prints go through (nil: macOS's).
+    public var colourProfile: String?
     /// Driver options (media type, quality) chosen for each printer when printing straight to
     /// it, for prints and for negatives: [printer: [option: value]].
     public var printerOptions: [String: [String: String]] = [:]
@@ -828,6 +854,7 @@ public struct AppSettings: Sendable, Equatable {
         settings.negativePaper = (object["negative_paper"] as? String).flatMap { Paper.sizes[$0] != nil ? $0 : nil }
         if let size = object["chart_size"] as? [NSNumber], size.count == 2 { settings.chartSize = size.map(\.doubleValue) }
         settings.proofProfile = object["proof_profile"] as? String
+        settings.colourProfile = object["colour_profile"] as? String
         settings.printerOptions = options(object["printer_options"])
         settings.negativePrinterOptions = options(object["negative_printer_options"])
         settings.printWedge = WedgeSettings(object["print_wedge"])
@@ -848,6 +875,7 @@ public struct AppSettings: Sendable, Equatable {
             "units": units.rawValue,
             "negative_printer": negativePrinter ?? NSNull(), "negative_paper": negativePaper ?? NSNull(),
             "chart_size": chartSize ?? NSNull(), "proof_profile": proofProfile ?? NSNull(),
+            "colour_profile": colourProfile ?? NSNull(),
             "printer_options": printerOptions, "negative_printer_options": negativePrinterOptions,
             "print_wedge": printWedge?.json ?? NSNull(), "negative_wedge": negativeWedge?.json ?? NSNull(),
             "marks_in_fit": marksInFit, "negative_marks_in_fit": negativeMarksInFit,

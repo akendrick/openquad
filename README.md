@@ -78,8 +78,9 @@ The app keeps its calibration runs, scans and measurements in
 
 | Part | State |
 | --- | --- |
-| Mac app (SwiftUI): print window, toning, colour prints (colour-managed, soft-proof), digital negatives, print panel or direct printing | beta |
+| Mac app (SwiftUI): print window, toning, colour prints (colour-managed or through an OpenQuad profile, soft-proof), digital negatives, print panel or direct printing | beta |
 | Printer calibration wizard (grey balance, tone), calibration library per printer | beta, tested on Canon MG3600 |
+| Colour calibration (printer profiles), in the app and the CLI | built, not yet tested on real prints |
 | Blocking test and process calibration wizards (carbon) | beta, partly tested |
 | Python CLI and desktop app (PySide6) | working; the reference implementation |
 | Raw-ink QuadToneRIP-style path | not built |
@@ -189,6 +190,14 @@ openquad profile refine mg3600-run        # if the goals weren't met: builds mg3
 
 Everything for the run (profiles, pages, scans, measurements, reports) stays in its folder, with
 a `run.json` log of the rounds.
+
+The Mac app does all of this in Printer Calibration: choose **Colour prints** at setup (and a
+scanner model, added from the file `scanner-profile` wrote), then print the target, scan it,
+print the verification pages and refine, round by round. In the Print tab, a colour print's
+**Profile** picker offers this printer's OpenQuad profiles: the photo is converted through the
+chosen one and sent as the target was, and the preview shows it as it will print. **Export to
+ColorSync** copies a profile to `~/Library/ColorSync/Profiles` for other apps. Runs made in the
+app can be continued with `openquad profile`, and the other way round.
 
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
 `--ppi`, `--copies` and `--option NAME=VALUE` (driver options) to change that.
