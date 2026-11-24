@@ -23,16 +23,25 @@ public struct CalibrationWizardView: View {
             EmptyView()
         } content: {
             setup
-            NextStepCard(model: model, actions: actions)
+            if model.kind == .colour {
+                ColourNextStepCard(model: model, actions: actions)
+            } else {
+                NextStepCard(model: model, actions: actions)
+            }
             if let error = model.error {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            if !model.rounds.isEmpty { RoundsTable(rounds: model.rounds) }
-            ScrollView {
-                WedgeChartView(uncorrected: model.uncorrected, corrected: model.corrected, round: model.round)
-                    .frame(minHeight: 380)
+            if model.kind == .colour {
+                if model.colourRun != nil { ColourRoundsTable(rounds: model.colourRounds) }
+                ScrollView { ColourResultView(model: model) }
+            } else {
+                if !model.rounds.isEmpty { RoundsTable(rounds: model.rounds) }
+                ScrollView {
+                    WedgeChartView(uncorrected: model.uncorrected, corrected: model.corrected, round: model.round)
+                        .frame(minHeight: 380)
+                }
             }
             HStack {
                 if model.busy { ProgressView().controlSize(.small) }
@@ -48,7 +57,7 @@ public struct CalibrationWizardView: View {
         if model.started {
             HStack(spacing: 8) {
                 Image(systemName: "printer").foregroundStyle(.secondary)
-                Text([LibraryEntry.printerName(model.printer), model.paperLabel,
+                Text([model.kind == .colour ? "Colour" : "Black and white", LibraryEntry.printerName(model.printer), model.paperLabel,
                       model.method == .direct ? "straight to the printer" : "print panel",
                       "scanner \(model.scannerHost.isEmpty ? "not set" : model.scannerHost)"].joined(separator: " · "))
                     .foregroundStyle(.secondary)
@@ -63,7 +72,16 @@ public struct CalibrationWizardView: View {
         } else {
             Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 8) {
                 GridRow {
-                    Text("Printer").gridColumnAlignment(.trailing)
+                    Text("Calibrate").gridColumnAlignment(.trailing)
+                    Picker("Calibrate", selection: $model.kind) {
+                        Text("Black-and-white prints (grey balance and tone)").tag(CalibrationKind.blackAndWhite)
+                        Text("Colour prints (a printer profile)").tag(CalibrationKind.colour)
+                    }
+                    .labelsHidden()
+                    .gridCellColumns(3)
+                }
+                GridRow {
+                    Text("Printer")
                     if model.printers.isEmpty {
                         TextField("Printer", text: $model.printer, prompt: Text("CUPS queue, e.g. Canon_MG3600_series")).labelsHidden()
                     } else {
@@ -88,7 +106,9 @@ public struct CalibrationWizardView: View {
                     Text("Scanner")
                     ScannerField(model: model)
                 }
-                if model.starting != nil {
+                if model.kind == .colour {
+                    ColourSetupRows(model: model)
+                } else if model.starting != nil {
                     GridRow {
                         Text("Start from")
                         Picker("Start from", selection: $model.startFromCurrent) {
@@ -121,10 +141,10 @@ public struct CalibrationWizardView: View {
         NextStepActions(
             start: { model.start() },
             print: printPage,
-            printedElsewhere: { model.printed("printed another way") },
+            printedElsewhere: { model.kind == .colour ? model.colourPrinted("printed another way") : model.printed("printed another way") },
             scan: scan,
             readFile: readFile,
-            improve: { model.improve($0) },
+            improve: { $0 == "refine" ? model.refineColour() : model.improve($0) },
             use: {
                 if let path = model.calibrationPath { use(path) }
                 close?()
@@ -132,6 +152,10 @@ public struct CalibrationWizardView: View {
     }
 
     private func printPage() {
+        if model.colourRun != nil {
+            printColour()
+            return
+        }
         if model.method == .direct, let run = model.run {
             if confirm("Print?", "Print a comparison page on \(LibraryEntry.printerName(run.printer)) (\(run.paper))? "
                        + "It uses one sheet and about a quarter page of ink.") {
@@ -147,14 +171,33 @@ public struct CalibrationWizardView: View {
         }
     }
 
+    private func printColour() {
+        guard let run = model.colourRun else { return }
+        let what = run.onTarget ? "the colour target (\(run.pagesNeeded == 2 ? "two pages" : "one page"), about a full page of ink each)"
+            : "a verification page (one sheet, about half a page of ink)"
+        if model.method == .direct {
+            if confirm("Print?", "Print \(what) on \(LibraryEntry.printerName(run.printer)) (\(run.paper))?") { model.printColourDirect() }
+            return
+        }
+        do {
+            let pages = try model.colourPagesForPrinting()
+            var printedAll = !pages.isEmpty
+            for page in pages where printedAll { printedAll = printWithPanel(page) }
+            if printedAll { model.colourPrinted("print panel") }
+        } catch {
+            model.error = "\(error)"
+        }
+    }
+
     private func scan() {
         if confirm("Scan?", "Is the printed page dry, face down on the scanner glass, with the lid closed?") {
-            model.scanAndMeasure()
+            if model.colourRun != nil { model.scanColour() } else { model.scanAndMeasure() }
         }
     }
 
     private func readFile() {
-        if let url = ContentView.askOpen(types: [.jpeg, .png, .tiff]) { model.scanAndMeasure(file: url) }
+        guard let url = ContentView.askOpen(types: [.jpeg, .png, .tiff]) else { return }
+        if model.colourRun != nil { model.scanColour(file: url) } else { model.scanAndMeasure(file: url) }
     }
 }
 

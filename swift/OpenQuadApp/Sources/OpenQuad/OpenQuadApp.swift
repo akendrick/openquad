@@ -7,7 +7,7 @@
 //                                       [--separations N] [--layer K] [--overlap STEPS] [--step-test] [--coats-chart]
 //                                       [--show-coats] [--colour-separation] [--saturation S]
 //                                       [--on-page] [--place LEFT,TOP] [--fit-off] [--ppi PPI]
-//     OpenQuad --snapshot out.png --wizard calibration|process|blocking|guide|contact-sheet [--scan SCAN] [--run RUN]
+//     OpenQuad --snapshot out.png --wizard calibration|colour|process|blocking|guide|contact-sheet [--scan SCAN] [--run RUN]
 //                                       [--photos P1,P2,...] [--landscape] [--white] [--wedge] [--labels] [--crop]
 //                                       (contact-sheet)
 //                                       [--mixtures] (blocking: the ink-mixture chart)
@@ -204,6 +204,14 @@ enum Snapshot {
                 wizard.printed("print panel")
                 if let scan { wizard.scanAndMeasure(file: scan) }
             }
+            return AnyView(CalibrationWizardView(model: wizard) { _ in })
+        case "colour":
+            // The colour calibration: at setup, or a real run as it was left.
+            let wizard = CalibrationWizardModel(folder: folder, paper: "Letter", scannerHost: "876298000000.local:80",
+                                                starting: nil, startingName: nil, printers: ["Canon_MG3600_series"],
+                                                printer: "Canon_MG3600_series", find: { [] })
+            wizard.kind = .colour
+            if let run = value("--run") { wizard.resume(URL(fileURLWithPath: run)) }
             return AnyView(CalibrationWizardView(model: wizard) { _ in })
         case "process":
             let wizard = ProcessWizardModel(folder: folder, scannerHost: "876298000000.local:80", find: { [] })

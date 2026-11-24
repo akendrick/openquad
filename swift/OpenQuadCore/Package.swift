@@ -13,7 +13,9 @@ let package = Package(
     targets: [
         // OpenJPEG 2.5.4's decoder (BSD 2-clause), for JPEG 2000 photos at full bit depth.
         .target(name: "COpenJPEG"),
-        .target(name: "OpenQuadCore", dependencies: ["COpenJPEG"]),
+        // LAPACK's current interface (Accelerate), for the colour profile's fits.
+        .target(name: "OpenQuadCore", dependencies: ["COpenJPEG"],
+                swiftSettings: [.unsafeFlags(["-Xcc", "-DACCELERATE_NEW_LAPACK"])]),
         .testTarget(
             name: "OpenQuadCoreTests",
             dependencies: ["OpenQuadCore"],

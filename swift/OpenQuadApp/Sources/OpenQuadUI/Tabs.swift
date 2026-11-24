@@ -130,6 +130,8 @@ public final class AppRoot {
             contactSheet.setRooms(print: printModel.printableRoom, negative: negativeModel.printableRoom)
         case .printerCalibration:
             if calibration == nil { calibration = printModel.calibrationWizard() }
+            // A colour print in the Print tab: calibrate colour (until a run is started).
+            if let wizard = calibration, !wizard.started { wizard.kind = printModel.session.printsColour ? .colour : .blackAndWhite }
         case .processCalibration:
             if blocking == nil { blocking = negativeModel.blockingTest() }
             if process == nil { process = negativeModel.processWizard() }
@@ -151,9 +153,29 @@ public final class AppRoot {
 
     // MARK: hand-offs between tabs
 
+    /// A finished colour calibration: the Print tab's colour prints go through its profile
+    /// when it prints on that printer.
+    public func useColourProfile(_ path: URL, scannerHost: String) {
+        printModel.refreshLibrary()
+        let entry = printModel.library.colourProfile(path)
+        let label = entry?.label ?? path.lastPathComponent
+        if let printer = entry?.printer, let current = printModel.session.printer, current != printer {
+            notice = "Saved \(label). The Print tab prints on \(LibraryEntry.printerName(current)); "
+                + "choose \(LibraryEntry.printerName(printer)) there to use it."
+        } else {
+            printModel.finishColourProfile(path, scannerHost: scannerHost)
+            notice = "Colour prints in the Print tab now go through \(label)."
+        }
+        tab = .print
+    }
+
     /// A finished printer calibration: used in the Print tab when it prints on that printer
     /// (negatives are shaped by their process curve instead).
     public func useCalibration(_ path: URL, scannerHost: String) {
+        if path.pathExtension.lowercased() == "icc" {
+            useColourProfile(path, scannerHost: scannerHost)
+            return
+        }
         let entry = CalibrationLibrary.entry(path)
         let label = entry?.label ?? path.lastPathComponent
         if let printer = entry?.printer, let current = printModel.session.printer, current != printer {

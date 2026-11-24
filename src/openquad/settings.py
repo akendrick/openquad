@@ -51,6 +51,8 @@ class Settings:
     chart_size: list[float] | None = None
     # The ICC profile the Mac app soft-proofs colour prints with (None: no soft-proof).
     proof_profile: str | None = None
+    # The OpenQuad printer profile the Mac app converts colour prints through (None: macOS's).
+    colour_profile: str | None = None
     # Driver options (media type, quality) chosen for each printer when printing straight to
     # it, for prints and for negatives: {printer: {option: value}}.
     printer_options: dict[str, dict[str, str]] = field(default_factory=dict)

@@ -7,6 +7,23 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Colour calibration, phase 4: the Mac app. Printer Calibration has a Black and white / Colour
+  choice at setup. Colour prints the colour target (one page, or two for photo papers), scans
+  it (each page, in any order, either way up), builds profile v0, then checks it in rounds of
+  verification pages, with a rounds table of ΔE00 mean, 95th percentile and the greys' cast and
+  tone, the worst colours shown wanted beside printed, and Refine Profile until the goals are
+  met. Scans are read through a scanner model kept in the library (added from the file
+  `openquad scanner-profile` wrote), or as sRGB without one. The Print tab's colour prints get
+  a Profile picker: macOS (the driver's profile) or one of the printer's OpenQuad profiles,
+  matched to the printer and paper as grey calibrations are; through one, the photo is
+  converted (perceptual) and sent sRGB-tagged as the target was, and the preview soft-proofs
+  through it. Export to ColorSync copies a profile to `~/Library/ColorSync/Profiles`. The Swift
+  core gains the colour target, measuring, the profile (fitted with LAPACK), the ICC writer, the
+  verification page and colour runs, checked against the Python reference with shared vectors;
+  numpy's random generator is reproduced exactly so targets shuffle the same way. Runs are
+  shared with the CLI: Python's `profile` commands keep the app's extra `run.json` fields (the
+  printer, paper, target stage and scanner model) and read scans through the run's scanner
+  model.
 - Colour calibration, phase 3: checking a profile on real prints and refining it, in rounds kept
   in a run folder with a `run.json` log (as grey calibration runs are). `openquad profile start
   FOLDER MEASUREMENT... --name NAME` builds the first profile; `profile page FOLDER` writes a

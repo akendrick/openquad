@@ -142,8 +142,11 @@ public struct GuideView: View {
                     ("Open a colour photo", "It opens as grey, with a note that it's a colour image."),
                     ("Turn on Print in colour", "Under Toning and calibration. The photo keeps its colours and "
                         + "colour profile (sRGB if it has none); toning and calibration are skipped."),
-                    ("Soft-proof it", "Soft-proof with a paper's profile shows on screen what the paper can't "
-                        + "hold. It changes only the preview."),
+                    ("Choose the profile", "macOS (driver's profile) lets macOS match the colours; one of this "
+                        + "printer's OpenQuad profiles (from Printer Calibration, Colour) converts the photo through it, "
+                        + "and the preview shows it as it will print. Export to ColorSync lets other apps use it."),
+                    ("Soft-proof it", "With macOS's profile, Soft-proof with a paper's profile shows on screen what the "
+                        + "paper can't hold. It changes only the preview."),
                     ("Set the paper in the print panel", "macOS colour-manages the print: choose the paper type or "
                         + "profile under Media & Quality, the same every time."),
                     ("Add a colour wedge", "Under Registration and step wedges, a colour gamut wedge (31 hues as a "
@@ -324,9 +327,10 @@ public struct GuideView: View {
 
     static let printerCalibrationPage = Page(
         tab: .printerCalibration, symbol: "slider.horizontal.3", title: "Printer Calibration",
-        purpose: "Makes your printer print greys neutral and evenly spaced. It prints a test page, scans it with "
-            + "your scanner, measures every grey and corrects what it finds, in rounds, until the colour cast and "
-            + "tone are within their goals. The result is a calibration for that printer, paper and way of printing.",
+        purpose: "Makes your printer print greys neutral and evenly spaced, or (Colour) builds a profile so colour "
+            + "prints come out as the photo's colours. It prints a test page, scans it with your scanner, measures "
+            + "it and corrects what it finds, in rounds, until the result is within its goals. The result is for "
+            + "that printer, paper and way of printing.",
         walkthroughs: [
             Walkthrough(
                 title: "Before you start",
@@ -351,6 +355,21 @@ public struct GuideView: View {
                         + "goals (cast under 3, tone within 2 L*)."),
                     ("Improve", "The card says what to do next: usually Improve Grey Balance first (colour casts), "
                         + "then Even Out Tone (lightness), printing and scanning again after each to check."),
+                ]),
+            Walkthrough(
+                title: "Calibrate colour prints",
+                summary: "Choose Colour at setup: a printer profile, checked round by round.",
+                steps: [
+                    ("Set up", "Calibrate: Colour prints. One page (255 colours) suits plain paper; two pages (768) "
+                        + "photo papers. A scanner model (from an IT8.7/2 target, made with openquad scanner-profile) "
+                        + "makes the scan a measurement; without one, prints match each other but rest on the scanner."),
+                    ("Round 1: the target", "Print it the same way you'll print photos, let it dry for an hour, scan "
+                        + "it (each page, in any order). OpenQuad builds profile v0 from it."),
+                    ("Then check it", "Each round prints 144 colours the profile wasn't built from (a colour checker's, "
+                        + "skin tones, greys, photo colours) and measures how far off they print, in ΔE00."),
+                    ("Refine or use", "Goals: mean under 3 and 95% under 6, greys within the grey goals. Refine "
+                        + "Profile folds what was measured back in; Use This Profile sends the Print tab's colour "
+                        + "prints through it."),
                 ]),
             Walkthrough(
                 title: "Finish, and use it",

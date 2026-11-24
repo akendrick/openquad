@@ -376,12 +376,36 @@ public struct ContentView: View {
         if model.session.printsColour { colourControls } else { greyControls }
     }
 
-    /// A colour print: no toning or calibration; macOS matches the colours to the printer.
+    /// A colour print: no toning or grey calibration. Through an OpenQuad printer profile, or
+    /// macOS matches the colours to the printer.
     @ViewBuilder private var colourControls: some View {
-        Text("The photo keeps its colours and its own colour profile (sRGB if it has none). Choose the printer's "
-             + "paper type or profile in the print panel: macOS colour-manages the print.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
+        Picker("Profile", selection: Binding(get: { model.currentColourProfile?.url }, set: { model.setColourProfile($0) })) {
+            Text("macOS (driver's profile)").tag(URL?.none)
+            ForEach(model.colourProfileChoices) { Text($0.label).tag(URL?.some($0.url)) }
+        }
+        if let current = model.currentColourProfile {
+            let how = current.viaPanel ? "the print panel" : "printing straight to the printer"
+            Text("The photo is converted through this profile (made for \(how)) and sent as the colour target was. "
+                 + "The preview shows it as it will print.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack {
+                Button("Export to ColorSync") { model.exportColourProfile() }
+                    .help("Copy it to ~/Library/ColorSync/Profiles so other apps can print or soft-proof with it")
+                Button("Calibrate Colour…") { goTo(.printerCalibration) }
+            }
+        } else {
+            Text("The photo keeps its colours and its own colour profile (sRGB if it has none). Choose the printer's "
+                 + "paper type or profile in the print panel: macOS colour-manages the print.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            proofControls
+            Button("Calibrate Colour…") { goTo(.printerCalibration) }
+                .help("Make an OpenQuad profile for this printer and paper (choose Colour in the wizard)")
+        }
+    }
+
+    @ViewBuilder private var proofControls: some View {
         Picker("Soft-proof with", selection: Binding(get: { model.proofProfile }, set: { model.setProofProfile($0) })) {
             Text("None (the photo's colours)").tag(URL?.none)
             ForEach(model.proofProfiles) { Text($0.name).tag(URL?.some($0.url)) }

@@ -201,3 +201,48 @@ def test_cli_verify_reports_a_miss(tmp_path: Path, capsys: pytest.CaptureFixture
     out = capsys.readouterr().out
     assert "Goals not met" in out and "profile refine" in out
     assert ColourRun.resume(folder).current.action == "refine"
+
+
+def test_a_run_started_in_the_app_keeps_its_extra_details(tmp_path: Path) -> None:
+    """The Mac app's runs start from the target and record more; Python keeps it all."""
+    folder = tmp_path / "run"
+    ColourRun.start(folder, "plain", [measured(make_target())])
+    log = json.loads((folder / "run.json").read_text())
+    log["printer"], log["page_ppi"] = "Canon_MG3600_series", 300.0
+    log["target"] = {"grid": 6, "layout": "plain-target.json", "scans": ["plain-target-scan1.jpg"]}
+    log["rounds"][0]["job"] = "Canon-12"
+    log["rounds"][0]["something_newer"] = True
+    (folder / "run.json").write_text(json.dumps(log))
+    again = ColourRun.resume(folder)
+    assert again.current.job == "Canon-12" and again.extra["printer"] == "Canon_MG3600_series"
+    again.make_pages(dpi=60)
+    kept = json.loads((folder / "run.json").read_text())
+    assert kept["target"]["scans"] == ["plain-target-scan1.jpg"] and kept["page_ppi"] == 300.0
+    assert kept["rounds"][0]["job"] == "Canon-12"
+    # A run the app hasn't built a profile in yet.
+    log["rounds"] = []
+    (folder / "run.json").write_text(json.dumps(log))
+    with pytest.raises(ColourRunError, match="colour target first"):
+        ColourRun.resume(folder).verification()
+
+
+def test_a_run_reads_scans_through_its_scanner_model(tmp_path: Path) -> None:
+    from openquad.scanner_profile import CURVE_POINTS, ScannerModel
+
+    folder = tmp_path / "run"
+    ColourRun.start(folder, "plain", [measured(make_target())])
+    grid = np.linspace(0, 1, CURVE_POINTS)
+    matrix = np.array([[0.4, 0.2, 0.02], [0.35, 0.7, 0.1], [0.2, 0.08, 0.7], [0, 0, 0]])
+    model = ScannerModel("matrix", np.stack([grid, grid, grid]), matrix, scanner="Flatbed")
+    (folder / "scanner-model.json").write_text(model.to_json())
+    log = json.loads((folder / "run.json").read_text())
+    log["scanner_model"] = "scanner-model.json"
+    (folder / "run.json").write_text(json.dumps(log))
+    again = ColourRun.resume(folder)
+    again.make_pages(dpi=100)
+    scanned = tmp_path / "scan.tif"
+    image = scan(again.verification().target)
+    tifffile.imwrite(scanned, np.rint(image * 65535).astype(np.uint16), photometric="rgb")
+    again.measure([scanned])
+    measured_file = folder / str(ColourRun.resume(folder).current.measurement)
+    assert "Flatbed" in json.loads(measured_file.read_text())["colourimetry"]

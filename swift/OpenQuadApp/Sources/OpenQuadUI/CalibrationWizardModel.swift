@@ -1,4 +1,6 @@
 // The printer calibration wizard's model: print a comparison page, scan, measure, improve.
+// For black-and-white prints it calibrates grey balance and tone; for colour prints it
+// builds a printer profile (ColourCalibrationWizard.swift has that part).
 
 import AppKit
 import OpenQuadCore
@@ -23,6 +25,20 @@ public final class CalibrationWizardModel: WizardModel {
     public var method: PrintMethod
     public var startFromCurrent: Bool
     public var shadowStrength = 0.5
+    /// What's calibrated: black-and-white prints, or colour prints (a printer profile).
+    public var kind = CalibrationKind.blackAndWhite
+    /// Colour: the two-page target with a finer grid (for photo papers).
+    public var fineTarget = false
+    /// Colour: the scanner model scans are read through (nil: the scan is taken as sRGB).
+    public var scannerModel: URL?
+    public internal(set) var scannerModels: [ScannerModelEntry] = []
+    /// Colour: the pages' resolution (tests use less).
+    var colourPPI = ColourRun.pagePPI
+    public internal(set) var colourRun: ColourRun? { didSet { savedRunsCache.clear() } }
+    /// Colour: what the target measured and the profile built from it.
+    public internal(set) var profileSummary: String?
+    /// Colour: this round's verification, once measured.
+    public internal(set) var verification: VerificationReport?
     public private(set) var run: CalibrationRun? { didSet { savedRunsCache.clear() } }
     public private(set) var uncorrected: Measurement?
     public private(set) var corrected: Measurement?
@@ -46,6 +62,8 @@ public final class CalibrationWizardModel: WizardModel {
         startFromCurrent = starting != nil
         name = ""
         super.init(scannerHost: scannerHost, find: find)
+        scannerModels = CalibrationLibrary(folder: folder).scannerModels()
+        scannerModel = scannerModels.first?.url
     }
 
     /// "canon-mg3600-letter-plain" unless a name was typed.
@@ -53,6 +71,7 @@ public final class CalibrationWizardModel: WizardModel {
         let typed = name.trimmingCharacters(in: .whitespaces)
         if !typed.isEmpty { return typed }
         let parts = [LibraryEntry.printerName(printer.isEmpty ? "printer" : printer), paper, paperType]
+            + (kind == .colour ? ["colour"] : [])
         return parts.joined(separator: "-").lowercased().replacingOccurrences(of: " ", with: "-")
     }
 
@@ -61,15 +80,19 @@ public final class CalibrationWizardModel: WizardModel {
         return type.isEmpty ? paper : "\(paper) \(type)"
     }
 
-    public var started: Bool { run != nil }
-    public var printed: Bool { run?.current.job != nil }
-    public var measured: Bool { run?.current.measurements.count == 2 }
-    public var canUse: Bool { measured || (run?.current.version ?? 0) > 0 }
+    public var started: Bool { run != nil || colourRun != nil }
+    public var printed: Bool { colourRun?.printed ?? (run?.current.job != nil) }
+    public var measured: Bool { colourRun?.measured ?? (run?.current.measurements.count == 2) }
+    public var canUse: Bool { colourRun.map { !$0.onTarget } ?? (measured || (run?.current.version ?? 0) > 0) }
 
     /// Where a round is: each round prints a page, scans it, then shows the result.
     public enum Step: Equatable { case setup, print, scan, result }
 
     public var step: Step {
+        if let colourRun {
+            if !colourRun.printed { return .print }
+            return colourRun.measured ? .result : .scan
+        }
         guard let run else { return .setup }
         if run.current.job == nil { return .print }
         if run.current.measurements.count != 2 { return .scan }
@@ -77,7 +100,10 @@ public final class CalibrationWizardModel: WizardModel {
     }
 
     /// Round 1 is the first page printed (with no correction, or the calibration started from).
-    public var round: Int { (run?.current.version ?? 0) + 1 }
+    public var round: Int {
+        if let colourRun { return colourRun.current.map { $0.version + 2 } ?? 1 }
+        return (run?.current.version ?? 0) + 1
+    }
 
     public struct RoundSummary: Identifiable, Equatable {
         public let round: Int
@@ -124,6 +150,15 @@ public final class CalibrationWizardModel: WizardModel {
         guard let folders = try? fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.contentModificationDateKey]) else { return [] }
         let runs = folders.compactMap { url -> SavedRun? in
             let log = url.appendingPathComponent("run.json")
+            if let colour = try? ColourRun.resume(url),
+               let modified = (try? log.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate {
+                let format = DateFormatter()
+                format.dateFormat = "d MMM, HH:mm"
+                let round = colour.current.map { $0.version + 2 } ?? 1
+                let label = "\(LibraryEntry.printerName(colour.printer)), \(colour.paperLabel), colour: round \(round) "
+                    + "(\(format.string(from: modified)))"
+                return SavedRun(folder: url, label: label, modified: modified)
+            }
             guard let run = try? CalibrationRun.resume(url),
                   let modified = (try? log.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
             else { return nil }
@@ -137,6 +172,10 @@ public final class CalibrationWizardModel: WizardModel {
 
     /// Pick up a run where it was left: its settings, rounds and latest measurement.
     public func resume(_ saved: URL) {
+        if (try? ColourRun.resume(saved)) != nil {
+            resumeColour(saved)
+            return
+        }
         do {
             let run = try CalibrationRun.resume(saved)
             self.run = run
@@ -165,13 +204,16 @@ public final class CalibrationWizardModel: WizardModel {
             error = "Choose the printer you're calibrating."
             return
         }
+        if kind == .colour {
+            startColour(printer: printer)
+            return
+        }
         let name = runName
-        let how = method == .direct ? "default quality, straight to the printer (lp)" : "macOS print panel"
         do {
             run = try CalibrationRun.start(folder: folder.appendingPathComponent("\(name)-\(Self.timestamp())"), name: name,
                                            printer: printer, paper: paper, scannerHost: scannerHost,
                                            starting: startFromCurrent ? starting : nil,
-                                           settings: "\(how); eSCL Document intent", paperLabel: paperLabel)
+                                           settings: printSettings, paperLabel: paperLabel)
             error = nil
             say("Started \(name) in \(run!.folder.path)")
         } catch {
@@ -247,7 +289,12 @@ public final class CalibrationWizardModel: WizardModel {
         }
     }
 
-    public var calibrationPath: URL? { run?.calibrationPath }
+    public var calibrationPath: URL? { colourRun?.profileURL ?? run?.calibrationPath }
+
+    /// How the pages are printed, in the words the calibration records.
+    var printSettings: String {
+        "\(method == .direct ? "default quality, straight to the printer (lp)" : "macOS print panel"); eSCL Document intent"
+    }
 
     /// The CUPS printers, once looked up (the wizard can be made before they are): before
     /// a run starts, offer them and pick the first if none is chosen.

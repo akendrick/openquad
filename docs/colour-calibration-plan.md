@@ -1,6 +1,6 @@
 # Plan: colour calibration
 
-Status: phases 0-3 software built (Python), waiting for a real IT8.7/2 target and test prints. Written 2026-11-22.
+Status: phases 0-3 software built (Python), phase 4 built (the Mac app), waiting for a real IT8.7/2 target and test prints. Written 2026-11-22.
 
 ## What this is for
 
@@ -158,6 +158,25 @@ vectors (`scripts/export_swift_vectors.py`), as now.
   this printer's OpenQuad profiles. The soft proof follows the choice automatically. The print
   path is matched as the grey calibration's is today.
 - Busy and error text in the style that PR 75 introduces.
+- **Built (2026-11-24):** the Swift core ports phases 1-3 (`ColourTarget`, `ColourMeasure`,
+  `ColourProfiles`/`ProfileReport` with LAPACK fits, the ICC writer, `ColourVerification` and
+  `ColourRun`), checked against the Python reference with shared vectors
+  (`colour-calibration.json`): the layouts, page images, measurements and ICC header match
+  exactly; the model, inverse and tables to small tolerances. numpy's `default_rng` (SeedSequence
+  and PCG64) is reproduced in `NumpyRandom.swift`, so every shuffle matches. A colour run in the
+  app starts from the target (its pages, scans and measurement are a `target` entry in
+  `run.json`) and records the printer, paper, settings and scanner model; Python's
+  `ColourRun` keeps those fields, so either version can continue a run. The wizard's colour
+  card runs Print → Scan → Result: round 1 is the target and builds v0, each later round a
+  verification page; a failed measurement (a scan of the wrong page, or no target) throws the
+  scans away so the page can be scanned again. In the Print tab, a colour print's Profile
+  picker offers this printer's profiles (matched to printer, paper and print path as grey
+  calibrations are, and remembered); through one, the photo is converted by ColorSync
+  (perceptual, from its own profile) and the print file is tagged sRGB, as the target was. The
+  soft proof uses the chosen profile. **Differences from the plan:** the app reads scanner
+  models but doesn't make them yet: the card explains, and Add… takes the file `openquad
+  scanner-profile` wrote (making one needs the IT8.7/2 target, still to buy, so its app step
+  waits for phase 0's verdict). **Still to do:** real prints, and phase 5's PySide6 picker.
 
 ### Phase 5: Python parity and CLI
 

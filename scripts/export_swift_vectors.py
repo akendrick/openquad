@@ -16,6 +16,7 @@ from typing import Any
 
 import numpy as np
 
+from openquad.colour import D50_WHITE as D50
 from openquad.colour import linear_rgb_to_lab, linear_to_srgb, srgb_to_linear
 from openquad.curves import InkSpec, build_curve, expand, scale_limit
 from openquad.quadfile import format_quad, parse_quad
@@ -1487,6 +1488,158 @@ def colour_separations_vectors(directory: Path) -> dict[str, Any]:
     }  # fmt: skip
 
 
+def _printer_xyz(encoded: Any) -> Any:
+    """D50 XYZ of a simulated printer (the colour tests' one) for RGB sent (0-1)."""
+    from openquad.colour import d65_to_d50, linear_rgb_to_xyz
+
+    linear = srgb_to_linear(encoded)
+    mixed = 0.8 * linear + 0.2 * linear.mean(axis=-1, keepdims=True)
+    tinted = mixed * np.array([0.92, 0.9, 0.84]) + np.array([0.01, 0.009, 0.008])
+    return d65_to_d50(linear_rgb_to_xyz(tinted))
+
+
+def colour_calibration_vectors() -> dict[str, Any]:
+    """The colour target, measuring it, the profile and the verification page."""
+    from datetime import UTC, datetime
+
+    from openquad.colour import d65_to_d50, delta_e_2000, lab_to_xyz, xyz_to_lab
+    from openquad.colour_profile import (
+        black_point,
+        build_profile,
+        compensate_black,
+        icc_profile,
+        invert,
+    )
+    from openquad.colour_target import (
+        ColourMeasurement,
+        make_target,
+        measure_target,
+        target_page,
+    )
+    from openquad.colour_verify import (
+        VerificationTarget,
+        make_verification,
+        refine,
+        verification_colours,
+        verify,
+    )
+    from openquad.quadfile import MAX_VALUE
+    from openquad.scanner_profile import CURVE_POINTS, ScannerModel
+
+    rng = np.random.default_rng(5)
+    xyz = rng.uniform(0.0, 1.0, (40, 3))
+    lab1, lab2 = rng.uniform(-60, 90, (40, 3)), rng.uniform(-60, 90, (40, 3))
+    lab1[:, 0], lab2[:, 0] = np.abs(lab1[:, 0]), np.abs(lab2[:, 0])
+    maths = {
+        "xyz": _floats(xyz),
+        "lab_d50": _floats(xyz_to_lab(xyz, D50)),
+        "back": _floats(lab_to_xyz(xyz_to_lab(xyz, D50), D50)),
+        "d50": _floats(d65_to_d50(xyz)),
+        "lab1": _floats(lab1),
+        "lab2": _floats(lab2),
+        "delta_e": _floats(delta_e_2000(lab1, lab2)),
+        "permutation": _ints(np.random.default_rng(7).permutation(300)),
+        "uniform": _floats(np.random.default_rng(13).uniform(0.03, 0.97, 30)),
+    }
+    small, fine = make_target(), make_target(9)
+    page = target_page(small, 0, dpi=60)
+    scan = page.astype(np.float64) / MAX_VALUE
+    plain = measure_target([scan], small)
+    grid = np.linspace(0, 1, CURVE_POINTS)
+    scanner = ScannerModel(
+        "poly",
+        np.stack([grid**2.1, grid**2.0, grid**2.2]),
+        np.random.default_rng(3).uniform(-0.1, 0.6, (11, 3)),
+        scanner="Test scanner",
+    )
+    scanner = ScannerModel.from_json(scanner.to_json())  # as saved (rounded), as Swift reads it
+    flipped = np.ascontiguousarray(scan[::-1, ::-1])
+    modelled = measure_target([flipped], small, scanner)
+    targets = {
+        "sent": _ints(small.sent),
+        "columns": small.columns,
+        "pages": len(small.pages),
+        "json": small.to_json(),
+        "fine_sent": _ints(fine.sent),
+        "fine_columns": fine.columns,
+        "fine_pages": [len(p) for p in fine.pages],
+        "page_size": [page.shape[1], page.shape[0]],
+        "page_rows": _ints(page.astype(np.int64).sum(axis=(1, 2))),
+        "page_columns": _ints(page.astype(np.int64).sum(axis=(0, 2))),
+        "plain_xyz": _floats(plain.xyz),
+        "plain_lab": _floats(plain.lab),
+        "plain_paper": _floats(plain.paper_xyz),
+        "plain_summary": plain.summary(),
+        "scanner_model": scanner.to_json(),
+        "modelled_xyz": _floats(modelled.xyz),
+        "modelled_lab": _floats(modelled.lab),
+    }
+    paper = _printer_xyz(np.ones(3))
+    sent = small.sent / MAX_VALUE
+    printed = _printer_xyz(sent)
+    measurement = ColourMeasurement(small.sent, printed, xyz_to_lab(printed, paper), paper)
+    report = build_profile([measurement])
+    model = report.model
+    wanted = np.random.default_rng(9).uniform([5, -70, -70], [98, 70, 70], (60, 3))
+    created = datetime(2026, 11, 24, 12, 0, 0, tzinfo=UTC)
+    profile = icc_profile(model, "Test printer", report.tables, created=created)
+    every = 37
+    black = black_point(model)
+    profiles = {
+        "measured_lab": _floats(measurement.lab),
+        "paper": _floats(paper),
+        "smoothing": model.smoothing,
+        "nodes": _floats(model.nodes),
+        "held_out": _floats(report.held_out),
+        "fitted": _floats(report.fitted),
+        "neutral_cast": _floats(report.neutral_cast),
+        "summary": report.summary(),
+        "model_json": model.to_json(),
+        "wanted": _floats(wanted),
+        "inverse": _floats(invert(model, wanted)),
+        "black": _floats(black),
+        "compensated": _floats(compensate_black(wanted, black)),
+        "every": every,
+        "a2b": _floats(report.tables.a2b),
+        "b2a_perceptual": _floats(report.tables.b2a_perceptual[::every]),
+        "b2a_colourimetric": _floats(report.tables.b2a_colourimetric[::every]),
+        "gamut": _floats(report.tables.gamut[::every]),
+        "icc_size": len(profile),
+        "icc_head": _ints(np.frombuffer(profile[: 132 + 12 * 11], dtype=np.uint8)),
+    }
+    made = make_verification(model)
+    verification = VerificationTarget.from_json(made.to_json())  # as saved, as Swift reads it
+    check = measurement_of(verification.target.sent, paper)
+    verified = verify(check, verification)
+    names, groups, colours = verification_colours()
+    verifications = {
+        "names": names,
+        "groups": groups,
+        "wanted": _floats(colours),
+        "page_names": made.names,
+        "page_sent": _ints(verification.target.sent),
+        "printable": [bool(v) for v in verification.printable],
+        "json": verification.to_json(),
+        "measured_lab": _floats(check.lab),
+        "delta_e": _floats(verified.delta_e),
+        "assessment": verified.assessment(),
+        "passed": verified.passed,
+        "summary": verified.summary(),
+        "refined": _floats(refine(model, check).nodes),
+    }
+    return {"maths": maths, "target": targets, "profile": profiles, "verify": verifications}
+
+
+def measurement_of(sent: Any, paper: Any) -> Any:
+    """The simulated printer's measurement of patches sent (0-65535), drifted a little."""
+    from openquad.colour import xyz_to_lab
+    from openquad.colour_target import ColourMeasurement
+    from openquad.quadfile import MAX_VALUE
+
+    printed = _printer_xyz(sent / MAX_VALUE) * np.array([1.0, 0.97, 0.94])
+    return ColourMeasurement(sent, printed, xyz_to_lab(printed, paper), paper)
+
+
 def export(directory: Path) -> list[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     written = []
@@ -1501,6 +1654,7 @@ def export(directory: Path) -> list[Path]:
         ("calibration", calibration_vectors()),
         ("builds", builds_vectors()),
         ("contactsheet", contactsheet_vectors()),
+        ("colour-calibration", colour_calibration_vectors()),
     ):
         path = directory / f"{name}.json"
         path.write_text(json.dumps(data, separators=(",", ":")) + "\n", encoding="utf-8")

@@ -13,7 +13,9 @@ only those; colours outside the printer's gamut are reported apart, since no pro
 could print them exactly.
 
 Every file of a run (profiles, models, pages, layouts, scans, measurements, reports) is
-kept in the run's folder with a `run.json` log, as grey calibration runs are.
+kept in the run's folder with a `run.json` log, as grey calibration runs are. The Mac app
+starts its runs from the colour target, so its `run.json` also records the printer, the
+paper, the target's pages and scans and the scanner model; those are kept as they are.
 """
 
 from __future__ import annotations
@@ -21,8 +23,9 @@ from __future__ import annotations
 import json
 import shutil
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
@@ -55,7 +58,7 @@ from openquad.colour_target import (
 from openquad.imageio import save_rgb, srgb_profile
 from openquad.measure import load_scan
 from openquad.quadfile import MAX_VALUE
-from openquad.scanner_profile import ScannerModel
+from openquad.scanner_profile import ScannerModel, load_model
 
 MEAN_GOAL = 3.0  # ΔE00, printable colours
 P95_GOAL = 6.0
@@ -340,6 +343,7 @@ class ColourRound:
     model: str
     pages: list[str] = field(default_factory=list)
     layout: str | None = None
+    job: str | None = None  # how the page was printed (the app records it)
     scans: list[str] = field(default_factory=list)
     measurement: str | None = None
     report: str | None = None
@@ -353,6 +357,8 @@ class ColourRun:
     name: str
     description: str
     rounds: list[ColourRound] = field(default_factory=list)
+    #: What the app adds (printer, paper, settings, scanner, the target's stage), kept as is.
+    extra: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
     def start(
@@ -377,14 +383,18 @@ class ColourRun:
         data = json.loads((Path(folder) / "run.json").read_text(encoding="utf-8"))
         if data.get("kind") != "openquad colour run":
             raise ColourRunError(f"{folder} isn't a colour calibration run")
-        rounds = [ColourRound(**r) for r in data["rounds"]]
-        return cls(Path(folder), data["name"], data["description"], rounds)
+        known = {f.name for f in fields(ColourRound)}
+        rounds = [ColourRound(**{k: v for k, v in r.items() if k in known}) for r in data["rounds"]]
+        own = ("kind", "name", "description", "rounds")
+        extra = {k: v for k, v in data.items() if k not in own}
+        return cls(Path(folder), data["name"], data.get("description", data["name"]), rounds, extra)
 
     def _save_log(self) -> None:
         data = {
             "kind": "openquad colour run",
             "name": self.name,
             "description": self.description,
+            **self.extra,
             "rounds": [asdict(r) for r in self.rounds],
         }
         (self.folder / "run.json").write_text(json.dumps(data, indent=1) + "\n", encoding="utf-8")
@@ -400,6 +410,8 @@ class ColourRun:
 
     @property
     def current(self) -> ColourRound:
+        if not self.rounds:
+            raise ColourRunError("measure the colour target first (in the app)")
         return self.rounds[-1]
 
     def model(self) -> ForwardModel:
@@ -443,6 +455,9 @@ class ColourRun:
             if source.resolve() != copy.resolve():
                 shutil.copyfile(source, copy)
             kept.append(copy)
+        model = self.extra.get("scanner_model")
+        if scanner is None and model:
+            scanner = load_model(self.folder / model)
         measurement = measure_target([load_scan(p) for p in kept], verification.target, scanner)
         save_measurement(measurement, self.folder / f"{stem}-measured.json")
         report = verify(measurement, verification)
