@@ -163,6 +163,17 @@ Scan each page (Document mode, 300 ppi or more) and give the scans in any order,
 Without `--scanner-model` the scan is taken as sRGB. The measurement holds each patch's RGB sent
 and its colour measured (XYZ under D50, and L\*a\*b\* relative to the paper white).
 
+Then build the printer's colour profile (phase 2) from one print's measurement, or several to
+average:
+
+```bash
+openquad profile build colour-measured.json -o "MG3600 plain.icc" --description "MG3600 plain"
+```
+
+It writes an ICC v2 output profile that ColorSync, LittleCMS and image editors can load, plus
+the forward model beside it as JSON. The report gives the model's accuracy on patches it was not
+fitted to, the printer's black and how far its primaries reach, and how neutral greys print.
+
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
 `--ppi`, `--copies` and `--option NAME=VALUE` (driver options) to change that.
 

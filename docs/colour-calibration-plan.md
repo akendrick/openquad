@@ -1,6 +1,6 @@
 # Plan: colour calibration
 
-Status: phases 0 and 1 software built (Python), waiting for a real IT8.7/2 target and test prints. Written 2026-11-22.
+Status: phases 0-2 software built (Python), waiting for a real IT8.7/2 target and test prints. Written 2026-11-22.
 
 ## What this is for
 
@@ -99,13 +99,28 @@ vectors (`scripts/export_swift_vectors.py`), as now.
 - **Inverse** (L\*a\*b\* wanted → RGB to send): search the forward model on a 33³ L\*a\*b\* grid,
   as the colour separations already do for coat strengths (bounded least squares on a grid, then
   interpolate).
-- **Out-of-gamut colours:** relative colorimetric with black-point compensation, which is what
+- **Out-of-gamut colours:** relative colourimetric with black-point compensation, which is what
   grey linearization already does for tone. Optionally, a gentle perceptual compression towards
   the gamut surface.
 - Grey axis: neutrals must stay neutral. Pin the inverse along L\* to the existing grey
   calibration's behaviour, so a colour print of a grey photo matches a black-and-white print.
 - Write an ICC v2 output profile (A2B0, B2A0/B2A1, gamut tag, description, media white point).
   Check that ColorSync loads it, and round-trip it against the model in tests.
+- **Built (2026-11-23):** `openquad.colour_profile` and `openquad profile build`, Python only, tested
+  on a simulated printer. The forward model is a 9×9×9 RGB lattice of L\*a\*b\*, interpolated
+  trilinearly and fitted by least squares with a second-difference smoothing term; the smoothing
+  is the one (of six) that best predicts patches held out in five folds. On the simulated printer
+  it predicts new colours within 0.2 ΔE00 on average. The inverse starts from the nearest of a 12³
+  RGB grid and takes damped Gauss-Newton steps inside the RGB cube, minimising ΔE76, so
+  out-of-gamut colours go to the nearest printable one. B2A1 (relative colourimetric) is that
+  alone; B2A0 and B2A2 first apply black-point compensation (Adobe's, linear in XYZ, towards the
+  printer's neutral black). The gamut tag is 0 within 1 ΔE76 of printable, rising to full at 10.
+  Profiles load in LittleCMS (checked in the tests, both directions) and in ColorSync
+  (`ColorSyncProfileVerify` passes, and `sips -m` converts through one). Several prints'
+  measurements are averaged, with their spread reported. **Still to do:** pinning the grey axis
+  to an existing grey calibration (greys already come out neutral through the profile, but
+  aren't yet tied to the black-and-white print's tone), the optional perceptual gamut
+  compression, and a real printer's measurements.
 
 ### Phase 3: the verification loop
 
