@@ -62,9 +62,31 @@ def lab_to_xyz(lab: ArrayLike, white: ArrayLike = D65_WHITE) -> NDArray[np.float
     return xyz
 
 
+def linear_rgb_to_xyz(rgb: ArrayLike) -> NDArray[np.float64]:
+    """Linear sRGB (..., 3) to CIE XYZ (..., 3), D65, Y = 1 for white."""
+    result: NDArray[np.float64] = np.asarray(rgb, dtype=np.float64) @ _RGB_TO_XYZ.T
+    return result
+
+
+# Bradford chromatic adaptation, D65 to D50 (as ICC profiles adapt sRGB).
+_D65_TO_D50 = np.array(
+    [
+        [1.0478112, 0.0228866, -0.0501270],
+        [0.0295424, 0.9904844, -0.0170491],
+        [-0.0092345, 0.0150436, 0.7521316],
+    ]
+)
+
+
+def d65_to_d50(xyz: ArrayLike) -> NDArray[np.float64]:
+    """Adapt CIE XYZ (..., 3) seen under D65 to how it looks under D50 (Bradford)."""
+    result: NDArray[np.float64] = np.asarray(xyz, dtype=np.float64) @ _D65_TO_D50.T
+    return result
+
+
 def linear_rgb_to_lab(rgb: ArrayLike) -> NDArray[np.float64]:
     """Linear sRGB (..., 3) to CIE L*a*b* (..., 3), D65 white."""
-    return xyz_to_lab(np.asarray(rgb, dtype=np.float64) @ _RGB_TO_XYZ.T)
+    return xyz_to_lab(linear_rgb_to_xyz(rgb))
 
 
 def delta_e_2000(lab1: ArrayLike, lab2: ArrayLike) -> NDArray[np.float64]:

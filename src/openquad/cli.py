@@ -36,6 +36,13 @@ from openquad.chart import (
     save_process,
     tone_errors,
 )
+from openquad.colour_target import (
+    load_target,
+    make_target,
+    measure_target,
+    save_measurement,
+    target_page,
+)
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.contactsheet import BACKGROUNDS, MAX_PHOTOS, SheetLayout, make_sheet
 from openquad.curve_export import FORMATS, export_curve
@@ -65,6 +72,7 @@ from openquad.scanner_profile import (
     KINDS,
     Corners,
     draw_boxes,
+    load_model,
     profile_scanner,
     read_reference,
     save_report,
@@ -115,6 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
             "chart",
             "steps",
             "chart-photo",
+            "colour",
         ],
         default="wedge",
         help="wedge: greyscale step wedge; grey-balance: framed RGB target to scan; "
@@ -124,7 +133,12 @@ def build_parser() -> argparse.ArgumentParser:
         "steps: numbered step scale over a continuous gradient, to print through a separation "
         "(openquad negative --separations); "
         "chart-photo: the process chart as a greyscale photo, to print through a separation "
-        "and read with openquad chart (calibrates the coats together)",
+        "and read with openquad chart (calibrates the coats together); "
+        "colour: colour target (about 250 RGB patches, one page; --fine for 768 over two), "
+        "with its layout saved beside it as JSON for openquad measure-colour",
+    )
+    target.add_argument(
+        "--fine", action="store_true", help="colour: 9 levels a channel (two pages) instead of 6"
     )
     target.add_argument("--steps", type=int,
                         help="wedge patches (default 21); for --kind steps, the step "
@@ -369,6 +383,20 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument(
         "--check-image", type=Path, help="PNG of the first scan with the sampled boxes outlined"
     )
+
+    mc = commands.add_parser(
+        "measure-colour", help="measure scans of the colour target (openquad target --kind colour)"
+    )
+    mc.add_argument("scans", type=Path, nargs="+", help="one scan of each page, in any order")
+    mc.add_argument(
+        "--target", type=Path, required=True, help="the target's layout (JSON written with it)"
+    )
+    mc.add_argument(
+        "--scanner-model",
+        type=Path,
+        help="scanner model from openquad scanner-profile (without one the scan is taken as sRGB)",
+    )
+    mc.add_argument("-o", "--output", type=Path, required=True, help="measurement to write (JSON)")
     return parser
 
 
@@ -384,8 +412,44 @@ def _calibration(path: Path | None) -> Calibration | None:
     return load_calibration(path) if path else None
 
 
+def _colour_target(args: argparse.Namespace) -> None:
+    target = make_target(9 if args.fine else 6)
+    pages = len(target.pages)
+    output: Path = args.output
+    paths = (
+        [output]
+        if pages == 1
+        else [
+            output.with_name(f"{output.stem}-{i + 1}of{pages}{output.suffix}") for i in range(pages)
+        ]
+    )
+    for page, path in enumerate(paths):
+        sheet = target_page(target, page, args.dpi)
+        save_rgb(path, sheet, (args.dpi, args.dpi), srgb_profile())
+        width, height = target.page_size(page)
+        print(f"wrote {path} (page {page + 1} of {pages}, {width:.2f} x {height:.2f} in)")
+    layout = output.with_suffix(".json")
+    layout.write_text(target.to_json() + "\n", encoding="utf-8")
+    print(f"wrote {layout} ({len(target.sent)} patches; keep it to measure the scans)")
+    print("print it as you print photos (sRGB, no colour management changes), at 100%,")
+    print(f"then scan each page: openquad measure-colour SCAN... --target {layout} -o OUT.json")
+
+
+def _measure_colour(args: argparse.Namespace) -> None:
+    model = load_model(args.scanner_model) if args.scanner_model else None
+    measurement = measure_target(
+        [load_scan(path) for path in args.scans], load_target(args.target), model
+    )
+    save_measurement(measurement, args.output)
+    print(measurement.summary())
+    print(f"wrote {args.output}")
+
+
 def _target(args: argparse.Namespace) -> None:
     dpi = (args.dpi, args.dpi)
+    if args.kind == "colour":
+        _colour_target(args)
+        return
     marks = {"guide": args.guide, "registration": args.registration}
     if args.kind == "chart-photo":
         save_grey(args.output, GreyImage(chart_photo(dpi=args.dpi), dpi=dpi))
@@ -843,6 +907,8 @@ def main(
             _linearize(args)
         elif args.command == "scanner-profile":
             _scanner_profile(args)
+        elif args.command == "measure-colour":
+            _measure_colour(args)
         else:
             parser.print_help()
     except (OSError, ValueError, PrintError, ScanError) as exc:
