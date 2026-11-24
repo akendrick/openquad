@@ -8,7 +8,10 @@ import Foundation
 public enum ColourConvert {
     /// Whether ICC data is an RGB output (printer) profile, the kind OpenQuad makes.
     public static func isRGBOutputProfile(_ data: Data) -> Bool {
-        data.count >= 20 && data[12..<16] == Data("prtr".utf8) && data[16..<20] == Data("RGB ".utf8)
+        guard data.count >= 20 else { return false }
+        let bytes = [UInt8](data.prefix(20))
+        let kind: [UInt8] = Array(bytes[12..<16]), space: [UInt8] = Array(bytes[16..<20])
+        return kind == Array("prtr".utf8) && space == Array("RGB ".utf8)
     }
 
     /// 16-bit RGB pixels in `source`'s colours (sRGB if nil) as the device RGB of the

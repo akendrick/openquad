@@ -227,7 +227,12 @@ extension ColourProfiles {
     /// compensation: linear in XYZ, white kept).
     public static func compensateBlack(_ lab: [Double], black: [Double]) -> [Double] {
         let xyz = Colour.labToXYZ(lab, white: Colour.d50White)
-        let mapped = (0..<3).map { xyz[$0] * (1 - black[$0] / Colour.d50White[$0]) + black[$0] }
+        let white = Colour.d50White
+        var mapped = [0.0, 0.0, 0.0]
+        for c in 0..<3 {
+            let scale: Double = 1 - black[c] / white[c]
+            mapped[c] = xyz[c] * scale + black[c]
+        }
         return Colour.xyzToLab(mapped, white: Colour.d50White)
     }
 
@@ -242,7 +247,11 @@ extension ColourProfiles {
             gridLab += [l, a, bb]
         } } }
         let count = levels.count * levels.count * levels.count
-        let norms = (0..<count).map { gridLab[3 * $0] * gridLab[3 * $0] + gridLab[3 * $0 + 1] * gridLab[3 * $0 + 1] + gridLab[3 * $0 + 2] * gridLab[3 * $0 + 2] }
+        var norms = [Double](repeating: 0, count: count)
+        for i in 0..<count {
+            let l: Double = gridLab[3 * i], a: Double = gridLab[3 * i + 1], b: Double = gridLab[3 * i + 2]
+            norms[i] = l * l + a * a + b * b
+        }
         var start = [[Double]](repeating: [0, 0, 0], count: wanted.count)
         let chunk = 4096
         var products = [Double](repeating: 0, count: chunk * count), row = [Double](repeating: 0, count: count)
