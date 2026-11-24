@@ -17,6 +17,7 @@ from PIL import Image
 
 from openquad import wedge as wedges
 from openquad.chart import ProcessCurve, load_process
+from openquad.colour_convert import is_rgb_output_profile, proof, to_device
 from openquad.colour_separations import ColourSeparation, hex_colour
 from openquad.colour_separations import coat_image as colour_coat_image
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
@@ -122,6 +123,10 @@ class PrintSession:
     # Print a colour photo in colour, on a colour-managed printer: its own colour and ICC
     # profile go to macOS, with no toning or calibration. Off (greyscale) for each new photo.
     colour_print: bool = False
+    # A colour print's OpenQuad printer profile (colour calibration): the photo is converted
+    # through it and sent sRGB-tagged, as the target was. None: macOS uses the driver's.
+    colour_profile: bytes | None = None
+    colour_profile_path: Path | None = None
     # Where a negative goes on the page: its outer top-left corner, in inches from the paper's
     # left and top edges, kept inside the margins. None = centred (as a print always is).
     placement: tuple[float, float] | None = None
@@ -145,6 +150,22 @@ class PrintSession:
         if on and (self.photo is None or self.photo.colour is None):
             raise SessionError("only a colour photo can be printed in colour")
         self.colour_print = on
+
+    def set_colour_profile(self, path: str | Path | None) -> None:
+        """Convert colour prints through this printer profile (an RGB output ICC profile),
+        or leave them to macOS (None)."""
+        if path is None:
+            self.colour_profile, self.colour_profile_path = None, None
+            return
+        data = Path(path).read_bytes()
+        if not is_rgb_output_profile(data):
+            raise SessionError(f"{Path(path).name} isn't an RGB printer profile")
+        self.colour_profile, self.colour_profile_path = data, Path(path)
+
+    @property
+    def converts_colour(self) -> bool:
+        """A colour print goes through an OpenQuad printer profile."""
+        return self.prints_colour and self.colour_profile is not None
 
     @property
     def prints_colour(self) -> bool:
@@ -516,6 +537,8 @@ class PrintSession:
         """The full-resolution print: in colour, or rendered from the greyscale photo."""
         colour = self._colour()
         if self.prints_colour and colour is not None:
+            if self.colour_profile is not None:
+                colour = to_device(colour, self._photo().icc_profile, self.colour_profile)
             image = self.render_colour(colour)
         else:
             image = self.render(self._source())
@@ -530,8 +553,9 @@ class PrintSession:
         return self._photo().pixels
 
     def print_profile(self) -> bytes | None:
-        """The ICC profile the print file carries: a colour print's own (sRGB if untagged)."""
-        if self.prints_colour and self._photo().icc_profile:
+        """The ICC profile the print file carries: a colour print's own (sRGB if untagged, or
+        if converted through an OpenQuad profile)."""
+        if self.prints_colour and self.colour_profile is None and self._photo().icc_profile:
             return self._photo().icc_profile
         return srgb_profile()
 
@@ -614,8 +638,12 @@ class PrintSession:
             return np.asarray(image, dtype=np.uint16)
 
         colour = self._colour()
-        if self.prints_colour and colour is not None:  # in its own colour, not proofed
+        if self.prints_colour and colour is not None:  # its own colour, or soft-proofed
             rgb = np.stack([shrink(np.ascontiguousarray(colour[..., c])) for c in range(3)], -1)
+            if self.colour_profile is not None:
+                proofed = proof((rgb >> 8).astype(np.uint8), self._photo().icc_profile,
+                              self.colour_profile)  # fmt: skip
+                rgb = proofed.astype(np.uint16) * 257
             return (self.render_colour(rgb, self.effective_ppi() * scale) >> 8).astype(np.uint8)
         if self.negative:  # the negative as it will look on the film
             source = self._source()
@@ -743,7 +771,13 @@ class PrintSession:
         if self.prints_colour:
             embedded = self._photo().icc_profile is not None
             profile = "embedded in the photo" if embedded else "none (read as sRGB)"
-            tones = ["Output: colour print (colour-managed by macOS)", f"Colour profile: {profile}"]
+            name = self.colour_profile_path.name if self.colour_profile_path else ""
+            output = (
+                f"Output: colour print through the printer profile {name}"
+                if self.colour_profile is not None
+                else "Output: colour print (colour-managed by macOS)"
+            )
+            tones = [output, f"Colour profile: {profile}"]
         else:
             tones = [f"Toning: {self.preset}", f"Calibration: {calibration}"]
         return [

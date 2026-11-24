@@ -36,6 +36,7 @@ from openquad.chart import (
     save_process,
     tone_errors,
 )
+from openquad.colour_convert import to_device
 from openquad.colour_profile import build_profile, save_profile
 from openquad.colour_target import (
     ColourMeasurement,
@@ -45,7 +46,7 @@ from openquad.colour_target import (
     save_measurement,
     target_page,
 )
-from openquad.colour_verify import DAMPING, ColourRun, ColourRunError
+from openquad.colour_verify import DAMPING, ColourRun, ColourRunError, colour_profiles
 from openquad.composite import DEFAULT_PRESET, PRESETS, composite
 from openquad.contactsheet import BACKGROUNDS, MAX_PHOTOS, SheetLayout, make_sheet
 from openquad.curve_export import FORMATS, export_curve
@@ -87,6 +88,7 @@ from openquad.separations import (
     coat_image,
     step_test,
 )
+from openquad.settings import data_dir
 from openquad.targets import framed_target, step_wedge, wedge_levels
 
 DEFAULT_DPI = 300.0
@@ -309,6 +311,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="tone a greyscale input first (default: print the file as it is)",
     )
     prt.add_argument("--calibration", type=Path, help="grey-balance calibration to apply")
+    prt.add_argument(
+        "--colour-profile",
+        type=Path,
+        help="print a colour photo through this OpenQuad printer profile (openquad profile): "
+        "converted from its own profile, sent as sRGB as the colour target was",
+    )
     prt.add_argument("--title", help="job title shown in the print queue")
     prt.add_argument(
         "--option",
@@ -429,6 +437,17 @@ def build_parser() -> argparse.ArgumentParser:
     ps.add_argument("measurements", type=Path, nargs="+", help="colour target measurements")
     ps.add_argument("--name", required=True, help="profile file name, e.g. mg3600-plain")
     ps.add_argument("--description", default="", help="the profile's name, as apps list it")
+    ps.add_argument("--printer", default="", help="CUPS printer the target was printed on")
+    ps.add_argument("--paper", default="", help='paper it was printed on, e.g. "Letter plain"')
+    ps.add_argument(
+        "--settings", default="", help='how it was printed, e.g. "straight to the printer (lp)"'
+    )
+    pl = profile_commands.add_parser(
+        "list", help="list the colour profiles in a library folder of calibration runs"
+    )
+    pl.add_argument(
+        "folder", type=Path, nargs="?", help="folder of runs (default: the app's calibrations)"
+    )
     pp = profile_commands.add_parser(
         "page", help="write the run's verification page, to print through its current profile"
     )
@@ -510,9 +529,20 @@ def _profile(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     elif command == "start":
         measurements = [_colour_measurement(path) for path in args.measurements]
         run, summary = ColourRun.start(args.folder, args.name, measurements, args.description)
+        labels = {"printer": args.printer, "paper_label": args.paper, "settings": args.settings}
+        if any(labels.values()):
+            run.extra.update(labels)
+            run.save()
         print(summary)
         print(f"wrote {run.folder / run.current.profile} (round {run.current.version})")
         print(f"next: openquad profile page {run.folder}")
+    elif command == "list":
+        folder = args.folder or data_dir() / "calibrations"
+        entries = colour_profiles(folder)
+        for entry in entries:
+            print(f"{entry.label}\n  {entry.path}")
+        if not entries:
+            print(f"no colour profiles in {folder}")
     elif command == "page":
         run = ColourRun.resume(args.folder)
         for path in run.make_pages(args.dpi):
@@ -631,6 +661,15 @@ def _calibrate_file(source: Path, output: Path, calibration: Calibration) -> Non
     if pixels.dtype != np.uint16 or pixels.ndim != 3 or pixels.shape[-1] != 3:
         raise ValueError(f"{source}: expected an 8/16-bit greyscale or RGB TIFF")
     save_rgb(output, calibration.apply(pixels), read_dpi(source), srgb_profile())
+
+
+def _profile_file(source: Path, output: Path, profile: Path) -> None:
+    """A colour photo converted through an OpenQuad printer profile, as an sRGB-tagged TIFF."""
+    photo = load_photo(source)
+    if photo.colour is None:
+        raise ValueError(f"{source.name} isn't a colour photo")
+    device = to_device(photo.colour, photo.icc_profile, profile.read_bytes())
+    save_rgb(output, device, photo.dpi, srgb_profile())
 
 
 def _pixel_size(path: Path) -> tuple[int, int]:
@@ -850,6 +889,12 @@ def _print(args: argparse.Namespace, runner: Runner) -> None:
         elif calibration:
             path = Path(scratch) / f"{args.input.stem}-calibrated.tif"
             _calibrate_file(args.input, path, calibration)
+        if args.colour_profile:
+            if args.preset or calibration:
+                raise ValueError("--colour-profile prints in colour: leave out --preset and "
+                                 "--calibration")  # fmt: skip
+            path = Path(scratch) / f"{args.input.stem}-profiled.tif"
+            _profile_file(args.input, path, args.colour_profile)
         if args.fit:
             ppi = fit_ppi(*_pixel_size(path), args.paper)
         else:
