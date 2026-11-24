@@ -1,6 +1,6 @@
 # Plan: colour calibration
 
-Status: phases 0-3 software built (Python), phase 4 built (the Mac app), waiting for a real IT8.7/2 target and test prints. Written 2026-11-22.
+Status: phases 0-3 software built (Python), phase 4 built (the Mac app), phase 5 built (Python parity), waiting for a real IT8.7/2 target and test prints. Written 2026-11-22.
 
 ## What this is for
 
@@ -176,13 +176,31 @@ vectors (`scripts/export_swift_vectors.py`), as now.
   soft proof uses the chosen profile. **Differences from the plan:** the app reads scanner
   models but doesn't make them yet: the card explains, and Add… takes the file `openquad
   scanner-profile` wrote (making one needs the IT8.7/2 target, still to buy, so its app step
-  waits for phase 0's verdict). **Still to do:** real prints, and phase 5's PySide6 picker.
+  waits for phase 0's verdict). **Still to do:** real prints.
 
 ### Phase 5: Python parity and CLI
 
 `openquad target --kind colour`, `openquad measure --kind colour`, `openquad profile build|verify`;
 the PySide6 window gets the profile picker. Shared vectors cover the target layout, the forward
 model, the inverse and the ICC bytes.
+
+- **Built (2026-11-24):** most of the CLI came with phases 1-3 (`target --kind colour`,
+  `measure-colour`, `profile build|start|page|verify|refine`) and the shared vectors with phase
+  4. This phase adds the rest. `colour_convert.py` converts a colour photo through a printer
+  profile with LittleCMS (Pillow's ImageCms, perceptual) and soft-proofs it for the screen.
+  Pillow transforms only 8-bit RGB, so 16-bit photos go through a 52-level table read by
+  trilinear interpolation, matching LittleCMS exactly on its nodes. `PrintSession` gains
+  `set_colour_profile` and `converts_colour`, as the Swift session has, with the same summary
+  line. `colour_profiles` / `match_colour_profile` list and match the profiles in a folder of
+  runs, as the Swift library does. In the PySide6 window: Print in colour, and the Colour
+  profile picker (macOS, or this printer's profiles; matched when the printer changes or none
+  is saved; remembered). CLI: `print --colour-profile`, `profile list`, and `profile start
+  --printer/--paper/--settings`. **Differences from the plan:** colour measuring stays
+  `measure-colour` rather than `measure --kind colour` (the grey `measure` takes one scan and
+  different options); a run is judged with `profile verify` and a single file with `profile
+  build`'s report. The vectors check now compares the least-squares fits (the scanner model, the
+  forward model, tables and verification) by shape only: CI's numpy builds use another BLAS, so
+  their last digits differ from the Mac's.
 
 ### Phase 6: hardware tests
 

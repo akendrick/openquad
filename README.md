@@ -199,6 +199,20 @@ chosen one and sent as the target was, and the preview shows it as it will print
 ColorSync** copies a profile to `~/Library/ColorSync/Profiles` for other apps. Runs made in the
 app can be continued with `openquad profile`, and the other way round.
 
+From the command line, record the printer when starting a run so its profiles can be matched,
+list the profiles a folder of runs holds, and print a colour photo through one:
+
+```sh
+openquad profile start mg3600-run colour-measured.json --name mg3600-plain \
+    --printer Canon_MG3600_series --paper "Letter plain" --settings "straight to the printer (lp)"
+openquad profile list                     # the app's calibrations folder, or give a folder
+openquad print photo.jpg --printer Canon_MG3600_series --fit \
+    --colour-profile mg3600-run/mg3600-plain-v1.icc
+```
+
+The PySide6 window has the same **Print in colour** checkbox and **Colour profile** picker as
+the Mac app, listing the profiles of runs kept in its calibrations folder.
+
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
 `--ppi`, `--copies` and `--option NAME=VALUE` (driver options) to change that.
 

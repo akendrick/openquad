@@ -7,6 +7,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Colour calibration, phase 5: Python parity. The PySide6 window gets **Print in colour** and a
+  **Colour profile** picker (macOS's driver profile, or this printer's OpenQuad profiles from
+  the runs in its calibrations folder, matched to the printer and paper and remembered); through
+  one, the photo is converted with LittleCMS (perceptual, from its own profile) and sent
+  sRGB-tagged, and the preview soft-proofs through it. `openquad print --colour-profile ICC`
+  does the same from the command line, `openquad profile list [FOLDER]` lists the profiles, and
+  `profile start` takes `--printer`, `--paper` and `--settings` so a run's profiles can be
+  matched. The Swift vectors check compares least-squares fits by shape only, since their last
+  digits depend on the BLAS numpy is built with.
 - Colour calibration, phase 4: the Mac app. Printer Calibration has a Black and white / Colour
   choice at setup. Colour prints the colour target (one page, or two for photo papers), scans
   it (each page, in any order, either way up), builds profile v0, then checks it in rounds of

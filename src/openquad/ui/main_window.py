@@ -32,12 +32,13 @@ from PySide6.QtWidgets import (
 )
 
 from openquad import wedge as wedges
+from openquad.colour_verify import ColourProfileEntry, colour_profiles, match_colour_profile
 from openquad.composite import PRESETS
 from openquad.escl import Fetch, discover, http_fetch
 from openquad.negative import NEGATIVE_COLOURS
 from openquad.paper import PAPER_SIZES
 from openquad.printing import PrintError, Runner, list_printers, run_command
-from openquad.session import PrintSession
+from openquad.session import PrintSession, SessionError
 from openquad.settings import Settings, data_dir
 from openquad.ui import background
 from openquad.ui.calibration_dialog import CalibrationDialog, _emit
@@ -121,6 +122,18 @@ class MainWindow(QMainWindow):
         for name in sorted(PRESETS, key=lambda n: (n != "neutral", n)):
             self.preset_box.addItem(PRESET_LABELS.get(name, name), name)
         self.preset_box.currentIndexChanged.connect(self._preset_changed)
+
+        self.colour_box = QCheckBox("Print in colour")
+        self.colour_box.setToolTip(
+            "Print a colour photo in its own colour, with no toning or calibration"
+        )
+        self.colour_box.toggled.connect(self._colour_print_changed)
+        self.colour_profile_box = QComboBox()
+        self.colour_profile_box.setToolTip(
+            "macOS: the printer driver's own profile. Or an OpenQuad profile made for this "
+            "printer (Calibrate in the Mac app, or openquad profile)"
+        )
+        self.colour_profile_box.currentIndexChanged.connect(self._colour_profile_chosen)
 
         self.calibration_label = QLabel("None")
         self.calibration_button = QPushButton("Choose…")
@@ -254,6 +267,8 @@ class MainWindow(QMainWindow):
         form.addRow(self.photo_info)
         form.addRow("Output", self.mode_box)
         first = form.rowCount()
+        form.addRow(self.colour_box)
+        form.addRow("Colour profile", self.colour_profile_box)
         form.addRow("Toning", self.preset_box)
         form.addRow("Calibration", self.calibration_label)
         form.addRow("", calibration_row)
@@ -299,10 +314,11 @@ class MainWindow(QMainWindow):
     def _restore(self) -> None:
         # Read every saved value before touching a widget: changing a widget saves the
         # settings, which would overwrite values not yet restored.
-        printer, paper, calibration = (
+        printer, paper, calibration, profile = (
             self.settings.printer,
             self.settings.paper,
             self.settings.calibration,
+            self.settings.colour_profile,
         )
         for box, value in ((self.printer_box, printer), (self.paper_box, paper)):
             index = box.findData(value) if value else -1
@@ -325,6 +341,13 @@ class MainWindow(QMainWindow):
                 self.session.set_calibration(calibration)
             except (OSError, ValueError):
                 self.session.set_calibration(None)
+        if profile and Path(profile).is_file():
+            try:
+                self.session.set_colour_profile(profile)
+            except (OSError, ValueError):
+                self.session.set_colour_profile(None)
+        elif not profile:
+            self._match_colour_profile()  # none chosen yet: this printer's newest, if any
 
     def _remember(self) -> None:
         self.settings.printer = self.session.printer
@@ -334,6 +357,8 @@ class MainWindow(QMainWindow):
         process = self.session.process_path
         self.settings.process = str(process) if process else None
         self.settings.negative_colour = self.session.negative_colour
+        profile = self.session.colour_profile_path
+        self.settings.colour_profile = str(profile) if profile else None
         with contextlib.suppress(OSError):  # settings are a convenience; never block printing
             self.settings.save(self.settings_path)
 
@@ -463,6 +488,71 @@ class MainWindow(QMainWindow):
 
         background.submit(work)
 
+    # --- colour prints and their profiles ---------------------------------------------
+
+    def colour_profiles(self) -> list[ColourProfileEntry]:
+        """The colour profiles in the calibration library, newest first."""
+        return colour_profiles(self.calibrations_folder)
+
+    def set_colour_profile(self, path: str | Path | None) -> None:
+        """Convert colour prints through an OpenQuad printer profile (None: macOS's)."""
+        try:
+            self.session.set_colour_profile(path)
+        except (OSError, ValueError) as exc:
+            self.show_error(f"Couldn't use the colour profile: {exc}")
+        self._remember()
+        self._refresh()
+
+    def _match_colour_profile(self) -> None:
+        """Use the newest profile made for this printer and paper; drop one made for another
+        printer."""
+        printer = self.session.printer
+        if not printer:
+            return
+        entries = self.colour_profiles()
+        match = match_colour_profile(entries, printer, self.session.paper)
+        current = self.session.colour_profile_path
+        if match is not None:
+            if current is None or match.path != current.resolve():
+                with contextlib.suppress(OSError, ValueError):
+                    self.session.set_colour_profile(match.path)
+        elif current is not None:
+            known = next((e for e in entries if e.path == current.resolve()), None)
+            if known is not None and known.printer != printer:
+                self.session.set_colour_profile(None)
+
+    def _fill_colour_profiles(self) -> None:
+        """macOS's profile, then this printer's OpenQuad profiles (and the one in use)."""
+        current = self.session.colour_profile_path
+        resolved = current.resolve() if current else None
+        printer = self.session.printer
+        entries = [e for e in self.colour_profiles() if e.printer == printer or e.path == resolved]
+        box = self.colour_profile_box
+        box.blockSignals(True)
+        box.clear()
+        box.addItem("macOS (driver's profile)", None)
+        for entry in entries:
+            box.addItem(entry.label, str(entry.path))
+            box.setItemData(box.count() - 1, str(entry.path), Qt.ItemDataRole.ToolTipRole)
+        selected = None
+        if current is not None:
+            known = resolved in {e.path for e in entries}
+            if not known:
+                box.addItem(current.name, str(current))  # a profile from outside the library
+            selected = str(resolved if known else current)
+        box.setCurrentIndex(max(0, box.findData(selected)) if selected else 0)
+        box.blockSignals(False)
+
+    def _colour_profile_chosen(self) -> None:
+        self.set_colour_profile(self.colour_profile_box.currentData())
+
+    def _colour_print_changed(self, checked: bool) -> None:
+        try:
+            self.session.set_colour_print(checked)
+        except SessionError as exc:
+            self.show_error(str(exc))
+        self._refresh()
+
     # --- reacting to changes --------------------------------------------------------
 
     def _mode_changed(self) -> None:
@@ -521,7 +611,9 @@ class MainWindow(QMainWindow):
 
     def _printer_changed(self) -> None:
         self.session.printer = self.printer_box.currentData()
+        self._match_colour_profile()
         self._remember()
+        self._refresh()
 
     def _paper_changed(self) -> None:
         self.session.set_paper(self.paper_box.currentData())
@@ -553,6 +645,16 @@ class MainWindow(QMainWindow):
         )
         self.negative_colour_box.blockSignals(False)
         self.negative_colour_box.setEnabled(session.process is None)  # the curve sets it
+        colour = session.photo is not None and session.photo.colour is not None
+        self.colour_box.blockSignals(True)
+        self.colour_box.setChecked(session.colour_print)
+        self.colour_box.blockSignals(False)
+        self.colour_box.setEnabled(colour)
+        self._fill_colour_profiles()
+        self.colour_profile_box.setEnabled(session.prints_colour)
+        for widget in (self.preset_box, self.calibration_button, self.calibrate_button,
+                       self.clear_calibration_button):  # fmt: skip
+            widget.setEnabled(not session.prints_colour)
         name = session.calibration_path.name if session.calibration_path else "None"
         self.calibration_label.setText(name)
         self.calibration_label.setToolTip(str(session.calibration_path or ""))

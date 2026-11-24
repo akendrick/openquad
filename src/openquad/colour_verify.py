@@ -24,6 +24,7 @@ import json
 import shutil
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field, fields
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -389,6 +390,10 @@ class ColourRun:
         extra = {k: v for k, v in data.items() if k not in own}
         return cls(Path(folder), data["name"], data.get("description", data["name"]), rounds, extra)
 
+    def save(self) -> None:
+        """Write run.json (after changing `extra`)."""
+        self._save_log()
+
     def _save_log(self) -> None:
         data = {
             "kind": "openquad colour run",
@@ -477,3 +482,96 @@ class ColourRun:
         text = (self.folder / self.current.measurement).read_text(encoding="utf-8")
         self._new_round(refine(self.model(), ColourMeasurement.from_json(text), damping))
         return self.current
+
+
+# --- the library: colour profiles made by runs ---------------------------------------
+
+
+def printer_name(queue: str) -> str:
+    """A CUPS queue's name as people say it: "Canon_MG3600_series" -> "Canon MG3600"."""
+    name = queue.replace("_", " ").strip()
+    if name.lower().endswith(" series"):
+        name = name[:-7]
+    return name or "Unknown printer"
+
+
+@dataclass(frozen=True)
+class ColourProfileEntry:
+    """One round's profile in a library folder of colour runs."""
+
+    path: Path
+    printer: str
+    paper: str
+    settings: str
+    version: int
+    run: str
+    created: float  # the profile file's modification time
+    mean: float | None = None  # the round's verification, if it was checked
+    passed: bool | None = None
+
+    @property
+    def via_panel(self) -> bool:
+        """Printed through the macOS print panel (not straight to the printer)."""
+        return "print panel" in self.settings.lower()
+
+    @property
+    def label(self) -> str:
+        """E.g. "Canon MG3600 · Letter plain · v2 · ΔE 1.4 ✓ · 24 Nov 2026"."""
+        parts = [printer_name(self.printer)]
+        if self.paper:
+            parts.append(self.paper)
+        parts.append(f"v{self.version}")
+        if self.mean is not None:
+            parts.append(f"ΔE {self.mean:.1f}" + (" ✓" if self.passed else ""))
+        if self.via_panel:
+            parts.append("print panel")
+        made = datetime.fromtimestamp(self.created)
+        parts.append(f"{made.day} {made:%b %Y}")
+        return " · ".join(parts)
+
+    def fits(self, printer: str, paper: str) -> bool:
+        """Made for this printer queue and paper size (the paper label's first word)."""
+        if self.printer != printer:
+            return False
+        return not self.paper or self.paper.lower().split()[0] == paper.lower()
+
+
+def colour_profiles(folder: str | Path) -> list[ColourProfileEntry]:
+    """Every round's profile in the colour runs directly inside `folder`, newest first."""
+    entries = []
+    base = Path(folder)
+    for run_folder in sorted(base.iterdir()) if base.is_dir() else []:
+        try:
+            run = ColourRun.resume(run_folder)
+        except (OSError, ValueError, KeyError, TypeError, ColourRunError):
+            continue
+        for r in run.rounds:
+            path = (run_folder / r.profile).resolve()
+            if not path.is_file():
+                continue
+            mean = (r.assessment or {}).get("mean")
+            entries.append(
+                ColourProfileEntry(
+                    path=path,
+                    printer=str(run.extra.get("printer", "")),
+                    paper=str(run.extra.get("paper_label") or ""),
+                    settings=str(run.extra.get("settings", "")),
+                    version=r.version,
+                    run=run.name,
+                    created=path.stat().st_mtime,
+                    mean=float(mean) if mean is not None else None,
+                    passed=r.action == "done" if r.action else None,
+                )
+            )
+    return sorted(entries, key=lambda e: (e.created, e.version, str(e.path)), reverse=True)
+
+
+def match_colour_profile(
+    entries: Sequence[ColourProfileEntry], printer: str, paper: str, via_panel: bool = False
+) -> ColourProfileEntry | None:
+    """The best profile for printing to `printer` on `paper`: the newest, preferring the same
+    print method."""
+    fitting = [e for e in entries if e.fits(printer, paper)]
+    same = [e for e in fitting if e.via_panel == via_panel]
+    best = same or fitting
+    return best[0] if best else None
