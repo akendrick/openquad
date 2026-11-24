@@ -1,6 +1,6 @@
 # Plan: colour calibration
 
-Status: phases 0-2 software built (Python), waiting for a real IT8.7/2 target and test prints. Written 2026-11-22.
+Status: phases 0-3 software built (Python), waiting for a real IT8.7/2 target and test prints. Written 2026-11-22.
 
 ## What this is for
 
@@ -133,6 +133,18 @@ vectors (`scripts/export_swift_vectors.py`), as now.
   rebuild, damped as grey balance is.
 - Everything for a run (pages, scans, measurements, profile, `run.json`) is kept in the run folder,
   as `calibrate.py` does for grey.
+- **Built (2026-11-23):** `openquad.colour_verify` and `openquad profile start|page|verify|refine`,
+  Python only, tested on a simulated printer. The verification page has 144 patches: the 24
+  colour-checker colours (commonly published D50 values), 8 skin tones, 12 greys from L\* 15 to
+  95 and 100 random sRGB colours, shuffled, each sent as the model's relative colourimetric
+  inverse (no black-point compensation, so wanted and measured compare directly). Colours the
+  model can't print within 1 ΔE76 are reported but left out of the averages. Refining fits the
+  measured-minus-predicted differences at the RGB sent with a smooth lattice of their own
+  (smoothing 0.03) and adds half of it to the model (damping 0.5), so it doesn't need the
+  original target measurements. A simulated printer that drifted after the target was printed
+  went from mean 3.8 ΔE00 (tone 5.4 L\* off) to 2.1, then 1.2, passing in round 2. Printing and
+  scanning are left to the user for now; the app (phase 4) will drive them as the grey wizard
+  does. **Still to do:** real prints.
 
 ### Phase 4: app
 

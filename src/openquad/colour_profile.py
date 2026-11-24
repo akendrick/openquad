@@ -176,6 +176,13 @@ def _penalty(n: int) -> NDArray[np.float64]:
     return _PENALTIES[n]
 
 
+def fit_lattice(
+    rgb: NDArray[np.float64], values: NDArray[np.float64], smoothing: float, n: int = LATTICE
+) -> NDArray[np.float64]:
+    """Lattice nodes (n³, k) fitted to values (points, k) at RGB points, with smoothing."""
+    return _solve(_design(rgb, n), values, _penalty(n), smoothing)
+
+
 def fit_forward(
     rgb: NDArray[np.float64],
     lab: NDArray[np.float64],

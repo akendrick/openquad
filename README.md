@@ -174,6 +174,22 @@ It writes an ICC v2 output profile that ColorSync, LittleCMS and image editors c
 the forward model beside it as JSON. The report gives the model's accuracy on patches it was not
 fitted to, the printer's black and how far its primaries reach, and how neutral greys print.
 
+To check a profile on real prints and improve it (phase 3), run it in rounds. Each round prints
+a verification page (a colour checker's 24 colours, skin tones, a grey wedge and random photo
+colours, already sent through the profile), scans it and judges it against the goals: ΔE00 mean
+under 3 and 95% under 6 for the colours the printer can make, greys within 3 of neutral and 2 L\*
+of their tone.
+
+```bash
+openquad profile start mg3600-run colour-measured.json --name mg3600-plain --description "MG3600 plain"
+openquad profile page mg3600-run          # print mg3600-run/mg3600-plain-v0-verify.tif, then scan it
+openquad profile verify mg3600-run verify-scan.tif --scanner-model scanner.json
+openquad profile refine mg3600-run        # if the goals weren't met: builds mg3600-plain-v1.icc
+```
+
+Everything for the run (profiles, pages, scans, measurements, reports) stays in its folder, with
+a `run.json` log of the rounds.
+
 `print` prints at the file's real size (its DPI) on Letter paper by default; use `--paper`,
 `--ppi`, `--copies` and `--option NAME=VALUE` (driver options) to change that.
 
