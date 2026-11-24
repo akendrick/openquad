@@ -36,7 +36,9 @@ from openquad.chart import (
     save_process,
     tone_errors,
 )
+from openquad.colour_profile import build_profile, save_profile
 from openquad.colour_target import (
+    ColourMeasurement,
     load_target,
     make_target,
     measure_target,
@@ -397,6 +399,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="scanner model from openquad scanner-profile (without one the scan is taken as sRGB)",
     )
     mc.add_argument("-o", "--output", type=Path, required=True, help="measurement to write (JSON)")
+
+    profile = commands.add_parser("profile", help="build a printer's colour profile (ICC)")
+    profile_commands = profile.add_subparsers(dest="profile_command", metavar="ACTION")
+    pb = profile_commands.add_parser(
+        "build", help="build an ICC profile from measurements of the colour target"
+    )
+    pb.add_argument(
+        "measurements",
+        type=Path,
+        nargs="+",
+        help="openquad measure-colour results: one print, or several to average",
+    )
+    pb.add_argument("-o", "--output", type=Path, required=True, help="ICC profile to write (.icc)")
+    pb.add_argument(
+        "--description",
+        help="the profile's name, as apps list it (default: the output's file name)",
+    )
+    pb.add_argument(
+        "--smoothing",
+        type=float,
+        help="forward model smoothing (default: chosen by leaving patches out)",
+    )
     return parser
 
 
@@ -443,6 +467,20 @@ def _measure_colour(args: argparse.Namespace) -> None:
     save_measurement(measurement, args.output)
     print(measurement.summary())
     print(f"wrote {args.output}")
+
+
+def _profile(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    if args.profile_command != "build":
+        parser.parse_args(["profile", "--help"])
+        return
+    measurements = [
+        ColourMeasurement.from_json(path.read_text(encoding="utf-8")) for path in args.measurements
+    ]
+    report = build_profile(measurements, args.smoothing)
+    output: Path = args.output
+    model_path = save_profile(report, output, args.description or output.stem)
+    print(report.summary())
+    print(f"wrote {output} and {model_path} (the forward model)")
 
 
 def _target(args: argparse.Namespace) -> None:
@@ -909,6 +947,8 @@ def main(
             _scanner_profile(args)
         elif args.command == "measure-colour":
             _measure_colour(args)
+        elif args.command == "profile":
+            _profile(args, parser)
         else:
             parser.print_help()
     except (OSError, ValueError, PrintError, ScanError) as exc:

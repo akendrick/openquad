@@ -7,6 +7,15 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- Colour calibration, phase 2: building the printer's colour profile. `openquad profile build
+  MEASUREMENT... -o PROFILE.icc [--description NAME] [--smoothing S]` fits a forward model (RGB sent
+  to L\*a\*b\* measured: a 9×9×9 lattice fitted with a smoothing term, the amount chosen by leaving
+  patches out), inverts it on a 33³ L\*a\*b\* grid (nearest printable colour; the perceptual table
+  adds black-point compensation), and writes an ICC v2 output profile (A2B0-2, B2A0-2, gamut,
+  media white and black points). Several prints' measurements are averaged, and how far they
+  differ is reported. The forward model is saved beside the profile as JSON. Checked with
+  LittleCMS in the tests, and ColorSync loads and verifies the profiles. Python only. Core:
+  `openquad.colour_profile`.
 - Colour calibration, phase 1: the colour target and measuring it. `openquad target --kind colour`
   writes a one-page target of 255 patches (a 6-level RGB grid, 21 greys, and the primaries and
   secondaries as tints at three strengths), shuffled the same way every time, inside the black
