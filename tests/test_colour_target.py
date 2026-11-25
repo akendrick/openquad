@@ -177,6 +177,34 @@ def test_a_scan_cropped_tight_to_the_target() -> None:
     assert delta_e_2000(measurement.lab, expected_lab(target)).max() < 0.5
 
 
+def tilted(image: np.ndarray, degrees: float) -> np.ndarray:
+    """The scan with the page turned a little on the glass (anticlockwise), paper filling in."""
+    paper = image[0, 0]
+    return np.stack(
+        [
+            np.asarray(
+                Image.fromarray(image[..., c].astype(np.float32), "F").rotate(
+                    degrees, Image.Resampling.BILINEAR, fillcolor=float(paper[c])
+                )
+            )
+            for c in range(3)
+        ],
+        axis=-1,
+    ).astype(np.float64)
+
+
+def test_a_slightly_tilted_scan_is_read_and_a_tilted_one_refused() -> None:
+    """A tilt brings the frame's line beside the page marks; they are still counted right, and
+    a page tilted enough to sample the wrong patches is refused, saying so."""
+    target = make_target(9)
+    near = measure_target([tilted(scan(target, 0), 0.15), tilted(scan(target, 1), -0.2)], target)
+    assert delta_e_2000(near.lab, expected_lab(target)).mean() < 0.5
+    with pytest.raises(MeasureError, match=r"page 1 is tilted 0\.8° .* square against the edge"):
+        measure_target([tilted(scan(target, 0), -0.8), scan(target, 1)], target)
+    with pytest.raises(MeasureError, match=r"page 2 is tilted 0\.8°"):
+        measure_target([scan(target, 0), tilted(scan(target, 1, turned=True), -0.8)], target)
+
+
 def test_notes_pages_scanned_differently() -> None:
     target = make_target(9)
     measurement = measure_target([scan(target, 0), scan(target, 1, paper=0.9)], target)
@@ -191,7 +219,7 @@ def test_refuses_missing_extra_and_unreadable_pages() -> None:
         measure_target([scan(target, 0), scan(target, 0, seed=3)], target)
     # A one-page target's scan with a second page mark drawn on it.
     marked = scan(make_target())  # 40 pixels of paper round the page
-    y, x, size = 40 + round(0.5 * DPI), 40 + round(0.07 * DPI), round(0.15 * DPI)
+    y, x, size = 40 + round(0.29 * DPI), 40 + round(0.07 * DPI), round(0.15 * DPI)
     marked[y : y + size, x : x + size] = 0.0
     with pytest.raises(MeasureError, match="found 2 page marks"):
         measure_target([marked], make_target())

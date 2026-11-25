@@ -273,6 +273,65 @@ public enum ColourMeasure {
         return found[1].1 > found[0].1 ? "right" : "left"
     }
 
+    static func isDark(_ scan: Scan, _ x: Int, _ y: Int) -> Bool {
+        (scan.value(x, y, 0) + scan.value(x, y, 1) + scan.value(x, y, 2)) / 3 < Measure.dark
+    }
+
+    /// The page marks left of an upright frame. Only where the target puts them is looked at:
+    /// beside the frame's top, and clear of its line, which a slightly tilted scan brings closer.
+    static func pageMarks(_ scan: Scan, _ frame: PixelBox, _ target: ColourTarget) -> Int {
+        let scale = Double(frame.right - frame.left) / target.frameSize(0).0  // every page as wide
+        let left = Double(frame.left)
+        let x0 = max(pyRound(left - (target.lead - target.pad / 2) * scale), 0)
+        let x1 = min(max(pyRound(left - (target.lead - target.pad - target.mark) / 2 * scale), 0), scan.width)
+        let reach = target.pad + Double(target.pages.count + 1) * (target.mark + target.pad)  // one too many
+        let y1 = min(pyRound(Double(frame.top) + reach * scale), frame.bottom, scan.height)
+        var marks = 0, run = 0
+        for y in max(frame.top, 0)...max(y1, max(frame.top, 0)) {
+            let dark = y < y1 && x1 > x0 && (x0..<x1).contains { isDark(scan, $0, y) }
+            if dark {
+                run += 1
+            } else {
+                if run > 0 && Double(run) >= target.mark * scale / 2 { marks += 1 }  // specks aren't marks
+                run = 0
+            }
+        }
+        return marks
+    }
+
+    /// The frame's tilt on the scan in degrees, from where its left line falls, row by row.
+    static func tilt(_ scan: Scan, _ frame: PixelBox, _ target: ColourTarget) -> Double {
+        let scale = Double(frame.right - frame.left) / target.frameSize(0).0
+        let left = Double(frame.left), top = Double(frame.top), bottom = Double(frame.bottom)
+        let x0 = max(pyRound(left - 0.15 * scale), 0)
+        let x1 = min(pyRound(left + (target.frame + target.inset / 2) * scale), scan.width)
+        var ys: [Double] = [], xs: [Double] = []
+        let first = top + 0.1 * (bottom - top), last = bottom - 0.1 * (bottom - top)
+        for i in 0..<21 {
+            let y = pyRound(first + (last - first) * Double(i) / 20)
+            guard y >= 0, y < scan.height, x1 > x0 else { continue }
+            if let x = (x0..<x1).first(where: { isDark(scan, $0, y) }) {
+                ys.append(Double(y))
+                xs.append(Double(x))
+            }
+        }
+        guard xs.count >= 3 else { return 0 }
+        let my = ys.reduce(0, +) / Double(ys.count), mx = xs.reduce(0, +) / Double(xs.count)
+        var covariance = 0.0, variance = 0.0
+        for (y, x) in zip(ys, xs) {
+            covariance += (y - my) * (x - mx)
+            variance += (y - my) * (y - my)
+        }
+        return variance > 0 ? atan(covariance / variance) * 180 / .pi : 0
+    }
+
+    /// The most tilt, in degrees, that keeps every patch's sample inside it: the tilt may move
+    /// the far corner by half the margin around each sample.
+    static func tiltLimit(_ target: ColourTarget, _ page: Int) -> Double {
+        let (width, height) = target.frameSize(page)
+        return atan((1 - ColourTargets.sample) / 4 * target.patch / max(width, height)) * 180 / .pi
+    }
+
     /// Candidate frames: skipping the scan's borders first (lid shadows), then not.
     static func frames(_ scan: Scan) throws -> [PixelBox] {
         let frames = [Measure.edgeIgnore, 0.0].compactMap { try? Measure.findFrame(scan, edgeIgnore: $0) }
@@ -303,12 +362,19 @@ public enum ColourMeasure {
                 frame = PixelBox(left: scan.width - frame.right, top: scan.height - frame.bottom,
                                  right: scan.width - frame.left, bottom: scan.height - frame.top)
             }
-            let marks = Measure.countMarks(upright, frame: frame)
+            let marks = pageMarks(upright, frame, target)
             guard fits.contains(marks - 1) else {
                 let pages = target.pages.count
                 problem = "couldn't tell which page this is (found \(marks) page marks beside a frame the shape of page "
                     + fits.map { String($0 + 1) }.joined(separator: " or ")
                     + "; the target has \(pages) page\(pages != 1 ? "s" : ""))"
+                continue
+            }
+            let tilted = tilt(upright, frame, target)
+            if abs(tilted) > tiltLimit(target, marks - 1) {
+                problem = "page \(marks) is tilted " + String(format: "%.1f", abs(tilted))
+                    + "° on the scan, too much to read its patches; place it square against the edge of the glass "
+                    + "and scan again"
                 continue
             }
             return (marks - 1, frame, upright)

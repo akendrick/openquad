@@ -31,7 +31,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from openquad.colour import D50_WHITE, d65_to_d50, linear_rgb_to_xyz, srgb_to_linear, xyz_to_lab
-from openquad.measure import DARK, EDGE_IGNORE, MeasureError, count_marks, find_frame
+from openquad.measure import DARK, EDGE_IGNORE, MeasureError, find_frame
 from openquad.quadfile import MAX_VALUE
 from openquad.scanner_profile import ScannerModel
 from openquad.targets import wedge_levels
@@ -305,6 +305,48 @@ def _marks_side(scan: NDArray[np.float64], frame: tuple[int, int, int, int]) -> 
     return max(found, key=lambda side: found[side])
 
 
+def _page_marks(
+    scan: NDArray[np.float64], frame: tuple[int, int, int, int], target: ColourTarget
+) -> int:
+    """The page marks left of an upright frame. Only where the target puts them is looked at:
+    beside the frame's top, and clear of its line, which a slightly tilted scan brings closer."""
+    left, top, _, bottom = frame
+    scale = (frame[2] - left) / target.frame_size(0)[0]  # pixels an inch; every page as wide
+    x0 = max(round(left - (target.lead - target.pad / 2) * scale), 0)
+    x1 = max(round(left - (target.lead - target.pad - target.mark) / 2 * scale), 0)
+    reach = target.pad + (len(target.pages) + 1) * (target.mark + target.pad)  # one too many
+    y1 = min(round(top + reach * scale), bottom)
+    rows = (scan[top:y1, x0:x1].mean(axis=-1) < DARK).any(axis=1)
+    edges = np.flatnonzero(np.diff(np.r_[0, rows.astype(int), 0]))
+    lengths = edges[1::2] - edges[::2]
+    return int(np.count_nonzero(lengths >= target.mark * scale / 2))  # specks aren't marks
+
+
+def _tilt(
+    scan: NDArray[np.float64], frame: tuple[int, int, int, int], target: ColourTarget
+) -> float:
+    """The frame's tilt on the scan in degrees, from where its left line falls, row by row."""
+    left, top, right, bottom = frame
+    scale = (right - left) / target.frame_size(0)[0]
+    x0 = max(round(left - 0.15 * scale), 0)
+    x1 = round(left + (target.frame + target.inset / 2) * scale)
+    ys, xs = [], []
+    for y in np.linspace(top + 0.1 * (bottom - top), bottom - 0.1 * (bottom - top), 21):
+        hits = np.flatnonzero(scan[round(y), x0:x1].mean(axis=-1) < DARK)
+        if len(hits):
+            ys.append(round(y))
+            xs.append(x0 + int(hits[0]))
+    if len(xs) < 3:
+        return 0.0
+    return math.degrees(math.atan(float(np.polyfit(ys, xs, 1)[0])))
+
+
+def _tilt_limit(target: ColourTarget, page: int) -> float:
+    """The most tilt, in degrees, that keeps every patch's sample inside it: the tilt may move
+    the far corner by half the margin around each sample."""
+    return math.degrees(math.atan((1 - SAMPLE) / 4 * target.patch / max(target.frame_size(page))))
+
+
 def _frames(scan: NDArray[np.float64]) -> list[tuple[int, int, int, int]]:
     """Candidate frames: skipping the scan's borders first (lid shadows), then not (for a
     scan cropped tight to the target, whose frame sits in those borders)."""
@@ -342,13 +384,20 @@ def _locate(
             upright = np.ascontiguousarray(scan[::-1, ::-1])
             height, width = scan.shape[:2]
             frame = (width - right, height - bottom, width - left, height - top)
-        marks = count_marks(upright, frame)
+        marks = _page_marks(upright, frame, target)
         if marks - 1 not in fits:
             pages = len(target.pages)
             problem = (
                 f"couldn't tell which page this is (found {marks} page marks beside a frame "
                 f"the shape of page {' or '.join(str(i + 1) for i in fits)}; the target has "
                 f"{pages} page{'s' if pages != 1 else ''})"
+            )
+            continue
+        tilt = _tilt(upright, frame, target)
+        if abs(tilt) > _tilt_limit(target, marks - 1):
+            problem = (
+                f"page {marks} is tilted {abs(tilt):.1f}° on the scan, too much to read its "
+                "patches; place it square against the edge of the glass and scan again"
             )
             continue
         return marks - 1, frame, upright

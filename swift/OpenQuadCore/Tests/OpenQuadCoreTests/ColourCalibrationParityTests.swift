@@ -84,6 +84,40 @@ struct ColourCalibrationParity {
         #expect(throws: MeasureError.self) { try ColourMeasure.measure([], target: target) }
     }
 
+    /// The page with paper round it, each row shifted rint(y * tan) pixels, as the vectors' was.
+    func sheared(_ page: RGBImage, degrees: Double, margin: Int = 20) -> Scan {
+        let width = page.width + 2 * margin, height = page.height + 2 * margin
+        var samples = [UInt16](repeating: 65535, count: width * height * 3)
+        let slope = tan(degrees * .pi / 180)
+        for y in 0..<page.height {
+            let x = margin + Int((Double(y) * slope).rounded(.toNearestOrEven))
+            for i in 0..<(page.width * 3) {
+                samples[((margin + y) * width + x) * 3 + i] = page.pixels[y * page.width * 3 + i]
+            }
+        }
+        return Scan(width: width, height: height, samples: samples, scale: 65535)
+    }
+
+    @Test func tiltedPagesAreCountedAndJudged() throws {
+        let t = try section("target")
+        let target = try ColourTargets.make()
+        let page = target.page(0, dpi: 60)
+        let cases = try #require(t["tilts"] as? [[String: Any]])
+        #expect(cases.count == 3)
+        for c in cases {
+            let scan = sheared(page, degrees: try #require(c["degrees"] as? Double))
+            let frame = try #require(try ColourMeasure.frames(scan).first)
+            #expect([frame.left, frame.top, frame.right, frame.bottom] == ints(c["frame"]))
+            #expect(ColourMeasure.pageMarks(scan, frame, target) == c["marks"] as? Int)
+            #expect(abs(ColourMeasure.tilt(scan, frame, target) - (try #require(c["tilt"] as? Double))) < 1e-8)
+            if let message = c["result"] as? String {
+                #expect(throws: MeasureError(description: message)) { try ColourMeasure.locate(scan, target) }
+            } else {
+                #expect(try ColourMeasure.locate(scan, target).0 == c["result"] as? Int)
+            }
+        }
+    }
+
     @Test func forwardModelAndReport() throws {
         let p = try section("profile")
         let report = try ProfileReport.build([try targetMeasurement()])

@@ -10,6 +10,7 @@ files drift from what the Python code produces now.
 from __future__ import annotations
 
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -1498,6 +1499,20 @@ def _printer_xyz(encoded: Any) -> Any:
     return d65_to_d50(linear_rgb_to_xyz(tinted))
 
 
+def sheared(page: np.ndarray, degrees: float, margin: int = 20) -> np.ndarray:
+    """A page image with paper round it, each row shifted round(y * tan) pixels: a small tilt
+    made with whole pixels only, so Swift builds the same image."""
+    from openquad.quadfile import MAX_VALUE
+
+    height, width = page.shape[:2]
+    out = np.full((height + 2 * margin, width + 2 * margin, 3), MAX_VALUE, dtype=page.dtype)
+    slope = math.tan(math.radians(degrees))
+    for y in range(height):
+        x = margin + round(y * slope)
+        out[margin + y, x : x + width] = page[y]
+    return out
+
+
 def colour_calibration_vectors() -> dict[str, Any]:
     """The colour target, measuring it, the profile and the verification page."""
     from datetime import UTC, datetime
@@ -1512,6 +1527,10 @@ def colour_calibration_vectors() -> dict[str, Any]:
     )
     from openquad.colour_target import (
         ColourMeasurement,
+        _frames,
+        _locate,
+        _page_marks,
+        _tilt,
         make_target,
         measure_target,
         target_page,
@@ -1523,6 +1542,7 @@ def colour_calibration_vectors() -> dict[str, Any]:
         verification_colours,
         verify,
     )
+    from openquad.measure import MeasureError
     from openquad.quadfile import MAX_VALUE
     from openquad.scanner_profile import CURVE_POINTS, ScannerModel
 
@@ -1555,7 +1575,25 @@ def colour_calibration_vectors() -> dict[str, Any]:
     scanner = ScannerModel.from_json(scanner.to_json())  # as saved (rounded), as Swift reads it
     flipped = np.ascontiguousarray(scan[::-1, ::-1])
     modelled = measure_target([flipped], small, scanner)
+    tilts = []
+    for degrees in (0.15, -0.8, 0.8):
+        tilted = sheared(page, degrees).astype(np.float64) / MAX_VALUE
+        frame = _frames(tilted)[0]
+        try:
+            result: int | str = _locate(tilted, small)[0]
+        except MeasureError as exc:
+            result = str(exc)
+        tilts.append(
+            {
+                "degrees": degrees,
+                "frame": list(frame),
+                "marks": _page_marks(tilted, frame, small),
+                "tilt": round(_tilt(tilted, frame, small), 9),  # a fit: BLAS-independent digits
+                "result": result,
+            }
+        )
     targets = {
+        "tilts": tilts,
         "sent": _ints(small.sent),
         "columns": small.columns,
         "pages": len(small.pages),

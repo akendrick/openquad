@@ -55,6 +55,12 @@ struct DeviceParity {
         }
     }
 
+    @Test func scannerAddresses() {
+        #expect(ESCL.baseURL("876298000000.local") == "http://876298000000.local")
+        #expect(ESCL.baseURL("EPSON255E1C.local:443") == "https://EPSON255E1C.local:443")
+        #expect(ESCL.baseURL("https://EPSON255E1C.local") == "https://EPSON255E1C.local")
+    }
+
     @Test func discoveryParsers() throws {
         let d = try #require(try vectors("devices")["discovery"] as? [String: Any])
         let avahi = ESCL.parseAvahi(d["avahi"] as! String)

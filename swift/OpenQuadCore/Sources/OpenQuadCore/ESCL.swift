@@ -82,12 +82,34 @@ public enum ESCL {
         URL(string: reference, relativeTo: URL(string: base))?.absoluteURL.absoluteString ?? reference
     }
 
+    /// The scanner's address: a URL as given, https for port 443, otherwise http.
+    public static func baseURL(_ host: String) -> String {
+        if host.hasPrefix("http://") || host.hasPrefix("https://") { return host }
+        return host.hasSuffix(":443") ? "https://\(host)" : "http://\(host)"
+    }
+
+    /// TLS for a scanner on the local network. Scanners (the Epson ET-2900's, for one) serve
+    /// eSCL only over https with a self-signed certificate no authority can vouch for, so the
+    /// certificate isn't checked, as macOS's own scanning doesn't.
+    final class ScannerTLS: NSObject, URLSessionDelegate, Sendable {
+        func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge,
+                        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+            if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+               let trust = challenge.protectionSpace.serverTrust {
+                completionHandler(.useCredential, URLCredential(trust: trust))
+            } else {
+                completionHandler(.performDefaultHandling, nil)
+            }
+        }
+    }
+
+    static let session = URLSession(configuration: .ephemeral, delegate: ScannerTLS(), delegateQueue: nil)
+
     /// Scan the platen and return the JPEG.
     public static func scan(host: String, settings: ScanSettings? = nil, fetch: Fetch = httpFetch,
                             sleep: (Double) -> Void = { Thread.sleep(forTimeInterval: $0) }) throws -> Data {
         let settings = try settings ?? ScanSettings()
-        let base = host.hasPrefix("http") ? host : "http://\(host)"
-        var trimmed = base
+        var trimmed = baseURL(host)
         while trimmed.hasSuffix("/") { trimmed.removeLast() }
         let jobsURL = join(trimmed + "/", "eSCL/ScanJobs")
 
@@ -136,7 +158,7 @@ public enum ESCL {
         }
         final class Box: @unchecked Sendable { var result: Result<(Int, String, Data), Error>? }
         let box = Box(), done = DispatchSemaphore(value: 0)
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        session.dataTask(with: request) { data, response, error in
             if let response = response as? HTTPURLResponse {
                 box.result = .success((response.statusCode, response.value(forHTTPHeaderField: "Location") ?? "", data ?? Data()))
             } else {
