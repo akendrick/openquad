@@ -1499,7 +1499,7 @@ def _printer_xyz(encoded: Any) -> Any:
     return d65_to_d50(linear_rgb_to_xyz(tinted))
 
 
-def sheared(page: np.ndarray, degrees: float, margin: int = 20) -> np.ndarray:
+def sheared(page: np.ndarray, degrees: float, margin: int = 40) -> np.ndarray:
     """A page image with paper round it, each row shifted round(y * tan) pixels: a small tilt
     made with whole pixels only, so Swift builds the same image."""
     from openquad.quadfile import MAX_VALUE
@@ -1529,10 +1529,10 @@ def colour_calibration_vectors() -> dict[str, Any]:
         ColourMeasurement,
         _frames,
         _locate,
-        _page_marks,
         _tilt,
         make_target,
         measure_target,
+        straightened,
         target_page,
     )
     from openquad.colour_verify import (
@@ -1576,22 +1576,25 @@ def colour_calibration_vectors() -> dict[str, Any]:
     flipped = np.ascontiguousarray(scan[::-1, ::-1])
     modelled = measure_target([flipped], small, scanner)
     tilts = []
-    for degrees in (0.15, -0.8, 0.8):
-        tilted = sheared(page, degrees).astype(np.float64) / MAX_VALUE
+    padded = sheared(page, 0.0).astype(np.float64) / MAX_VALUE  # paper round the page
+    centre = (padded.shape[1] / 2, padded.shape[0] / 2)
+    for degrees in (0.15, -0.8, 2.5, -4.0):
+        # Turned with the straightening itself, which Swift reproduces exactly.
+        tilted = straightened(padded, -degrees, centre)
         frame = _frames(tilted)[0]
+        case: dict[str, Any] = {
+            "degrees": degrees,
+            "frame": list(frame),
+            "tilt": round(_tilt(tilted, frame, small), 9),  # a median of slopes: exact digits
+        }
         try:
-            result: int | str = _locate(tilted, small)[0]
+            located, _, straight = _locate(tilted, small)
+            case["result"] = located
+            case["straight_sum"] = int(np.rint(straight * 65535).astype(np.int64).sum())
+            case["xyz"] = _floats(measure_target([tilted], small).xyz)
         except MeasureError as exc:
-            result = str(exc)
-        tilts.append(
-            {
-                "degrees": degrees,
-                "frame": list(frame),
-                "marks": _page_marks(tilted, frame, small),
-                "tilt": round(_tilt(tilted, frame, small), 9),  # a fit: BLAS-independent digits
-                "result": result,
-            }
-        )
+            case["result"] = str(exc)
+        tilts.append(case)
     targets = {
         "tilts": tilts,
         "sent": _ints(small.sent),

@@ -33,6 +33,7 @@ from openquad.colour_target import (
     load_target,
     make_target,
     measure_target,
+    straightened,
     target_page,
 )
 from openquad.measure import MeasureError
@@ -193,16 +194,27 @@ def tilted(image: np.ndarray, degrees: float) -> np.ndarray:
     ).astype(np.float64)
 
 
-def test_a_slightly_tilted_scan_is_read_and_a_tilted_one_refused() -> None:
-    """A tilt brings the frame's line beside the page marks; they are still counted right, and
-    a page tilted enough to sample the wrong patches is refused, saying so."""
+def test_tilted_scans_are_straightened_and_very_tilted_ones_refused() -> None:
+    """A tilt brings the frame's line beside the page marks; they are still counted right. A
+    tilted page is straightened before it's read; one tilted past 3° is refused, saying so."""
     target = make_target(9)
-    near = measure_target([tilted(scan(target, 0), 0.15), tilted(scan(target, 1), -0.2)], target)
-    assert delta_e_2000(near.lab, expected_lab(target)).mean() < 0.5
-    with pytest.raises(MeasureError, match=r"page 1 is tilted 0\.8° .* square against the edge"):
-        measure_target([tilted(scan(target, 0), -0.8), scan(target, 1)], target)
-    with pytest.raises(MeasureError, match=r"page 2 is tilted 0\.8°"):
-        measure_target([scan(target, 0), tilted(scan(target, 1, turned=True), -0.8)], target)
+    expected = expected_lab(target)
+    for one, two in ((0.15, -0.2), (-0.8, 0.8), (2.5, -1.5)):
+        tilted_pair = [tilted(scan(target, 0), one), tilted(scan(target, 1, turned=True), two)]
+        measurement = measure_target(tilted_pair, target)
+        errors = delta_e_2000(measurement.lab, expected)
+        assert errors.mean() < 0.5 and errors.max() < 3, (one, two)
+    with pytest.raises(MeasureError, match=r"the page is tilted 4\.0° .* square against the edge"):
+        measure_target([tilted(scan(target, 0), -4.0), scan(target, 1)], target)
+
+
+def test_straightening_turns_about_the_pivot() -> None:
+    image = np.ones((40, 60, 3))
+    image[10:30, 29:31] = 0.0  # an upright bar
+    leaning = straightened(image, -5.0, (30.0, 20.0))  # turned so it leans right going down
+    assert leaning[20, 29:31].max() < 0.5  # the pivot stays put
+    assert straightened(image, 0.0, (30.0, 20.0)).tolist() == image.tolist()
+    assert (straightened(image, 30.0, (30.0, 20.0))[0, 0] == 1.0).all()  # beyond: white
 
 
 def test_notes_pages_scanned_differently() -> None:

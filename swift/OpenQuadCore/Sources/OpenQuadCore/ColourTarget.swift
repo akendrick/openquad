@@ -299,30 +299,63 @@ public enum ColourMeasure {
         return marks
     }
 
-    /// The frame's tilt on the scan in degrees, from where its left line falls, row by row.
+    /// The frame's tilt on the scan in degrees (leaning right going down is positive), from
+    /// where its left line falls in rows across it: the first dark pixel from the left. Fitted by
+    /// the median of the slopes between every two rows, so rows where a page mark comes first
+    /// don't sway it.
     static func tilt(_ scan: Scan, _ frame: PixelBox, _ target: ColourTarget) -> Double {
         let scale = Double(frame.right - frame.left) / target.frameSize(0).0
         let left = Double(frame.left), top = Double(frame.top), bottom = Double(frame.bottom)
-        let x0 = max(pyRound(left - 0.15 * scale), 0)
-        let x1 = min(pyRound(left + (target.frame + target.inset / 2) * scale), scan.width)
-        var ys: [Double] = [], xs: [Double] = []
-        let first = top + 0.1 * (bottom - top), last = bottom - 0.1 * (bottom - top)
-        for i in 0..<21 {
-            let y = pyRound(first + (last - first) * Double(i) / 20)
+        let x0 = max(pyRound(left - 0.6 * scale), 0)
+        let x1 = min(pyRound(left + 0.6 * scale), scan.width)
+        let start = top + 0.1 * (bottom - top), stop = bottom - 0.1 * (bottom - top)
+        let step = (stop - start) / 40  // as numpy's linspace
+        var ys: [Int] = [], xs: [Int] = []
+        for i in 0...40 {
+            let y = pyRound(i == 40 ? stop : Double(i) * step + start)
             guard y >= 0, y < scan.height, x1 > x0 else { continue }
             if let x = (x0..<x1).first(where: { isDark(scan, $0, y) }) {
-                ys.append(Double(y))
-                xs.append(Double(x))
+                ys.append(y)
+                xs.append(x)
             }
         }
-        guard xs.count >= 3 else { return 0 }
-        let my = ys.reduce(0, +) / Double(ys.count), mx = xs.reduce(0, +) / Double(xs.count)
-        var covariance = 0.0, variance = 0.0
-        for (y, x) in zip(ys, xs) {
-            covariance += (y - my) * (x - mx)
-            variance += (y - my) * (y - my)
+        var slopes: [Double] = []
+        for i in ys.indices {
+            for j in (i + 1)..<ys.count where ys[j] != ys[i] {
+                slopes.append(Double(xs[j] - xs[i]) / Double(ys[j] - ys[i]))
+            }
         }
-        return variance > 0 ? atan(covariance / variance) * 180 / .pi : 0
+        guard slopes.count >= 3 else { return 0 }
+        return atan(OpenQuadCore.median(slopes)) * 180 / .pi
+    }
+
+    /// The scan turned by `degrees` about `pivot` so a line tilted that much (leaning right
+    /// going down) stands upright: bilinear, white beyond the scan, kept to 16-bit levels.
+    static func straightened(_ scan: Scan, degrees: Double, pivot: (Double, Double)) -> Scan {
+        let width = scan.width, height = scan.height
+        let turn = degrees * .pi / 180
+        let cosine = cos(turn), sine = sin(turn)
+        let (cx, cy) = pivot
+        var out = [UInt16](repeating: 65535, count: width * height * 3)
+        for y in 0..<height {
+            let v = Double(y) - cy
+            for x in 0..<width {
+                let u = Double(x) - cx
+                let sx = cx + u * cosine + v * sine
+                let sy = cy - u * sine + v * cosine
+                let fx0 = sx.rounded(.down), fy0 = sy.rounded(.down)
+                guard fx0 >= 0, fy0 >= 0, fx0 + 1 < Double(width), fy0 + 1 < Double(height) else { continue }
+                let xi = Int(fx0), yi = Int(fy0), fx = sx - fx0, fy = sy - fy0
+                for c in 0..<3 {
+                    let a = scan.value(xi, yi, c), b = scan.value(xi + 1, yi, c)
+                    let d0 = scan.value(xi, yi + 1, c), d1 = scan.value(xi + 1, yi + 1, c)
+                    let above = a + (b - a) * fx, below = d0 + (d1 - d0) * fx
+                    let value = above + (below - above) * fy
+                    out[(y * width + x) * 3 + c] = UInt16((value * 65535).rounded(.toNearestOrEven))
+                }
+            }
+        }
+        return Scan(width: width, height: height, samples: out, scale: 65535)
     }
 
     /// The most tilt, in degrees, that keeps every patch's sample inside it: the tilt may move
@@ -340,11 +373,33 @@ public enum ColourMeasure {
     }
 
     /// (page, frame, scan the right way up) for one scan.
-    static func locate(_ scan: Scan, _ target: ColourTarget) throws -> (Int, PixelBox, Scan) {
+    /// A scan tilted more than this (degrees) is straightened before it's read; more than
+    /// `mostTilt` is refused.
+    static let straightenFrom = 0.1, mostTilt = 3.0
+
+    static func locate(_ scan: Scan, _ target: ColourTarget, straighten: Bool = true) throws -> (Int, PixelBox, Scan) {
         let shapes = target.pages.indices.map { let (w, h) = target.frameSize($0); return w / h }
         var problem = ""
         for candidate in try frames(scan) {
             var frame = candidate
+            var upright = scan
+            if marksSide(scan, frame) == "right" {  // scanned the other way up
+                upright = scan.turned()
+                frame = PixelBox(left: scan.width - frame.right, top: scan.height - frame.bottom,
+                                 right: scan.width - frame.left, bottom: scan.height - frame.top)
+            }
+            // Straighten first: a tilted frame's outline is the wrong shape.
+            let tilted = tilt(upright, frame, target)
+            if abs(tilted) > mostTilt {
+                problem = "the page is tilted " + String(format: "%.1f", abs(tilted))
+                    + "° on the scan, more than can be straightened; place it square against the edge of the glass "
+                    + "and scan again"
+                continue
+            }
+            if straighten && abs(tilted) > straightenFrom {
+                let pivot = (Double(frame.left + frame.right) / 2, Double(frame.top + frame.bottom) / 2)
+                return try locate(straightened(upright, degrees: tilted, pivot: pivot), target, straighten: false)
+            }
             let found = Double(frame.right - frame.left) / Double(max(frame.bottom - frame.top, 1))
             let fits = shapes.indices.filter { abs(found / shapes[$0] - 1) <= 0.04 }
             if fits.isEmpty {
@@ -356,12 +411,6 @@ public enum ColourMeasure {
                 }
                 continue
             }
-            var upright = scan
-            if marksSide(scan, frame) == "right" {  // scanned the other way up
-                upright = scan.turned()
-                frame = PixelBox(left: scan.width - frame.right, top: scan.height - frame.bottom,
-                                 right: scan.width - frame.left, bottom: scan.height - frame.top)
-            }
             let marks = pageMarks(upright, frame, target)
             guard fits.contains(marks - 1) else {
                 let pages = target.pages.count
@@ -370,10 +419,9 @@ public enum ColourMeasure {
                     + "; the target has \(pages) page\(pages != 1 ? "s" : ""))"
                 continue
             }
-            let tilted = tilt(upright, frame, target)
-            if abs(tilted) > tiltLimit(target, marks - 1) {
-                problem = "page \(marks) is tilted " + String(format: "%.1f", abs(tilted))
-                    + "° on the scan, too much to read its patches; place it square against the edge of the glass "
+            if abs(tilted) > tiltLimit(target, marks - 1) {  // still, once straightened
+                problem = "page \(marks) is still tilted " + String(format: "%.1f", abs(tilted))
+                    + "° once straightened, too much to read its patches; place it square against the edge of the glass "
                     + "and scan again"
                 continue
             }

@@ -85,7 +85,7 @@ struct ColourCalibrationParity {
     }
 
     /// The page with paper round it, each row shifted rint(y * tan) pixels, as the vectors' was.
-    func sheared(_ page: RGBImage, degrees: Double, margin: Int = 20) -> Scan {
+    func sheared(_ page: RGBImage, degrees: Double, margin: Int = 40) -> Scan {
         let width = page.width + 2 * margin, height = page.height + 2 * margin
         var samples = [UInt16](repeating: 65535, count: width * height * 3)
         let slope = tan(degrees * .pi / 180)
@@ -98,22 +98,27 @@ struct ColourCalibrationParity {
         return Scan(width: width, height: height, samples: samples, scale: 65535)
     }
 
-    @Test func tiltedPagesAreCountedAndJudged() throws {
+    @Test func tiltedPagesAreStraightenedOrRefused() throws {
         let t = try section("target")
         let target = try ColourTargets.make()
-        let page = target.page(0, dpi: 60)
+        let padded = sheared(target.page(0, dpi: 60), degrees: 0)
+        let centre = (Double(padded.width) / 2, Double(padded.height) / 2)
         let cases = try #require(t["tilts"] as? [[String: Any]])
-        #expect(cases.count == 3)
+        #expect(cases.count == 4)
         for c in cases {
-            let scan = sheared(page, degrees: try #require(c["degrees"] as? Double))
+            let degrees = try #require(c["degrees"] as? Double)
+            let scan = ColourMeasure.straightened(padded, degrees: -degrees, pivot: centre)
             let frame = try #require(try ColourMeasure.frames(scan).first)
             #expect([frame.left, frame.top, frame.right, frame.bottom] == ints(c["frame"]))
-            #expect(ColourMeasure.pageMarks(scan, frame, target) == c["marks"] as? Int)
             #expect(abs(ColourMeasure.tilt(scan, frame, target) - (try #require(c["tilt"] as? Double))) < 1e-8)
             if let message = c["result"] as? String {
                 #expect(throws: MeasureError(description: message)) { try ColourMeasure.locate(scan, target) }
             } else {
-                #expect(try ColourMeasure.locate(scan, target).0 == c["result"] as? Int)
+                let (page, _, straight) = try ColourMeasure.locate(scan, target)
+                #expect(page == c["result"] as? Int)
+                #expect(straight.samples.reduce(0) { $0 + Int($1) } == c["straight_sum"] as? Int)
+                let measured = try ColourMeasure.measure([scan], target: target)
+                #expect(close(measured.xyz.flatMap { $0 }, doubles(c["xyz"]), 1e-12))
             }
         }
     }

@@ -44,6 +44,8 @@ TINTS = (0.3, 0.5, 0.7)  # strengths of the primary and secondary tints
 HUES = ((1, 0, 0), (0, 1, 0), (0, 0, 1), (0, 1, 1), (1, 0, 1), (1, 1, 0))
 SHUFFLE_SEED = 7
 SAMPLE = 0.5  # central fraction of each patch sampled
+STRAIGHTEN = 0.1  # degrees: a scan tilted more than this is straightened before it's read
+MOST_TILT = 3.0  # degrees: more than this is refused (place the page square and scan again)
 
 
 def colour_patches(grid: int = 6) -> NDArray[np.uint16]:
@@ -325,26 +327,65 @@ def _page_marks(
 def _tilt(
     scan: NDArray[np.float64], frame: tuple[int, int, int, int], target: ColourTarget
 ) -> float:
-    """The frame's tilt on the scan in degrees, from where its left line falls, row by row."""
+    """The frame's tilt on the scan in degrees (leaning right going down is positive), from
+    where its left line falls in rows across it: the first dark pixel from the left. Fitted by
+    the median of the slopes between every two rows, so rows where a page mark comes first
+    don't sway it."""
     left, top, right, bottom = frame
     scale = (right - left) / target.frame_size(0)[0]
-    x0 = max(round(left - 0.15 * scale), 0)
-    x1 = round(left + (target.frame + target.inset / 2) * scale)
+    x0 = max(round(left - 0.6 * scale), 0)
+    x1 = min(round(left + 0.6 * scale), scan.shape[1])
     ys, xs = [], []
-    for y in np.linspace(top + 0.1 * (bottom - top), bottom - 0.1 * (bottom - top), 21):
-        hits = np.flatnonzero(scan[round(y), x0:x1].mean(axis=-1) < DARK)
+    for y in np.linspace(top + 0.1 * (bottom - top), bottom - 0.1 * (bottom - top), 41):
+        row = round(float(y))
+        if not 0 <= row < scan.shape[0]:
+            continue
+        hits = np.flatnonzero(scan[row, x0:x1].mean(axis=-1) < DARK)
         if len(hits):
-            ys.append(round(y))
+            ys.append(row)
             xs.append(x0 + int(hits[0]))
-    if len(xs) < 3:
+    slopes = [
+        (xs[j] - xs[i]) / (ys[j] - ys[i])
+        for i in range(len(ys))
+        for j in range(i + 1, len(ys))
+        if ys[j] != ys[i]
+    ]
+    if len(slopes) < 3:
         return 0.0
-    return math.degrees(math.atan(float(np.polyfit(ys, xs, 1)[0])))
+    return math.degrees(math.atan(float(np.median(slopes))))
 
 
 def _tilt_limit(target: ColourTarget, page: int) -> float:
     """The most tilt, in degrees, that keeps every patch's sample inside it: the tilt may move
     the far corner by half the margin around each sample."""
     return math.degrees(math.atan((1 - SAMPLE) / 4 * target.patch / max(target.frame_size(page))))
+
+
+def straightened(
+    scan: NDArray[np.float64], degrees: float, pivot: tuple[float, float]
+) -> NDArray[np.float64]:
+    """The scan turned by `degrees` about `pivot` so a line tilted that much (leaning right
+    going down) stands upright: bilinear, white beyond the scan, kept to 16-bit levels (as
+    the Swift version stores it)."""
+    height, width = scan.shape[:2]
+    turn = math.radians(degrees)
+    cos, sin = math.cos(turn), math.sin(turn)
+    cx, cy = pivot
+    ys, xs = np.mgrid[0:height, 0:width].astype(np.float64)
+    u, v = xs - cx, ys - cy
+    sx = cx + u * cos + v * sin
+    sy = cy - u * sin + v * cos
+    x0, y0 = np.floor(sx), np.floor(sy)
+    fx, fy = (sx - x0)[..., None], (sy - y0)[..., None]
+    inside = (x0 >= 0) & (y0 >= 0) & (x0 + 1 < width) & (y0 + 1 < height)
+    xi = np.where(inside, x0, 0).astype(np.intp)
+    yi = np.where(inside, y0, 0).astype(np.intp)
+    a, b = scan[yi, xi], scan[yi, xi + 1]
+    c, d = scan[yi + 1, xi], scan[yi + 1, xi + 1]
+    above, below = a + (b - a) * fx, c + (d - c) * fx
+    value = np.where(inside[..., None], above + (below - above) * fy, 1.0)
+    result: NDArray[np.float64] = np.rint(value * 65535.0) / 65535.0
+    return result
 
 
 def _frames(scan: NDArray[np.float64]) -> list[tuple[int, int, int, int]]:
@@ -362,12 +403,29 @@ def _frames(scan: NDArray[np.float64]) -> list[tuple[int, int, int, int]]:
 
 
 def _locate(
-    scan: NDArray[np.float64], target: ColourTarget
+    scan: NDArray[np.float64], target: ColourTarget, straighten: bool = True
 ) -> tuple[int, tuple[int, int, int, int], NDArray[np.float64]]:
-    """(page, frame, scan the right way up) for one scan."""
+    """(page, frame, scan the right way up and straight) for one scan."""
     shapes = [width / height for width, height in map(target.frame_size, range(len(target.pages)))]
     problem = ""
     for frame in _frames(scan):
+        upright = scan
+        if _marks_side(scan, frame) == "right":  # scanned the other way up
+            upright = np.ascontiguousarray(scan[::-1, ::-1])
+            height, width = scan.shape[:2]
+            left, top, right, bottom = frame
+            frame = (width - right, height - bottom, width - left, height - top)
+        # Straighten first: a tilted frame's outline is the wrong shape.
+        tilt = _tilt(upright, frame, target)
+        if abs(tilt) > MOST_TILT:
+            problem = (
+                f"the page is tilted {abs(tilt):.1f}° on the scan, more than can be straightened; "
+                "place it square against the edge of the glass and scan again"
+            )
+            continue
+        if straighten and abs(tilt) > STRAIGHTEN:
+            pivot = ((frame[0] + frame[2]) / 2, (frame[1] + frame[3]) / 2)
+            return _locate(straightened(upright, tilt, pivot), target, straighten=False)
         left, top, right, bottom = frame
         found = (right - left) / max(bottom - top, 1)
         fits = [i for i, shape in enumerate(shapes) if abs(found / shape - 1) <= 0.04]
@@ -379,11 +437,6 @@ def _locate(
                 "is on the scan and placed square"
             )
             continue
-        upright = scan
-        if _marks_side(scan, frame) == "right":  # scanned the other way up
-            upright = np.ascontiguousarray(scan[::-1, ::-1])
-            height, width = scan.shape[:2]
-            frame = (width - right, height - bottom, width - left, height - top)
         marks = _page_marks(upright, frame, target)
         if marks - 1 not in fits:
             pages = len(target.pages)
@@ -393,11 +446,10 @@ def _locate(
                 f"{pages} page{'s' if pages != 1 else ''})"
             )
             continue
-        tilt = _tilt(upright, frame, target)
-        if abs(tilt) > _tilt_limit(target, marks - 1):
+        if abs(tilt) > _tilt_limit(target, marks - 1):  # still, once straightened
             problem = (
-                f"page {marks} is tilted {abs(tilt):.1f}° on the scan, too much to read its "
-                "patches; place it square against the edge of the glass and scan again"
+                f"page {marks} is still tilted {abs(tilt):.1f}° once straightened, too much to "
+                "read its patches; place it square against the edge of the glass and scan again"
             )
             continue
         return marks - 1, frame, upright
