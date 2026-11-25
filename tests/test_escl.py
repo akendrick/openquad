@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from openquad.escl import ScanError, ScanSettings, http_fetch, scan
+from openquad.escl import ScanError, ScanSettings, base_url, http_fetch, scan
 
 JPEG = b"\xff\xd8\xff\xe0fake-jpeg"
 
@@ -101,9 +101,22 @@ def test_an_https_job_address_is_followed_on_the_scanners_own_address(tmp_path: 
 
     scan("EPSON255E1C.local:443", tmp_path / "s.jpg", fetch=fetch)
     assert [(m, u) for m, u, _ in fake.calls[1:]] == [
-        ("GET", "http://EPSON255E1C.local:443/eSCL/ScanJobs/feaf5e67/NextDocument"),
-        ("DELETE", "http://EPSON255E1C.local:443/eSCL/ScanJobs/feaf5e67"),
+        ("GET", "https://EPSON255E1C.local:443/eSCL/ScanJobs/feaf5e67/NextDocument"),
+        ("DELETE", "https://EPSON255E1C.local:443/eSCL/ScanJobs/feaf5e67"),
     ]
+    scan("http://EPSON255E1C.local:8080", tmp_path / "s.jpg", fetch=fetch)  # a URL as given
+    assert fake.calls[-1][1] == "http://EPSON255E1C.local:8080/eSCL/ScanJobs/feaf5e67"
+
+
+def test_scanner_addresses() -> None:
+    assert base_url("876298000000.local") == "http://876298000000.local"
+    assert base_url("EPSON255E1C.local:443") == "https://EPSON255E1C.local:443"
+    assert base_url("https://EPSON255E1C.local") == "https://EPSON255E1C.local"
+
+
+def test_https_scanners_self_signed_certificates_are_accepted() -> None:
+    with pytest.raises(ScanError, match="can't reach"):
+        http_fetch("GET", "https://127.0.0.1:9/eSCL/ScannerCapabilities", None)
 
 
 def test_a_scanner_that_stays_busy_says_so(tmp_path: Path) -> None:

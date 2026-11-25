@@ -331,7 +331,12 @@ def build_parser() -> argparse.ArgumentParser:
     commands.add_parser("printers", help="list printers set up on this computer")
 
     scn = commands.add_parser("scan", help="scan the platen over eSCL (AirScan) to a JPEG")
-    scn.add_argument("--host", required=True, help="scanner host, e.g. 876298000000.local")
+    scn.add_argument(
+        "--host",
+        required=True,
+        help="scanner host, e.g. 876298000000.local; host:443 or https://host for scanners "
+        "that answer only over https (Epson)",
+    )
     scn.add_argument("-o", "--output", type=Path, required=True, help="JPEG to write")
     scn.add_argument("--dpi", type=int, default=300, help="scan resolution (default 300)")
     scn.add_argument(

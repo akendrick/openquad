@@ -7,6 +7,7 @@ no automatic adjustments), so measurements from different days compare.
 from __future__ import annotations
 
 import contextlib
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -26,12 +27,30 @@ class ScanError(RuntimeError):
     """The scanner refused or failed the scan."""
 
 
+def _scanner_tls() -> ssl.SSLContext:
+    """TLS for a scanner on the local network. Scanners (the Epson ET-2900's, for one) serve
+    eSCL only over https with a self-signed certificate no authority can vouch for, so the
+    certificate isn't checked, as macOS's own scanning doesn't."""
+    context = ssl.create_default_context()
+    context.check_hostname = False
+    context.verify_mode = ssl.CERT_NONE
+    return context
+
+
+def base_url(host: str) -> str:
+    """The scanner's address: a URL as given, https for port 443, otherwise http."""
+    if host.startswith(("http://", "https://")):
+        return host
+    return f"https://{host}" if host.endswith(":443") else f"http://{host}"
+
+
 def http_fetch(method: str, url: str, body: bytes | None) -> tuple[int, str, bytes]:
     request = urllib.request.Request(url, data=body, method=method)
     if body is not None:
         request.add_header("Content-Type", "text/xml")
+    context = _scanner_tls() if url.startswith("https://") else None
     try:
-        with urllib.request.urlopen(request, timeout=120) as response:
+        with urllib.request.urlopen(request, timeout=120, context=context) as response:
             return response.status, response.headers.get("Location", ""), response.read()
     except urllib.error.HTTPError as exc:
         return exc.code, exc.headers.get("Location", "") if exc.headers else "", exc.read()
@@ -97,8 +116,7 @@ def scan(
 ) -> Path:
     """Scan the platen to a JPEG file and return its path."""
     settings = settings or ScanSettings()
-    base = host if host.startswith("http") else f"http://{host}"
-    jobs_url = urljoin(base.rstrip("/") + "/", "eSCL/ScanJobs")
+    jobs_url = urljoin(base_url(host).rstrip("/") + "/", "eSCL/ScanJobs")
 
     for _ in range(BUSY_RETRIES):
         status, location, body = fetch("POST", jobs_url, settings.xml())
