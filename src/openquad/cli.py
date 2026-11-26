@@ -458,12 +458,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     pp.add_argument("folder", type=Path, help="run folder")
     pp.add_argument("--dpi", type=float, default=DEFAULT_DPI, help="resolution (default 300)")
+    pp.add_argument(
+        "--driver",
+        action="store_true",
+        help="the driver comparison instead: the same colours sent as plain sRGB, for the "
+        "driver's own colour management to print",
+    )
     pv = profile_commands.add_parser(
         "verify", help="measure scans of the verification page and judge the profile"
     )
     pv.add_argument("folder", type=Path, help="run folder")
     pv.add_argument("scans", type=Path, nargs="+", help="one scan of each page, in any order")
     pv.add_argument("--scanner-model", type=Path, help="scanner model (openquad scanner-profile)")
+    pv.add_argument(
+        "--driver", action="store_true", help="judge scans of the driver comparison page"
+    )
     pr = profile_commands.add_parser(
         "refine", help="build the run's next profile from what the verification page measured"
     )
@@ -548,6 +557,19 @@ def _profile(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
             print(f"{entry.label}\n  {entry.path}")
         if not entries:
             print(f"no colour profiles in {folder}")
+    elif command == "page" and args.driver:
+        run = ColourRun.resume(args.folder)
+        for path in run.make_driver_pages(args.dpi):
+            print(f"wrote {path}")
+        print("print it exactly as you printed the colour target: the driver's own colour")
+        print(
+            f"management does the work. Then: openquad profile verify --driver {run.folder} SCAN..."
+        )
+    elif command == "verify" and args.driver:
+        run = ColourRun.resume(args.folder)
+        scanner = load_model(args.scanner_model) if args.scanner_model else None
+        print("The driver's own colour management:")
+        print(run.measure_driver(args.scans, scanner).summary())
     elif command == "page":
         run = ColourRun.resume(args.folder)
         for path in run.make_pages(args.dpi):

@@ -33,11 +33,15 @@ from numpy.typing import NDArray
 
 from openquad.colour import (
     D50_WHITE,
+    d50_to_d65,
     d65_to_d50,
     delta_e_2000,
+    lab_to_xyz,
     linear_rgb_to_xyz,
+    linear_to_srgb,
     srgb_to_linear,
     xyz_to_lab,
+    xyz_to_linear_rgb,
 )
 from openquad.colour_profile import (
     GAMUT_LIMIT,
@@ -301,6 +305,24 @@ class VerificationReport:
         )
 
 
+def driver_verification(verification: VerificationTarget) -> VerificationTarget:
+    """The same page with each colour sent as plain sRGB instead of through the profile, for
+    the driver's own colour management to print: what the profile has to beat. Wanted
+    colours are relative to the paper, as sRGB white is to the driver; colours outside sRGB
+    are clipped. Which colours count as printable is the profile's view, so both pages are
+    judged on the same patches."""
+    xyz = d50_to_d65(lab_to_xyz(verification.wanted, D50_WHITE))
+    srgb = np.clip(linear_to_srgb(np.clip(xyz_to_linear_rgb(xyz), 0.0, 1.0)), 0.0, 1.0)
+    sent = np.rint(srgb * MAX_VALUE).astype(np.uint16)
+    return VerificationTarget(
+        target=layout_target(sent),
+        names=list(verification.names),
+        groups=list(verification.groups),
+        wanted=verification.wanted.copy(),
+        printable=verification.printable.copy(),
+    )
+
+
 def verify(measurement: ColourMeasurement, verification: VerificationTarget) -> VerificationReport:
     if not np.array_equal(measurement.sent, verification.target.sent):
         raise ProfileError("the measurement isn't of this verification page")
@@ -439,6 +461,62 @@ class ColourRun:
         self.current.pages = [p.name for p in paths]
         self._save_log()
         return paths
+
+    def make_driver_pages(self, dpi: float = 300.0) -> list[Path]:
+        """Write the driver comparison: this round's verification colours sent as plain
+        sRGB, to print the same way with the driver's own colour management doing the work."""
+        verification = driver_verification(self.verification())
+        stem = f"{self.name}-v{self.current.version}-driver"
+        layout = self.folder / f"{stem}.json"
+        layout.write_text(verification.to_json() + "\n", encoding="utf-8")
+        pages = len(verification.target.pages)
+        paths = []
+        for page in range(pages):
+            suffix = "" if pages == 1 else f"-{page + 1}of{pages}"
+            path = self.folder / f"{stem}{suffix}.tif"
+            save_rgb(path, target_page(verification.target, page, dpi), (dpi, dpi), srgb_profile())
+            paths.append(path)
+        self.extra["driver"] = {
+            "version": self.current.version,
+            "layout": layout.name,
+            "pages": [p.name for p in paths],
+        }
+        self._save_log()
+        return paths
+
+    def measure_driver(
+        self, scans: Sequence[str | Path], scanner: ScannerModel | None = None
+    ) -> VerificationReport:
+        """Measure scans of the driver comparison and judge them as a profile's would be.
+        The scans are copied into the run's folder."""
+        driver = self.extra.get("driver")
+        if not driver:
+            raise ColourRunError("make the driver comparison page first (profile page --driver)")
+        text = (self.folder / driver["layout"]).read_text(encoding="utf-8")
+        verification = VerificationTarget.from_json(text)
+        stem = Path(driver["layout"]).stem
+        kept = []
+        for i, scan in enumerate(scans):
+            source = Path(scan)
+            copy = self.folder / f"{stem}-scan{i + 1}{source.suffix}"
+            if source.resolve() != copy.resolve():
+                shutil.copyfile(source, copy)
+            kept.append(copy)
+        model = self.extra.get("scanner_model")
+        if scanner is None and model:
+            scanner = load_model(self.folder / model)
+        measurement = measure_target([load_scan(p) for p in kept], verification.target, scanner)
+        save_measurement(measurement, self.folder / f"{stem}-measured.json")
+        report = verify(measurement, verification)
+        (self.folder / f"{stem}-report.json").write_text(report.to_json() + "\n", "utf-8")
+        driver.update(
+            scans=[p.name for p in kept],
+            measurement=f"{stem}-measured.json",
+            report=f"{stem}-report.json",
+            assessment=report.assessment(),
+        )
+        self._save_log()
+        return report
 
     def verification(self) -> VerificationTarget:
         if not self.current.layout:

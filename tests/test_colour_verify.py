@@ -25,6 +25,7 @@ from openquad.colour_verify import (
     ColourRun,
     ColourRunError,
     VerificationTarget,
+    driver_verification,
     make_verification,
     refine,
     verification_colours,
@@ -186,6 +187,49 @@ def test_cli_run(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     assert "round 1" in capsys.readouterr().out
     assert main(["profile", "verify", str(folder), str(scanned)]) == 1
     assert "verification page first" in capsys.readouterr().err
+
+
+def test_the_driver_comparison_sends_the_same_colours_as_srgb(model: ForwardModel) -> None:
+    verification = make_verification(model)
+    driver = driver_verification(verification)
+    assert driver.names == verification.names and driver.groups == verification.groups
+    assert np.array_equal(driver.wanted, verification.wanted)
+    assert np.array_equal(driver.printable, verification.printable)
+    # The photo colours were picked in sRGB, so they go back to what they were picked as.
+    names, _, _ = verification_colours()
+    sent = dict(zip(driver.names, driver.target.sent.tolist(), strict=True))
+    first = next(n for n in names if n.startswith("photo 1 "))
+    picked = [int(v) for v in first.split("sRGB ")[1].rstrip(")").split()]
+    assert np.abs(np.array(sent[first]) / 257 - picked).max() <= 0.6
+    grey = sent["grey L* 95"]
+    assert max(grey) - min(grey) <= 32  # neutral within an eighth of an 8-bit level
+
+
+def test_a_run_judges_the_driver_comparison(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    folder = tmp_path / "run"
+    run, _ = ColourRun.start(folder, "plain", [measured(make_target())])
+    with pytest.raises(ColourRunError, match="verification page first"):
+        run.make_driver_pages(dpi=100)
+    with pytest.raises(ColourRunError, match="driver comparison page first"):
+        run.measure_driver([tmp_path / "x.tif"])
+    run.make_pages(dpi=100)
+    assert main(["profile", "page", "--driver", str(folder), "--dpi", "100"]) == 0
+    assert "plain-v0-driver.tif" in capsys.readouterr().out
+    again = ColourRun.resume(folder)
+    layout = folder / again.extra["driver"]["layout"]
+    driver = VerificationTarget.from_json(layout.read_text())
+    scanned = tmp_path / "scan.tif"
+    image = scan(driver.target)  # the simulated printer: duller and warmer than sRGB
+    tifffile.imwrite(scanned, np.rint(image * 65535).astype(np.uint16), photometric="rgb")
+    assert main(["profile", "verify", "--driver", str(folder), str(scanned)]) == 0
+    out = capsys.readouterr().out
+    assert "driver's own colour management" in out and "Goals not met" in out
+    kept = ColourRun.resume(folder)
+    assert kept.extra["driver"]["assessment"]["mean"] > MEAN_GOAL
+    assert kept.extra["driver"]["scans"] == ["plain-v0-driver-scan1.tif"]
+    assert kept.current.action is None  # the profile's own round is untouched
 
 
 def test_cli_verify_reports_a_miss(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

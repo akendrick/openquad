@@ -84,6 +84,19 @@ def d65_to_d50(xyz: ArrayLike) -> NDArray[np.float64]:
     return result
 
 
+def d50_to_d65(xyz: ArrayLike) -> NDArray[np.float64]:
+    """The inverse of d65_to_d50."""
+    result: NDArray[np.float64] = np.asarray(xyz, dtype=np.float64) @ np.linalg.inv(_D65_TO_D50).T
+    return result
+
+
+def xyz_to_linear_rgb(xyz: ArrayLike) -> NDArray[np.float64]:
+    """CIE XYZ (..., 3), D65, to linear sRGB (..., 3), unclipped: the inverse of
+    linear_rgb_to_xyz."""
+    result: NDArray[np.float64] = np.asarray(xyz, dtype=np.float64) @ np.linalg.inv(_RGB_TO_XYZ).T
+    return result
+
+
 def linear_rgb_to_lab(rgb: ArrayLike) -> NDArray[np.float64]:
     """Linear sRGB (..., 3) to CIE L*a*b* (..., 3), D65 white."""
     return xyz_to_lab(linear_rgb_to_xyz(rgb))
