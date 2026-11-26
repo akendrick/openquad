@@ -98,6 +98,20 @@ struct ColourCalibrationParity {
         return Scan(width: width, height: height, samples: samples, scale: 65535)
     }
 
+    @Test func labelledSheetsSayWhatTheyAreAndStillMeasure() throws {
+        let target = try ColourTargets.make()
+        let page = target.page(0, dpi: 60)
+        let sheet = ColourTargets.labelled(page, text: "OpenQuad colour target · page 1 of 1", dpi: 60)
+        #expect(sheet.width == page.width && sheet.height == page.height + Int((ColourTargets.labelStrip * 60).rounded()))
+        #expect(Array(sheet.pixels.prefix(page.pixels.count)) == page.pixels)
+        #expect(sheet.pixels.dropFirst(page.pixels.count).contains { $0 < 20000 })  // the text is there
+        let plain = try ColourMeasure.measure([Scan(width: page.width, height: page.height, samples: page.pixels, scale: 65535)],
+                                              target: target)
+        let labelledScan = Scan(width: sheet.width, height: sheet.height, samples: sheet.pixels, scale: 65535)
+        let measured = try ColourMeasure.measure([labelledScan], target: target)
+        #expect(close(measured.lab.flatMap { $0 }, plain.lab.flatMap { $0 }, 1e-9))
+    }
+
     @Test func tiltedPagesAreStraightenedOrRefused() throws {
         let t = try section("target")
         let target = try ColourTargets.make()

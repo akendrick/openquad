@@ -2,6 +2,8 @@
 // openquad/colour_target.py: the same patches, shuffled the same way, laid out the same,
 // and the same JSON, so a target made by either version is measured by the other.
 
+import CoreGraphics
+import CoreText
 import Foundation
 
 public enum ColourTargets {
@@ -250,6 +252,38 @@ extension Scan {
             out[j * 3 + 2] = samples[i * 3 + 2]
         }
         return Scan(width: width, height: height, samples: out, scale: scale)
+    }
+}
+
+extension ColourTargets {
+    /// Inches of paper added under a page for its label, and the label's type size.
+    public static let labelStrip = 0.35, labelSize = 0.13
+
+    /// The page with a strip of paper under it saying what it is, so printed sheets can be
+    /// told apart. The text starts `left` inches in (under the frame) and stays clear of
+    /// everything measured. Drawn by Core Text, so it isn't pixel for pixel Python's.
+    public static func labelled(_ image: RGBImage, text: String, dpi: Double, left: Double = 0.4) -> RGBImage {
+        let width = image.width, height = Int((labelStrip * dpi).rounded(.toNearestOrEven))
+        var grey = [UInt8](repeating: 255, count: width * height)
+        grey.withUnsafeMutableBytes { buffer in
+            guard let context = CGContext(data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8,
+                                          bytesPerRow: width, space: CGColorSpaceCreateDeviceGray(),
+                                          bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return }
+            let font = CTFontCreateWithName("Helvetica" as CFString, max(labelSize * dpi, 6), nil)
+            let attributes = [kCTFontAttributeName: font, kCTForegroundColorAttributeName: CGColor(gray: 0, alpha: 1)]
+                as [CFString: Any] as CFDictionary
+            let line = CTLineCreateWithAttributedString(CFAttributedStringCreate(nil, text as CFString, attributes))
+            // Core Graphics counts up from the bottom: the baseline sits 0.1 in plus the type size down.
+            context.textPosition = CGPoint(x: left * dpi, y: Double(height) - (0.1 + labelSize) * dpi)
+            CTLineDraw(line, context)
+        }
+        var pixels = image.pixels
+        pixels.reserveCapacity(pixels.count + width * height * 3)
+        for value in grey {
+            let level = UInt16(value) * 257
+            pixels.append(contentsOf: [level, level, level])
+        }
+        return RGBImage(width: width, height: image.height + height, pixels: pixels)
     }
 }
 

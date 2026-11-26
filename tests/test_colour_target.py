@@ -27,9 +27,11 @@ from openquad.colour import (
 )
 from openquad.colour_target import (
     HUES,
+    LABEL_STRIP,
     ColourMeasurement,
     ColourTarget,
     colour_patches,
+    labelled,
     load_target,
     make_target,
     measure_target,
@@ -215,6 +217,21 @@ def test_straightening_turns_about_the_pivot() -> None:
     assert leaning[20, 29:31].max() < 0.5  # the pivot stays put
     assert straightened(image, 0.0, (30.0, 20.0)).tolist() == image.tolist()
     assert (straightened(image, 30.0, (30.0, 20.0))[0, 0] == 1.0).all()  # beyond: white
+
+
+def test_labelled_sheets_say_what_they_are_and_still_measure() -> None:
+    target = make_target(9)
+    pages = []
+    for page in range(2):
+        plain = target_page(target, page, DPI)
+        sheet = labelled(plain, f"OpenQuad colour target · page {page + 1} of 2", DPI)
+        assert sheet.shape[0] == plain.shape[0] + round(LABEL_STRIP * DPI)
+        assert np.array_equal(sheet[: plain.shape[0]], plain)
+        assert (sheet[plain.shape[0] :] < 20000).any()  # the text is there
+        image = printer(sheet / MAX_VALUE)
+        pages.append(np.pad(image, ((40, 40), (40, 40), (0, 0)), constant_values=1.0))
+    measurement = measure_target([pages[1], pages[0][::-1, ::-1]], target)
+    assert delta_e_2000(measurement.lab, expected_lab(target)).mean() < 0.5
 
 
 def test_notes_pages_scanned_differently() -> None:

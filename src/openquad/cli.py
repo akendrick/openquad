@@ -8,6 +8,7 @@ import sys
 import tempfile
 from collections.abc import Sequence
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 import numpy as np
@@ -40,6 +41,7 @@ from openquad.colour_convert import to_device
 from openquad.colour_profile import build_profile, save_profile
 from openquad.colour_target import (
     ColourMeasurement,
+    labelled,
     load_target,
     make_target,
     measure_target,
@@ -509,8 +511,13 @@ def _colour_target(args: argparse.Namespace) -> None:
             output.with_name(f"{output.stem}-{i + 1}of{pages}{output.suffix}") for i in range(pages)
         ]
     )
+    today = datetime.now().date().isoformat()
     for page, path in enumerate(paths):
-        sheet = target_page(target, page, args.dpi)
+        text = (
+            f"OpenQuad colour target{' (fine)' if args.fine else ''} · {len(target.sent)} "
+            f"patches · page {page + 1} of {pages} · {path.name} · {today}"
+        )
+        sheet = labelled(target_page(target, page, args.dpi), text, args.dpi)
         save_rgb(path, sheet, (args.dpi, args.dpi), srgb_profile())
         width, height = target.page_size(page)
         print(f"wrote {path} (page {page + 1} of {pages}, {width:.2f} x {height:.2f} in)")

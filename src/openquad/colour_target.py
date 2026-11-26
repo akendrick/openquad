@@ -29,6 +29,7 @@ from pathlib import Path
 
 import numpy as np
 from numpy.typing import NDArray
+from PIL import Image, ImageDraw, ImageFont
 
 from openquad.colour import D50_WHITE, d65_to_d50, linear_rgb_to_xyz, srgb_to_linear, xyz_to_lab
 from openquad.measure import DARK, EDGE_IGNORE, MeasureError, find_frame
@@ -184,6 +185,24 @@ def layout_target(
     per_page = columns * rows
     pages = tuple(patches[i : i + per_page] for i in range(0, len(patches), per_page))
     return ColourTarget(pages=pages, columns=columns, patch=patch, grid=grid)
+
+
+LABEL_STRIP = 0.35  # inches of paper added under a page for its label
+LABEL_SIZE = 0.13  # inches: the label's type size (about 9 pt)
+
+
+def labelled(
+    image: NDArray[np.uint16], text: str, dpi: float, left: float = 0.4
+) -> NDArray[np.uint16]:
+    """The page with a strip of paper under it saying what it is, so printed sheets can be
+    told apart. The text starts `left` inches in (under the frame) and stays clear of
+    everything measured: it's below the frame and far from the page marks."""
+    width = image.shape[1]
+    strip = Image.new("L", (width, round(LABEL_STRIP * dpi)), 255)
+    font = ImageFont.load_default(size=max(round(LABEL_SIZE * dpi), 6))
+    ImageDraw.Draw(strip).text((round(left * dpi), round(0.1 * dpi)), text, fill=0, font=font)
+    grey = np.asarray(strip, dtype=np.uint16) * 257
+    return np.concatenate([image, np.repeat(grey[..., None], 3, axis=-1)], axis=0)
 
 
 def target_page(target: ColourTarget, page: int, dpi: float = 300.0) -> NDArray[np.uint16]:

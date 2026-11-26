@@ -315,7 +315,8 @@ public final class ColourRun: @unchecked Sendable {
                             target: ColourTargetStage(grid: grid, layout: "\(trimmed)-target.json"), rounds: [], ppi: ppi)
         let layout = try ColourTargets.make(grid: grid)
         try writeText(try layout.json(), to: folder.appendingPathComponent(run.target!.layout))
-        run.target!.pages = try run.writePages(layout, stem: "\(trimmed)-target")
+        run.target!.pages = try run.writePages(layout, stem: "\(trimmed)-target",
+                                               what: "colour target\(grid == 9 ? " (fine)" : "") · \(layout.sent.count) patches")
         try run.saveLog()
         return run
     }
@@ -344,12 +345,16 @@ public final class ColourRun: @unchecked Sendable {
 
     func url(_ name: String) -> URL { folder.appendingPathComponent(name) }
 
-    func writePages(_ layout: ColourTarget, stem: String) throws -> [String] {
+    /// The page(s), each labelled with what it is, the page, file and date, so printed sheets
+    /// can be told apart.
+    func writePages(_ layout: ColourTarget, stem: String, what: String) throws -> [String] {
         let count = layout.pages.count
+        let today = ISO8601DateFormatter.string(from: Date(), timeZone: .current, formatOptions: [.withFullDate])
         return try (0..<count).map { page in
             let file = "\(stem)\(count == 1 ? "" : "-\(page + 1)of\(count)").tif"
-            try ImageFiles.saveRGB(url(file), layout.page(page, dpi: ppi), dpi: (ppi, ppi),
-                                   iccProfile: ImageFiles.srgbProfile())
+            let text = "OpenQuad \(what) · page \(page + 1) of \(count) · \(file) · \(today)"
+            let sheet = ColourTargets.labelled(layout.page(page, dpi: ppi), text: text, dpi: ppi)
+            try ImageFiles.saveRGB(url(file), sheet, dpi: (ppi, ppi), iccProfile: ImageFiles.srgbProfile())
             return file
         }
     }
@@ -382,7 +387,8 @@ public final class ColourRun: @unchecked Sendable {
         let stem = "\(name)-v\(round.version)-verify"
         try writeText(try verification.json(), to: url("\(stem).json"))
         rounds[rounds.count - 1].layout = "\(stem).json"
-        rounds[rounds.count - 1].pages = try writePages(verification.target, stem: stem)
+        rounds[rounds.count - 1].pages = try writePages(verification.target, stem: stem,
+                                                        what: "verification (through the profile) · \(name) v\(round.version)")
         try saveLog()
         return pagesToPrint
     }

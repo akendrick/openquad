@@ -55,6 +55,7 @@ from openquad.colour_profile import (
 from openquad.colour_target import (
     ColourMeasurement,
     ColourTarget,
+    labelled,
     layout_target,
     measure_target,
     save_measurement,
@@ -444,19 +445,32 @@ class ColourRun:
     def model(self) -> ForwardModel:
         return ForwardModel.from_json((self.folder / self.current.model).read_text("utf-8"))
 
+    def _write_sheets(
+        self, verification: VerificationTarget, stem: str, what: str, dpi: float
+    ) -> list[Path]:
+        """The page(s), each labelled with what it is (`what`), the run, page and date."""
+        pages = len(verification.target.pages)
+        today = datetime.now().date().isoformat()
+        paths = []
+        for page in range(pages):
+            suffix = "" if pages == 1 else f"-{page + 1}of{pages}"
+            path = self.folder / f"{stem}{suffix}.tif"
+            text = (
+                f"OpenQuad {what} · {self.name} v{self.current.version} · "
+                f"page {page + 1} of {pages} · {path.name} · {today}"
+            )
+            sheet = labelled(target_page(verification.target, page, dpi), text, dpi)
+            save_rgb(path, sheet, (dpi, dpi), srgb_profile())
+            paths.append(path)
+        return paths
+
     def make_pages(self, dpi: float = 300.0) -> list[Path]:
         """Write this round's verification page(s), to print the way the target was."""
         verification = make_verification(self.model())
         stem = f"{self.name}-v{self.current.version}-verify"
         layout = self.folder / f"{stem}.json"
         layout.write_text(verification.to_json() + "\n", encoding="utf-8")
-        pages = len(verification.target.pages)
-        paths = []
-        for page in range(pages):
-            suffix = "" if pages == 1 else f"-{page + 1}of{pages}"
-            path = self.folder / f"{stem}{suffix}.tif"
-            save_rgb(path, target_page(verification.target, page, dpi), (dpi, dpi), srgb_profile())
-            paths.append(path)
+        paths = self._write_sheets(verification, stem, "verification (through the profile)", dpi)
         self.current.layout = layout.name
         self.current.pages = [p.name for p in paths]
         self._save_log()
@@ -469,13 +483,7 @@ class ColourRun:
         stem = f"{self.name}-v{self.current.version}-driver"
         layout = self.folder / f"{stem}.json"
         layout.write_text(verification.to_json() + "\n", encoding="utf-8")
-        pages = len(verification.target.pages)
-        paths = []
-        for page in range(pages):
-            suffix = "" if pages == 1 else f"-{page + 1}of{pages}"
-            path = self.folder / f"{stem}{suffix}.tif"
-            save_rgb(path, target_page(verification.target, page, dpi), (dpi, dpi), srgb_profile())
-            paths.append(path)
+        paths = self._write_sheets(verification, stem, "driver comparison (plain sRGB)", dpi)
         self.extra["driver"] = {
             "version": self.current.version,
             "layout": layout.name,
