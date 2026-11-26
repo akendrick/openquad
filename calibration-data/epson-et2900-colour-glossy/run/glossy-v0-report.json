@@ -1,0 +1,2322 @@
+{
+ "kind": "openquad colour verification report",
+ "version": 1,
+ "assessment": {
+  "mean": 5.109,
+  "p95": 8.565,
+  "checker": 4.931,
+  "skin": 5.465,
+  "photo": 5.781,
+  "worst_cast": 4.438,
+  "worst_tone": 2.97,
+  "printable": 73,
+  "patches": 144
+ },
+ "passed": false,
+ "patches": [
+  {
+   "name": "photo 44 (sRGB 148 107 242)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    54.51,
+    39.44,
+    -63.43
+   ],
+   "measured": [
+    56.54,
+    15.44,
+    -41.29
+   ],
+   "delta_e": 8.683
+  },
+  {
+   "name": "grey L* 73",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    73.18,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    70.51,
+    1.65,
+    -1.83
+   ],
+   "delta_e": 3.522
+  },
+  {
+   "name": "photo 69 (sRGB 83 186 150)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    68.7,
+    -37.84,
+    8.97
+   ],
+   "measured": [
+    66.97,
+    -24.45,
+    14.71
+   ],
+   "delta_e": 7.61
+  },
+  {
+   "name": "yellow green",
+   "group": "checker",
+   "printable": false,
+   "wanted": [
+    71.77,
+    -24.13,
+    58.19
+   ],
+   "measured": [
+    64.25,
+    -14.16,
+    51.24
+   ],
+   "delta_e": 7.711
+  },
+  {
+   "name": "photo 20 (sRGB 142 113 8)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    49.28,
+    5.08,
+    53.25
+   ],
+   "measured": [
+    43.98,
+    4.22,
+    38.13
+   ],
+   "delta_e": 7.143
+  },
+  {
+   "name": "photo 36 (sRGB 103 146 243)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    60.99,
+    6.78,
+    -53.94
+   ],
+   "measured": [
+    62.57,
+    2.21,
+    -39.45
+   ],
+   "delta_e": 3.319
+  },
+  {
+   "name": "photo 7 (sRGB 203 127 67)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    60.61,
+    26.29,
+    44.54
+   ],
+   "measured": [
+    55.31,
+    26.45,
+    30.49
+   ],
+   "delta_e": 8.361
+  },
+  {
+   "name": "photo 14 (sRGB 237 166 117)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    74.35,
+    23.35,
+    36.36
+   ],
+   "measured": [
+    69.21,
+    27.27,
+    26.4
+   ],
+   "delta_e": 7.967
+  },
+  {
+   "name": "photo 17 (sRGB 140 230 234)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    85.84,
+    -27.45,
+    -11.03
+   ],
+   "measured": [
+    84.35,
+    -17.78,
+    -7.79
+   ],
+   "delta_e": 5.29
+  },
+  {
+   "name": "photo 58 (sRGB 109 94 153)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    43.31,
+    16.28,
+    -30.41
+   ],
+   "measured": [
+    43.51,
+    8.6,
+    -23.35
+   ],
+   "delta_e": 4.142
+  },
+  {
+   "name": "yellow",
+   "group": "checker",
+   "printable": false,
+   "wanted": [
+    81.8,
+    2.67,
+    80.41
+   ],
+   "measured": [
+    70.53,
+    18.59,
+    65.53
+   ],
+   "delta_e": 13.886
+  },
+  {
+   "name": "photo 61 (sRGB 235 203 45)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    82.7,
+    0.63,
+    75.17
+   ],
+   "measured": [
+    72.98,
+    16.25,
+    63.45
+   ],
+   "delta_e": 12.763
+  },
+  {
+   "name": "photo 43 (sRGB 236 112 147)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    63.42,
+    51.08,
+    4.98
+   ],
+   "measured": [
+    58.93,
+    46.88,
+    5.12
+   ],
+   "delta_e": 4.107
+  },
+  {
+   "name": "photo 65 (sRGB 85 135 185)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    54.47,
+    -6.53,
+    -31.53
+   ],
+   "measured": [
+    54.82,
+    -3.32,
+    -23.18
+   ],
+   "delta_e": 4.741
+  },
+  {
+   "name": "orange yellow",
+   "group": "checker",
+   "printable": false,
+   "wanted": [
+    71.51,
+    18.24,
+    67.37
+   ],
+   "measured": [
+    63.59,
+    28.74,
+    53.38
+   ],
+   "delta_e": 11.597
+  },
+  {
+   "name": "skin 7",
+   "group": "skin",
+   "printable": true,
+   "wanted": [
+    75.0,
+    10.0,
+    15.0
+   ],
+   "measured": [
+    70.7,
+    12.04,
+    10.93
+   ],
+   "delta_e": 5.178
+  },
+  {
+   "name": "photo 86 (sRGB 232 124 106)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    64.49,
+    41.47,
+    29.59
+   ],
+   "measured": [
+    59.49,
+    41.66,
+    20.85
+   ],
+   "delta_e": 6.565
+  },
+  {
+   "name": "photo 89 (sRGB 189 81 179)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    51.74,
+    53.46,
+    -31.53
+   ],
+   "measured": [
+    46.45,
+    39.86,
+    -23.73
+   ],
+   "delta_e": 6.974
+  },
+  {
+   "name": "photo 76 (sRGB 133 51 60)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    33.63,
+    36.36,
+    13.19
+   ],
+   "measured": [
+    30.95,
+    22.91,
+    5.29
+   ],
+   "delta_e": 7.166
+  },
+  {
+   "name": "photo 92 (sRGB 112 112 209)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    50.73,
+    19.67,
+    -50.96
+   ],
+   "measured": [
+    53.18,
+    9.71,
+    -44.7
+   ],
+   "delta_e": 5.02
+  },
+  {
+   "name": "photo 50 (sRGB 230 135 73)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    66.04,
+    33.75,
+    48.62
+   ],
+   "measured": [
+    60.0,
+    36.91,
+    32.42
+   ],
+   "delta_e": 10.346
+  },
+  {
+   "name": "photo 70 (sRGB 246 36 206)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    57.53,
+    83.71,
+    -37.41
+   ],
+   "measured": [
+    49.6,
+    58.2,
+    -22.28
+   ],
+   "delta_e": 10.229
+  },
+  {
+   "name": "photo 64 (sRGB 185 204 203)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    80.51,
+    -6.79,
+    -1.83
+   ],
+   "measured": [
+    78.67,
+    -3.51,
+    -3.93
+   ],
+   "delta_e": 4.494
+  },
+  {
+   "name": "photo 80 (sRGB 65 185 186)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    68.62,
+    -33.76,
+    -11.02
+   ],
+   "measured": [
+    68.23,
+    -20.95,
+    -3.59
+   ],
+   "delta_e": 6.987
+  },
+  {
+   "name": "neutral 8",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    81.29,
+    -0.57,
+    0.44
+   ],
+   "measured": [
+    79.94,
+    1.14,
+    -1.58
+   ],
+   "delta_e": 3.255
+  },
+  {
+   "name": "photo 8 (sRGB 194 242 137)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    90.49,
+    -28.95,
+    45.46
+   ],
+   "measured": [
+    84.01,
+    -19.41,
+    40.8
+   ],
+   "delta_e": 6.012
+  },
+  {
+   "name": "photo 45 (sRGB 18 186 71)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    66.27,
+    -58.39,
+    45.33
+   ],
+   "measured": [
+    60.75,
+    -35.56,
+    43.81
+   ],
+   "delta_e": 9.053
+  },
+  {
+   "name": "photo 3 (sRGB 155 8 226)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    41.3,
+    72.74,
+    -75.64
+   ],
+   "measured": [
+    42.99,
+    28.55,
+    -43.59
+   ],
+   "delta_e": 12.934
+  },
+  {
+   "name": "photo 56 (sRGB 247 160 35)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    73.56,
+    26.78,
+    71.18
+   ],
+   "measured": [
+    65.02,
+    37.59,
+    56.3
+   ],
+   "delta_e": 12.111
+  },
+  {
+   "name": "photo 74 (sRGB 29 127 137)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    48.37,
+    -25.55,
+    -13.66
+   ],
+   "measured": [
+    47.76,
+    -12.47,
+    -5.24
+   ],
+   "delta_e": 8.641
+  },
+  {
+   "name": "photo 85 (sRGB 192 29 19)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    42.19,
+    61.4,
+    49.78
+   ],
+   "measured": [
+    35.85,
+    47.94,
+    27.87
+   ],
+   "delta_e": 9.913
+  },
+  {
+   "name": "photo 40 (sRGB 93 122 222)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    52.87,
+    12.28,
+    -55.02
+   ],
+   "measured": [
+    55.08,
+    5.7,
+    -44.52
+   ],
+   "delta_e": 2.887
+  },
+  {
+   "name": "photo 38 (sRGB 178 238 177)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    88.8,
+    -28.4,
+    22.95
+   ],
+   "measured": [
+    83.76,
+    -19.46,
+    21.29
+   ],
+   "delta_e": 5.444
+  },
+  {
+   "name": "grey L* 30",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    29.55,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    31.49,
+    -0.36,
+    1.14
+   ],
+   "delta_e": 1.954
+  },
+  {
+   "name": "photo 82 (sRGB 182 142 214)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    64.87,
+    25.55,
+    -31.24
+   ],
+   "measured": [
+    62.45,
+    19.67,
+    -33.05
+   ],
+   "delta_e": 4.76
+  },
+  {
+   "name": "photo 15 (sRGB 183 122 38)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    56.77,
+    19.44,
+    53.06
+   ],
+   "measured": [
+    50.21,
+    21.19,
+    39.31
+   ],
+   "delta_e": 8.829
+  },
+  {
+   "name": "photo 63 (sRGB 47 89 171)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    38.17,
+    7.84,
+    -49.37
+   ],
+   "measured": [
+    39.9,
+    3.38,
+    -35.85
+   ],
+   "delta_e": 3.552
+  },
+  {
+   "name": "photo 46 (sRGB 22 51 188)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    28.28,
+    34.08,
+    -75.49
+   ],
+   "measured": [
+    35.87,
+    13.82,
+    -57.1
+   ],
+   "delta_e": 9.083
+  },
+  {
+   "name": "magenta",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    50.63,
+    51.28,
+    -14.12
+   ],
+   "measured": [
+    45.18,
+    37.37,
+    -9.56
+   ],
+   "delta_e": 7.204
+  },
+  {
+   "name": "skin 3",
+   "group": "skin",
+   "printable": true,
+   "wanted": [
+    46.0,
+    15.0,
+    19.0
+   ],
+   "measured": [
+    42.54,
+    10.83,
+    13.35
+   ],
+   "delta_e": 5.003
+  },
+  {
+   "name": "photo 53 (sRGB 232 31 161)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    52.93,
+    77.7,
+    -18.2
+   ],
+   "measured": [
+    46.58,
+    60.22,
+    -10.12
+   ],
+   "delta_e": 7.976
+  },
+  {
+   "name": "photo 23 (sRGB 151 53 197)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    42.51,
+    57.63,
+    -57.28
+   ],
+   "measured": [
+    42.08,
+    31.88,
+    -42.67
+   ],
+   "delta_e": 8.331
+  },
+  {
+   "name": "photo 4 (sRGB 244 76 203)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    60.69,
+    72.89,
+    -30.54
+   ],
+   "measured": [
+    54.82,
+    59.33,
+    -20.41
+   ],
+   "delta_e": 6.857
+  },
+  {
+   "name": "photo 98 (sRGB 36 219 158)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    78.01,
+    -55.69,
+    17.25
+   ],
+   "measured": [
+    72.56,
+    -31.47,
+    20.44
+   ],
+   "delta_e": 10.118
+  },
+  {
+   "name": "green",
+   "group": "checker",
+   "printable": false,
+   "wanted": [
+    54.38,
+    -39.72,
+    32.27
+   ],
+   "measured": [
+    51.37,
+    -23.5,
+    31.02
+   ],
+   "delta_e": 7.556
+  },
+  {
+   "name": "photo 60 (sRGB 155 122 94)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    53.86,
+    10.72,
+    20.42
+   ],
+   "measured": [
+    50.32,
+    8.79,
+    15.38
+   ],
+   "delta_e": 4.532
+  },
+  {
+   "name": "photo 97 (sRGB 143 77 247)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    48.32,
+    54.46,
+    -76.31
+   ],
+   "measured": [
+    50.94,
+    19.18,
+    -43.57
+   ],
+   "delta_e": 11.653
+  },
+  {
+   "name": "grey L* 95",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    95.0,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    95.3,
+    0.89,
+    -4.35
+   ],
+   "delta_e": 4.129
+  },
+  {
+   "name": "photo 35 (sRGB 102 51 196)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    35.36,
+    47.34,
+    -68.77
+   ],
+   "measured": [
+    39.86,
+    20.52,
+    -50.52
+   ],
+   "delta_e": 10.329
+  },
+  {
+   "name": "photo 57 (sRGB 84 159 216)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    62.39,
+    -10.8,
+    -37.16
+   ],
+   "measured": [
+    62.45,
+    -5.7,
+    -30.53
+   ],
+   "delta_e": 4.527
+  },
+  {
+   "name": "neutral 6.5",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    66.89,
+    -0.75,
+    -0.06
+   ],
+   "measured": [
+    63.38,
+    1.6,
+    -1.34
+   ],
+   "delta_e": 4.614
+  },
+  {
+   "name": "skin 5",
+   "group": "skin",
+   "printable": true,
+   "wanted": [
+    62.0,
+    14.0,
+    19.0
+   ],
+   "measured": [
+    57.24,
+    13.02,
+    12.86
+   ],
+   "delta_e": 5.702
+  },
+  {
+   "name": "photo 24 (sRGB 46 85 167)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    36.76,
+    9.26,
+    -49.63
+   ],
+   "measured": [
+    38.52,
+    3.42,
+    -35.32
+   ],
+   "delta_e": 3.447
+  },
+  {
+   "name": "skin 4",
+   "group": "skin",
+   "printable": true,
+   "wanted": [
+    54.0,
+    15.0,
+    20.0
+   ],
+   "measured": [
+    49.68,
+    11.84,
+    13.76
+   ],
+   "delta_e": 5.659
+  },
+  {
+   "name": "grey L* 15",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    15.0,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    14.74,
+    -2.18,
+    3.02
+   ],
+   "delta_e": 4.05
+  },
+  {
+   "name": "purplish blue",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    39.43,
+    10.75,
+    -45.17
+   ],
+   "measured": [
+    40.58,
+    4.68,
+    -33.38
+   ],
+   "delta_e": 2.881
+  },
+  {
+   "name": "photo 52 (sRGB 17 35 188)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    24.8,
+    42.89,
+    -81.51
+   ],
+   "measured": [
+    34.16,
+    14.4,
+    -56.65
+   ],
+   "delta_e": 11.836
+  },
+  {
+   "name": "skin 8",
+   "group": "skin",
+   "printable": true,
+   "wanted": [
+    81.0,
+    8.0,
+    13.0
+   ],
+   "measured": [
+    76.47,
+    9.83,
+    9.19
+   ],
+   "delta_e": 5.036
+  },
+  {
+   "name": "neutral 5",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    50.76,
+    -0.13,
+    0.14
+   ],
+   "measured": [
+    49.27,
+    0.86,
+    1.12
+   ],
+   "delta_e": 2.276
+  },
+  {
+   "name": "black",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    20.64,
+    0.07,
+    -0.46
+   ],
+   "measured": [
+    22.33,
+    -1.3,
+    1.93
+   ],
+   "delta_e": 3.227
+  },
+  {
+   "name": "photo 94 (sRGB 130 58 94)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    35.36,
+    34.64,
+    -5.84
+   ],
+   "measured": [
+    32.71,
+    20.52,
+    -5.63
+   ],
+   "delta_e": 6.905
+  },
+  {
+   "name": "photo 83 (sRGB 13 175 39)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    62.3,
+    -57.85,
+    53.43
+   ],
+   "measured": [
+    55.74,
+    -34.44,
+    46.12
+   ],
+   "delta_e": 9.464
+  },
+  {
+   "name": "photo 5 (sRGB 27 113 204)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    46.54,
+    1.84,
+    -55.07
+   ],
+   "measured": [
+    48.73,
+    2.03,
+    -45.0
+   ],
+   "delta_e": 4.053
+  },
+  {
+   "name": "grey L* 88",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    87.73,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    85.31,
+    1.65,
+    -3.95
+   ],
+   "delta_e": 4.497
+  },
+  {
+   "name": "photo 100 (sRGB 10 119 193)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    47.75,
+    -6.26,
+    -47.32
+   ],
+   "measured": [
+    48.57,
+    -2.18,
+    -35.32
+   ],
+   "delta_e": 5.886
+  },
+  {
+   "name": "photo 27 (sRGB 207 27 140)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    47.25,
+    70.96,
+    -15.15
+   ],
+   "measured": [
+    42.17,
+    55.71,
+    -8.46
+   ],
+   "delta_e": 6.54
+  },
+  {
+   "name": "photo 59 (sRGB 213 54 150)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    51.02,
+    66.86,
+    -15.45
+   ],
+   "measured": [
+    44.79,
+    50.64,
+    -7.46
+   ],
+   "delta_e": 8.029
+  },
+  {
+   "name": "photo 2 (sRGB 70 26 235)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    32.11,
+    61.1,
+    -96.15
+   ],
+   "measured": [
+    39.07,
+    16.06,
+    -53.54
+   ],
+   "delta_e": 14.291
+  },
+  {
+   "name": "photo 26 (sRGB 17 94 206)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    41.06,
+    12.86,
+    -65.14
+   ],
+   "measured": [
+    44.74,
+    7.51,
+    -52.69
+   ],
+   "delta_e": 3.953
+  },
+  {
+   "name": "photo 81 (sRGB 216 88 132)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    55.74,
+    53.75,
+    2.42
+   ],
+   "measured": [
+    50.44,
+    43.79,
+    2.41
+   ],
+   "delta_e": 6.037
+  },
+  {
+   "name": "photo 66 (sRGB 154 147 202)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    63.04,
+    11.99,
+    -27.89
+   ],
+   "measured": [
+    61.46,
+    8.56,
+    -27.76
+   ],
+   "delta_e": 2.908
+  },
+  {
+   "name": "photo 78 (sRGB 177 56 132)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    44.34,
+    54.77,
+    -15.42
+   ],
+   "measured": [
+    39.0,
+    38.02,
+    -10.56
+   ],
+   "delta_e": 7.316
+  },
+  {
+   "name": "photo 34 (sRGB 119 98 188)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    46.74,
+    25.06,
+    -45.38
+   ],
+   "measured": [
+    48.22,
+    14.22,
+    -40.19
+   ],
+   "delta_e": 5.335
+  },
+  {
+   "name": "photo 10 (sRGB 151 240 36)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    86.6,
+    -48.21,
+    77.58
+   ],
+   "measured": [
+    72.76,
+    -26.23,
+    53.14
+   ],
+   "delta_e": 12.502
+  },
+  {
+   "name": "grey L* 37",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    36.82,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    37.56,
+    -0.01,
+    1.67
+   ],
+   "delta_e": 1.73
+  },
+  {
+   "name": "photo 88 (sRGB 222 101 39)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    57.81,
+    45.81,
+    56.11
+   ],
+   "measured": [
+    51.66,
+    48.49,
+    39.5
+   ],
+   "delta_e": 10.268
+  },
+  {
+   "name": "photo 47 (sRGB 225 194 76)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    79.46,
+    2.4,
+    61.14
+   ],
+   "measured": [
+    70.87,
+    11.79,
+    48.35
+   ],
+   "delta_e": 10.247
+  },
+  {
+   "name": "neutral 3.5",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    35.63,
+    -0.46,
+    -0.48
+   ],
+   "measured": [
+    36.49,
+    -0.08,
+    1.65
+   ],
+   "delta_e": 2.259
+  },
+  {
+   "name": "photo 33 (sRGB 191 123 136)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    59.22,
+    28.21,
+    4.65
+   ],
+   "measured": [
+    54.4,
+    23.08,
+    1.93
+   ],
+   "delta_e": 5.332
+  },
+  {
+   "name": "photo 48 (sRGB 127 36 108)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    31.52,
+    45.06,
+    -20.93
+   ],
+   "measured": [
+    30.25,
+    29.4,
+    -17.56
+   ],
+   "delta_e": 5.92
+  },
+  {
+   "name": "bluish green",
+   "group": "checker",
+   "printable": false,
+   "wanted": [
+    70.48,
+    -32.26,
+    -0.37
+   ],
+   "measured": [
+    69.03,
+    -21.76,
+    6.26
+   ],
+   "delta_e": 7.088
+  },
+  {
+   "name": "photo 41 (sRGB 119 50 135)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    33.77,
+    40.71,
+    -34.59
+   ],
+   "measured": [
+    33.06,
+    23.82,
+    -27.49
+   ],
+   "delta_e": 6.842
+  },
+  {
+   "name": "photo 21 (sRGB 108 104 239)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    49.95,
+    30.8,
+    -69.05
+   ],
+   "measured": [
+    53.49,
+    10.03,
+    -45.75
+   ],
+   "delta_e": 7.378
+  },
+  {
+   "name": "photo 30 (sRGB 227 98 195)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    60.92,
+    59.49,
+    -26.14
+   ],
+   "measured": [
+    55.68,
+    48.62,
+    -19.13
+   ],
+   "delta_e": 5.964
+  },
+  {
+   "name": "red",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    42.43,
+    51.05,
+    28.62
+   ],
+   "measured": [
+    36.54,
+    37.56,
+    14.26
+   ],
+   "delta_e": 8.825
+  },
+  {
+   "name": "photo 11 (sRGB 61 140 181)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    54.56,
+    -14.89,
+    -29.36
+   ],
+   "measured": [
+    54.79,
+    -7.72,
+    -20.12
+   ],
+   "delta_e": 5.861
+  },
+  {
+   "name": "grey L* 59",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    58.64,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    55.67,
+    0.84,
+    0.27
+   ],
+   "delta_e": 2.995
+  },
+  {
+   "name": "photo 28 (sRGB 92 103 244)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    49.12,
+    29.25,
+    -73.73
+   ],
+   "measured": [
+    52.57,
+    8.7,
+    -46.26
+   ],
+   "delta_e": 6.87
+  },
+  {
+   "name": "cyan",
+   "group": "checker",
+   "printable": false,
+   "wanted": [
+    49.57,
+    -29.71,
+    -28.32
+   ],
+   "measured": [
+    50.96,
+    -11.21,
+    -15.66
+   ],
+   "delta_e": 10.153
+  },
+  {
+   "name": "photo 51 (sRGB 35 223 30)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    78.04,
+    -69.23,
+    69.92
+   ],
+   "measured": [
+    66.82,
+    -34.08,
+    46.06
+   ],
+   "delta_e": 13.152
+  },
+  {
+   "name": "photo 87 (sRGB 44 128 167)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    50.04,
+    -15.72,
+    -28.68
+   ],
+   "measured": [
+    49.92,
+    -8.43,
+    -17.68
+   ],
+   "delta_e": 6.352
+  },
+  {
+   "name": "photo 77 (sRGB 71 247 128)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    86.77,
+    -64.71,
+    43.7
+   ],
+   "measured": [
+    73.35,
+    -31.06,
+    32.06
+   ],
+   "delta_e": 13.938
+  },
+  {
+   "name": "photo 71 (sRGB 19 161 137)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    59.14,
+    -40.53,
+    2.36
+   ],
+   "measured": [
+    57.66,
+    -22.54,
+    8.29
+   ],
+   "delta_e": 9.147
+  },
+  {
+   "name": "photo 79 (sRGB 113 56 60)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    31.28,
+    25.69,
+    9.4
+   ],
+   "measured": [
+    30.44,
+    14.01,
+    4.62
+   ],
+   "delta_e": 7.175
+  },
+  {
+   "name": "photo 67 (sRGB 234 223 72)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    87.75,
+    -8.2,
+    70.89
+   ],
+   "measured": [
+    77.8,
+    6.11,
+    59.26
+   ],
+   "delta_e": 11.465
+  },
+  {
+   "name": "photo 18 (sRGB 217 97 72)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    56.49,
+    47.13,
+    38.24
+   ],
+   "measured": [
+    50.71,
+    42.34,
+    24.52
+   ],
+   "delta_e": 8.392
+  },
+  {
+   "name": "blue sky",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    49.32,
+    -3.82,
+    -22.54
+   ],
+   "measured": [
+    49.03,
+    -2.71,
+    -13.72
+   ],
+   "delta_e": 4.793
+  },
+  {
+   "name": "photo 75 (sRGB 101 126 144)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    51.24,
+    -6.06,
+    -13.06
+   ],
+   "measured": [
+    50.27,
+    -3.75,
+    -6.43
+   ],
+   "delta_e": 4.941
+  },
+  {
+   "name": "photo 95 (sRGB 126 135 102)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    54.73,
+    -7.78,
+    16.69
+   ],
+   "measured": [
+    52.17,
+    -4.77,
+    14.73
+   ],
+   "delta_e": 3.841
+  },
+  {
+   "name": "photo 49 (sRGB 69 15 77)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    16.23,
+    32.56,
+    -25.5
+   ],
+   "measured": [
+    18.0,
+    6.64,
+    -8.11
+   ],
+   "delta_e": 15.229
+  },
+  {
+   "name": "photo 37 (sRGB 163 133 76)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    57.54,
+    6.27,
+    35.23
+   ],
+   "measured": [
+    52.94,
+    6.64,
+    25.81
+   ],
+   "delta_e": 6.066
+  },
+  {
+   "name": "blue",
+   "group": "checker",
+   "printable": false,
+   "wanted": [
+    28.37,
+    15.42,
+    -49.8
+   ],
+   "measured": [
+    32.2,
+    4.13,
+    -33.68
+   ],
+   "delta_e": 4.757
+  },
+  {
+   "name": "photo 9 (sRGB 184 246 15)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    90.12,
+    -39.23,
+    84.23
+   ],
+   "measured": [
+    75.61,
+    -20.44,
+    61.04
+   ],
+   "delta_e": 12.328
+  },
+  {
+   "name": "white",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    95.19,
+    -1.03,
+    2.93
+   ],
+   "measured": [
+    95.62,
+    -0.6,
+    0.03
+   ],
+   "delta_e": 2.771
+  },
+  {
+   "name": "photo 22 (sRGB 21 230 225)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    82.7,
+    -47.39,
+    -11.37
+   ],
+   "measured": [
+    78.62,
+    -24.77,
+    -3.96
+   ],
+   "delta_e": 9.523
+  },
+  {
+   "name": "photo 68 (sRGB 36 77 200)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    36.33,
+    23.11,
+    -69.27
+   ],
+   "measured": [
+    41.12,
+    10.87,
+    -55.65
+   ],
+   "delta_e": 5.614
+  },
+  {
+   "name": "photo 90 (sRGB 200 239 49)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    89.2,
+    -29.89,
+    78.26
+   ],
+   "measured": [
+    76.84,
+    -14.91,
+    63.82
+   ],
+   "delta_e": 10.633
+  },
+  {
+   "name": "grey L* 44",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    44.09,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    43.17,
+    0.35,
+    1.6
+   ],
+   "delta_e": 1.835
+  },
+  {
+   "name": "photo 16 (sRGB 153 187 186)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    73.23,
+    -12.02,
+    -3.71
+   ],
+   "measured": [
+    70.96,
+    -6.82,
+    -3.75
+   ],
+   "delta_e": 5.098
+  },
+  {
+   "name": "grey L* 22",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    22.27,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    23.96,
+    -1.09,
+    1.79
+   ],
+   "delta_e": 2.6
+  },
+  {
+   "name": "orange",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    62.73,
+    35.83,
+    56.5
+   ],
+   "measured": [
+    55.77,
+    39.74,
+    40.22
+   ],
+   "delta_e": 10.654
+  },
+  {
+   "name": "skin 2",
+   "group": "skin",
+   "printable": true,
+   "wanted": [
+    38.0,
+    14.0,
+    17.0
+   ],
+   "measured": [
+    35.51,
+    7.64,
+    12.07
+   ],
+   "delta_e": 5.791
+  },
+  {
+   "name": "foliage",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    43.46,
+    -12.74,
+    22.72
+   ],
+   "measured": [
+    41.02,
+    -8.21,
+    19.71
+   ],
+   "delta_e": 4.024
+  },
+  {
+   "name": "photo 99 (sRGB 70 149 140)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    56.68,
+    -27.31,
+    -3.0
+   ],
+   "measured": [
+    55.15,
+    -14.75,
+    2.47
+   ],
+   "delta_e": 8.327
+  },
+  {
+   "name": "purple",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    30.1,
+    22.54,
+    -20.87
+   ],
+   "measured": [
+    31.3,
+    11.5,
+    -15.26
+   ],
+   "delta_e": 6.747
+  },
+  {
+   "name": "photo 13 (sRGB 185 85 25)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    48.6,
+    39.17,
+    51.11
+   ],
+   "measured": [
+    41.76,
+    37.25,
+    33.31
+   ],
+   "delta_e": 10.202
+  },
+  {
+   "name": "blue flower",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    54.94,
+    9.61,
+    -24.79
+   ],
+   "measured": [
+    53.78,
+    5.12,
+    -20.73
+   ],
+   "delta_e": 3.263
+  },
+  {
+   "name": "skin 1",
+   "group": "skin",
+   "printable": true,
+   "wanted": [
+    30.0,
+    12.0,
+    14.0
+   ],
+   "measured": [
+    29.76,
+    5.39,
+    9.06
+   ],
+   "delta_e": 6.322
+  },
+  {
+   "name": "dark skin",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    37.54,
+    14.37,
+    14.92
+   ],
+   "measured": [
+    35.56,
+    8.29,
+    10.27
+   ],
+   "delta_e": 5.405
+  },
+  {
+   "name": "moderate red",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    50.57,
+    48.64,
+    16.67
+   ],
+   "measured": [
+    45.86,
+    39.2,
+    10.92
+   ],
+   "delta_e": 6.032
+  },
+  {
+   "name": "grey L* 51",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    51.36,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    49.89,
+    0.23,
+    1.49
+   ],
+   "delta_e": 2.086
+  },
+  {
+   "name": "photo 1 (sRGB 215 213 202)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    85.11,
+    -0.57,
+    5.53
+   ],
+   "measured": [
+    82.13,
+    1.66,
+    2.38
+   ],
+   "delta_e": 4.742
+  },
+  {
+   "name": "photo 19 (sRGB 135 164 46)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    63.6,
+    -23.07,
+    54.1
+   ],
+   "measured": [
+    57.06,
+    -14.8,
+    45.98
+   ],
+   "delta_e": 7.102
+  },
+  {
+   "name": "photo 93 (sRGB 36 34 30)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    13.27,
+    0.56,
+    3.28
+   ],
+   "measured": [
+    13.09,
+    -2.89,
+    4.69
+   ],
+   "delta_e": 4.876
+  },
+  {
+   "name": "photo 73 (sRGB 124 45 113)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    32.66,
+    40.88,
+    -22.42
+   ],
+   "measured": [
+    31.25,
+    24.18,
+    -17.22
+   ],
+   "delta_e": 6.839
+  },
+  {
+   "name": "photo 96 (sRGB 41 204 215)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    74.67,
+    -38.02,
+    -17.87
+   ],
+   "measured": [
+    73.91,
+    -23.61,
+    -9.81
+   ],
+   "delta_e": 6.666
+  },
+  {
+   "name": "photo 25 (sRGB 110 118 80)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    48.2,
+    -8.43,
+    19.75
+   ],
+   "measured": [
+    45.89,
+    -5.55,
+    17.6
+   ],
+   "delta_e": 3.44
+  },
+  {
+   "name": "skin 6",
+   "group": "skin",
+   "printable": true,
+   "wanted": [
+    69.0,
+    12.0,
+    17.0
+   ],
+   "measured": [
+    64.08,
+    11.65,
+    12.35
+   ],
+   "delta_e": 5.033
+  },
+  {
+   "name": "photo 62 (sRGB 8 70 109)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    27.6,
+    -6.36,
+    -28.56
+   ],
+   "measured": [
+    31.18,
+    -3.75,
+    -17.18
+   ],
+   "delta_e": 6.366
+  },
+  {
+   "name": "photo 84 (sRGB 131 102 116)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    46.46,
+    14.1,
+    -3.28
+   ],
+   "measured": [
+    44.49,
+    8.64,
+    -2.17
+   ],
+   "delta_e": 4.959
+  },
+  {
+   "name": "photo 91 (sRGB 71 101 204)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    44.65,
+    15.1,
+    -58.08
+   ],
+   "measured": [
+    47.86,
+    7.7,
+    -48.33
+   ],
+   "delta_e": 3.795
+  },
+  {
+   "name": "photo 6 (sRGB 106 132 36)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    51.57,
+    -20.34,
+    45.61
+   ],
+   "measured": [
+    47.52,
+    -13.04,
+    37.57
+   ],
+   "delta_e": 5.771
+  },
+  {
+   "name": "photo 54 (sRGB 164 134 9)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    57.37,
+    4.11,
+    60.17
+   ],
+   "measured": [
+    50.46,
+    5.94,
+    45.99
+   ],
+   "delta_e": 8.111
+  },
+  {
+   "name": "grey L* 80",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    80.45,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    78.63,
+    2.75,
+    -2.15
+   ],
+   "delta_e": 4.395
+  },
+  {
+   "name": "photo 29 (sRGB 202 129 129)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    61.83,
+    28.78,
+    12.22
+   ],
+   "measured": [
+    57.73,
+    26.34,
+    8.14
+   ],
+   "delta_e": 4.455
+  },
+  {
+   "name": "grey L* 66",
+   "group": "neutral",
+   "printable": true,
+   "wanted": [
+    65.91,
+    0.0,
+    0.0
+   ],
+   "measured": [
+    63.54,
+    1.96,
+    -0.79
+   ],
+   "delta_e": 3.453
+  },
+  {
+   "name": "photo 12 (sRGB 140 139 20)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    56.47,
+    -9.19,
+    56.06
+   ],
+   "measured": [
+    50.16,
+    -4.88,
+    43.7
+   ],
+   "delta_e": 7.467
+  },
+  {
+   "name": "light skin",
+   "group": "checker",
+   "printable": true,
+   "wanted": [
+    64.66,
+    19.27,
+    17.5
+   ],
+   "measured": [
+    59.87,
+    17.52,
+    11.4
+   ],
+   "delta_e": 5.602
+  },
+  {
+   "name": "photo 55 (sRGB 174 111 231)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    57.61,
+    42.37,
+    -52.12
+   ],
+   "measured": [
+    56.76,
+    22.42,
+    -37.73
+   ],
+   "delta_e": 7.52
+  },
+  {
+   "name": "photo 31 (sRGB 183 184 117)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    73.59,
+    -8.33,
+    34.05
+   ],
+   "measured": [
+    68.64,
+    -3.0,
+    29.57
+   ],
+   "delta_e": 5.554
+  },
+  {
+   "name": "photo 39 (sRGB 192 84 83)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    50.24,
+    44.31,
+    23.34
+   ],
+   "measured": [
+    45.14,
+    34.04,
+    14.0
+   ],
+   "delta_e": 7.218
+  },
+  {
+   "name": "photo 32 (sRGB 172 208 79)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    79.06,
+    -26.37,
+    58.01
+   ],
+   "measured": [
+    71.24,
+    -16.27,
+    53.24
+   ],
+   "delta_e": 7.46
+  },
+  {
+   "name": "photo 42 (sRGB 70 160 89)",
+   "group": "photo",
+   "printable": false,
+   "wanted": [
+    59.15,
+    -40.09,
+    28.61
+   ],
+   "measured": [
+    57.0,
+    -25.19,
+    29.3
+   ],
+   "delta_e": 6.87
+  },
+  {
+   "name": "photo 72 (sRGB 66 71 100)",
+   "group": "photo",
+   "printable": true,
+   "wanted": [
+    30.58,
+    4.18,
+    -18.23
+   ],
+   "measured": [
+    32.49,
+    0.99,
+    -11.55
+   ],
+   "delta_e": 5.053
+  }
+ ]
+}

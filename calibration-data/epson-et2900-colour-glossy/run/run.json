@@ -1,0 +1,60 @@
+{
+ "kind": "openquad colour run",
+ "name": "glossy",
+ "description": "glossy",
+ "printer": "EPSON_ET_2900_Series",
+ "paper_label": "Letter high-gloss photo",
+ "settings": "straight to the printer (lp), MediaType=photographic-high-gloss, High quality",
+ "driver": {
+  "version": 0,
+  "layout": "glossy-v0-driver.json",
+  "pages": [
+   "glossy-v0-driver.tif"
+  ],
+  "scans": [
+   "glossy-v0-driver-scan1.jpg"
+  ],
+  "measurement": "glossy-v0-driver-measured.json",
+  "report": "glossy-v0-driver-report.json",
+  "assessment": {
+   "mean": 1.194,
+   "p95": 2.467,
+   "checker": 1.291,
+   "skin": 1.033,
+   "photo": 1.09,
+   "worst_cast": 2.073,
+   "worst_tone": 3.014,
+   "printable": 73,
+   "patches": 144
+  }
+ },
+ "rounds": [
+  {
+   "version": 0,
+   "profile": "glossy-v0.icc",
+   "model": "glossy-v0.json",
+   "pages": [
+    "glossy-v0-verify.tif"
+   ],
+   "layout": "glossy-v0-verify.json",
+   "job": null,
+   "scans": [
+    "glossy-v0-scan1.jpg"
+   ],
+   "measurement": "glossy-v0-measured.json",
+   "report": "glossy-v0-report.json",
+   "assessment": {
+    "mean": 5.109,
+    "p95": 8.565,
+    "checker": 4.931,
+    "skin": 5.465,
+    "photo": 5.781,
+    "worst_cast": 4.438,
+    "worst_tone": 2.97,
+    "printable": 73,
+    "patches": 144
+   },
+   "action": "refine"
+  }
+ ]
+}
